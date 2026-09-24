@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { currentLocale } from "../i18n";
 import { formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { Calculator, DollarSign, RefreshCw } from "lucide-react";
@@ -39,6 +41,7 @@ interface ExchangeRate {
 const API_BASE = serverUrl;
 
 export default function Sortie() {
+  const { t } = useTranslation();
   const [creditors, setCreditors] = useState<Array<{_id:string; name:string; type:string; phone?:string}>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -170,7 +173,7 @@ export default function Sortie() {
         exchangeRate?.rate
       );
     } catch {
-      setError("Montant invalide ou taux de change indisponible. Vérifiez le montant saisi.");
+      setError(t("expenses.invalidAmount"));
       return;
     }
     const body = {
@@ -224,12 +227,12 @@ export default function Sortie() {
       currencyMode: "fc",
     });
     const success = saved.status === "validated"
-      ? "Décaissement enregistré et validé."
-      : "Décaissement soumis avec succès.";
+      ? t("expenses.savedValidated")
+      : t("expenses.submitted");
     notifySuccess(success);
     setMessage(saved.status === "validated"
-      ? "✅ Décaissement enregistré et validé."
-      : "✅ Décaissement soumis : il sera pris en compte après validation.");
+      ? t("expenses.savedValidatedBanner")
+      : t("expenses.submittedBanner"));
     // This GET is triggered independently; it cannot keep the save button busy.
     setFundsVersion((version) => version + 1);
   }
@@ -250,21 +253,21 @@ export default function Sortie() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">Taux du jour:</span>
+                  <span className="font-semibold text-blue-900">{t("expenses.todayRate")}</span>
                 </div>
                 {loadingRate ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
                 ) : exchangeRate ? (
                   <div className="text-right">
                     <div className="font-bold text-blue-800 text-lg">
-                      1 USD = {new Intl.NumberFormat('fr-FR').format(exchangeRate.rate)} FC
+                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
                     <div className="text-xs text-blue-600">
-                      Effectif depuis {formatDateGMT2(exchangeRate.effectiveFrom)}
+                      {t("expenses.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
                 ) : (
-                  <span className="text-red-600 text-sm">Taux non disponible</span>
+                  <span className="text-red-600 text-sm">{t("expenses.rateUnavailable")}</span>
                 )}
               </div>
             </div>
@@ -283,21 +286,21 @@ export default function Sortie() {
         <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
           <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6">
             <h3 className="text-xl font-semibold text-white text-center">
-              Nouveau décaissement
+              {t("expenses.newExpense")}
             </h3>
             <p className="text-blue-100 text-center mt-2">
-              Choisissez le type d'opération, la catégorie et le montant.
+              {t("expenses.newExpenseHint")}
             </p>
           </div>
 
           <form onSubmit={handleSortie} className="p-6 space-y-6">
             <fieldset>
-              <legend className="mb-3 font-semibold text-gray-900">Type d'opération *</legend>
+              <legend className="mb-3 font-semibold text-gray-900">{t("expenses.operationType")}</legend>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {([
-                  ["COMPANY_EXPENSE", "Dépense de l'entreprise", "Réduit le bénéfice de la catégorie"],
-                  ["GOODS_PURCHASE", "Achat de marchandises", "Utilise les fonds de réapprovisionnement"],
-                  ["REPAYMENT", "Remboursement de dette", "Réduit le solde d'un créancier"],
+                  ["COMPANY_EXPENSE", t("enums.expenseType.companyExpense"), t("expenses.types.companyExpenseHint")],
+                  ["GOODS_PURCHASE", t("enums.expenseType.goodsPurchase"), t("expenses.types.goodsPurchaseHint")],
+                  ["REPAYMENT", t("enums.expenseType.repayment"), t("expenses.types.repaymentHint")],
                 ] as const).map(([value, label, description]) => (
                   <label key={value} className={`cursor-pointer rounded-xl border-2 p-4 transition ${form.expenseType === value ? "border-purple-600 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-300"}`}>
                     <input type="radio" className="sr-only" checked={form.expenseType === value} onChange={() => setForm({ ...form, expenseType: value, creditorId: "" })} />
@@ -309,22 +312,22 @@ export default function Sortie() {
             </fieldset>
 
             {form.expenseType !== "REPAYMENT" && <fieldset>
-              <legend className="mb-3 font-semibold text-gray-900">Catégorie *</legend>
+              <legend className="mb-3 font-semibold text-gray-900">{t("expenses.category")}</legend>
               <div className="grid grid-cols-2 gap-3">
-                {(["CLOTHES", "SHOES"] as const).map((category) => <label key={category} className={`cursor-pointer rounded-xl border-2 p-4 text-center font-semibold ${form.category === category ? "border-blue-600 bg-blue-50 text-blue-900" : "border-gray-200 text-gray-700"}`}><input type="radio" className="sr-only" checked={form.category === category} onChange={() => setForm({...form, category})}/>{category === "CLOTHES" ? "Vêtements" : "Chaussures"}</label>)}
+                {(["CLOTHES", "SHOES"] as const).map((category) => <label key={category} className={`cursor-pointer rounded-xl border-2 p-4 text-center font-semibold ${form.category === category ? "border-blue-600 bg-blue-50 text-blue-900" : "border-gray-200 text-gray-700"}`}><input type="radio" className="sr-only" checked={form.category === category} onChange={() => setForm({...form, category})}/>{t(`accounting.categoryTitles.${category}`)}</label>)}
               </div>
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 {form.expenseType === "COMPANY_EXPENSE"
-                  ? form.category === "CLOTHES" ? "Cette dépense sera déduite du bénéfice VÊTEMENTS." : "Cette dépense sera déduite du bénéfice CHAUSSURES avant le partage entre les deux actionnaires."
-                  : form.category === "CLOTHES" ? "L'achat peut être financé par le capital récupéré et le bénéfice VÊTEMENTS disponibles." : "L'achat sera financé uniquement par le capital récupéré sur les ventes CHAUSSURES. Le bénéfice des actionnaires reste protégé."}
+                  ? form.category === "CLOTHES" ? t("expenses.categoryNote.companyClothes") : t("expenses.categoryNote.companyShoes")
+                  : form.category === "CLOTHES" ? t("expenses.categoryNote.purchaseClothes") : t("expenses.categoryNote.purchaseShoes")}
               </div>
             </fieldset>}
 
-            {form.expenseType === "REPAYMENT" && <div><label htmlFor="sortie-creditor" className="block mb-2 font-medium text-gray-700">Créancier actif *</label><select id="sortie-creditor" required value={form.creditorId} onChange={(e) => { const c=creditors.find(x=>x._id===e.target.value); setForm({...form, creditorId:e.target.value, reason:c?`Remboursement dette — ${c.name}`:form.reason, recipientName:c?.name||form.recipientName, recipientPhone:c?.phone||form.recipientPhone}); }} className="w-full p-3 border rounded-lg"><option value="">Sélectionner...</option>{creditors.map(c=><option key={c._id} value={c._id}>{c.name} ({c.type})</option>)}</select><p className="text-xs text-gray-500 mt-1">Le solde sera vérifié par le serveur.</p></div>}
+            {form.expenseType === "REPAYMENT" && <div><label htmlFor="sortie-creditor" className="block mb-2 font-medium text-gray-700">{t("expenses.activeCreditor")}</label><select id="sortie-creditor" required value={form.creditorId} onChange={(e) => { const c=creditors.find(x=>x._id===e.target.value); setForm({...form, creditorId:e.target.value, reason:c?t("expenses.repaymentReason", { name: c.name }):form.reason, recipientName:c?.name||form.recipientName, recipientPhone:c?.phone||form.recipientPhone}); }} className="w-full p-3 border rounded-lg"><option value="">{t("expenses.select")}</option>{creditors.map(c=><option key={c._id} value={c._id}>{c.name} ({t(`debts.types.${c.type}`, { defaultValue: c.type })})</option>)}</select><p className="text-xs text-gray-500 mt-1">{t("expenses.balanceChecked")}</p></div>}
             {/* Reason for Expense */}
             <div>
               <label htmlFor="sortie-reason" className="block mb-2 font-medium text-gray-700">
-                Motif du décaissement *
+                {t("expenses.reasonLabel")}
               </label>
               <input
                 id="sortie-reason"
@@ -332,7 +335,7 @@ export default function Sortie() {
                 name="reason"
                 value={form.reason}
                 onChange={handleChange}
-                placeholder="Ex: Achat fournitures bureau, Transport, etc."
+                placeholder={t("expenses.reasonPlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 required
               />
@@ -342,7 +345,7 @@ export default function Sortie() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="sortie-recipient-name" className="block mb-2 font-medium text-gray-700">
-                  Nom du bénéficiaire *
+                  {t("expenses.beneficiaryName")}
                 </label>
                 <input
                   id="sortie-recipient-name"
@@ -350,7 +353,7 @@ export default function Sortie() {
                   name="recipientName"
                   value={form.recipientName}
                   onChange={handleChange}
-                  placeholder="Nom complet"
+                  placeholder={t("expenses.fullName")}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   required
                 />
@@ -358,7 +361,7 @@ export default function Sortie() {
 
               <div>
                 <label htmlFor="sortie-recipient-phone" className="block mb-2 font-medium text-gray-700">
-                  Téléphone du bénéficiaire {form.expenseType !== "REPAYMENT" && "*"}
+                  {t("expenses.beneficiaryPhone")} {form.expenseType !== "REPAYMENT" && "*"}
                 </label>
                 <input
                   id="sortie-recipient-phone"
@@ -366,7 +369,7 @@ export default function Sortie() {
                   name="recipientPhone"
                   value={form.recipientPhone}
                   onChange={handleChange}
-                  placeholder="Numéro de téléphone"
+                  placeholder={t("expenses.phoneNumber")}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   required={form.expenseType !== "REPAYMENT"}
                 />
@@ -378,7 +381,7 @@ export default function Sortie() {
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label htmlFor="sortie-amount" className="block font-medium text-gray-700">
-                    Montant *
+                    {t("expenses.amountLabel")}
                   </label>
                   <button
                     type="button"
@@ -432,7 +435,7 @@ export default function Sortie() {
 
               <div>
                 <label htmlFor="sortie-payment-method" className="block mb-2 font-medium text-gray-700">
-                  Méthode de paiement *
+                  {t("expenses.paymentMethod")}
                 </label>
                 <select
                   id="sortie-payment-method"
@@ -442,11 +445,11 @@ export default function Sortie() {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                   required
                 >
-                  <option value="cash">Espèces</option>
-                  <option value="mpesa">M-Pesa ou Airtel Money</option>
-                  <option value="bank">Transfert Bancaire</option>
-                  <option value="card">Carte</option>
-                  <option value="other">Autre</option>
+                  <option value="cash">{t("expenses.payment.cash")}</option>
+                  <option value="mpesa">{t("expenses.payment.mpesa")}</option>
+                  <option value="bank">{t("expenses.payment.bank")}</option>
+                  <option value="card">{t("expenses.payment.card")}</option>
+                  <option value="other">{t("expenses.payment.other")}</option>
                 </select>
               </div>
             </div>
@@ -456,13 +459,13 @@ export default function Sortie() {
               <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                   <div className="text-center">
-                    <div className="font-semibold text-gray-700">Montant en USD</div>
+                    <div className="font-semibold text-gray-700">{t("expenses.amountUsd")}</div>
                     <div className="text-lg font-bold text-green-600">
                       {formatUSD(parseFloat(form.amount))}
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="font-semibold text-gray-700">Équivalent en FC</div>
+                    <div className="font-semibold text-gray-700">{t("expenses.equivalentFc")}</div>
                     <div className="text-lg font-bold text-blue-600">
                       {formatFC(parseFloat(form.amount) * exchangeRate.rate)}
                     </div>
@@ -475,12 +478,12 @@ export default function Sortie() {
               <div className="rounded-xl bg-slate-900 p-4 text-white">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div><p className="text-xs text-slate-300">{FUNDS_LABEL}</p><p className="text-lg font-bold">{formatUSD(funds.availablePurchaseFunds)}</p></div>
-                  <div><p className="text-xs text-slate-300">Montant demandé</p><p className="text-lg font-bold">{formatUSD(Number(form.amount || 0))}</p></div>
-                  <div><p className="text-xs text-slate-300">Solde après opération</p><p className={`text-lg font-bold ${funds.availablePurchaseFunds - Number(form.amount || 0) < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatUSD(funds.availablePurchaseFunds - Number(form.amount || 0))}</p></div>
+                  <div><p className="text-xs text-slate-300">{t("expenses.requestedAmount")}</p><p className="text-lg font-bold">{formatUSD(Number(form.amount || 0))}</p></div>
+                  <div><p className="text-xs text-slate-300">{t("expenses.balanceAfter")}</p><p className={`text-lg font-bold ${funds.availablePurchaseFunds - Number(form.amount || 0) < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatUSD(funds.availablePurchaseFunds - Number(form.amount || 0))}</p></div>
                 </div>
                 <p className="mt-3 text-xs text-slate-300">{FUNDS_DEFINITION} {FUNDS_RULE[form.category]}</p>
                 {Number(funds.fundingShortfall || 0) > 0 && (
-                  <p className="mt-2 text-xs text-red-300">Capital à reconstituer : {formatUSD(Number(funds.fundingShortfall))}. De nouvelles ventes doivent d'abord couvrir ce montant.</p>
+                  <p className="mt-2 text-xs text-red-300">{t("expenses.shortfall", { amount: formatUSD(Number(funds.fundingShortfall)) })}</p>
                 )}
               </div>
             )}
@@ -488,14 +491,14 @@ export default function Sortie() {
             {/* Additional Notes */}
             <div>
               <label htmlFor="sortie-notes" className="block mb-2 font-medium text-gray-700">
-                Notes supplémentaires (optionnel)
+                {t("expenses.notes")}
               </label>
               <textarea
                 id="sortie-notes"
                 name="notes"
                 value={form.notes}
                 onChange={handleChange}
-                placeholder="Détails supplémentaires…"
+                placeholder={t("expenses.notesPlaceholder")}
                 rows={3}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
               />
@@ -504,10 +507,10 @@ export default function Sortie() {
             {/* Recorded By */}
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
               <span className="block mb-1 text-sm font-medium text-gray-600">
-                Enregistré par
+                {t("expenses.recordedBy")}
               </span>
               <p className="text-gray-900 font-medium">
-                {currentUser?.username || "Utilisateur"}
+                {currentUser?.username || t("expenses.user")}
               </p>
             </div>
 
@@ -524,10 +527,10 @@ export default function Sortie() {
               {isSubmitting ? (
                 <div className="flex items-center justify-center">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                  Enregistrement...
+                  {t("expenses.saving")}
                 </div>
               ) : (
-                "Enregistrer le décaissement"
+                t("expenses.save")
               )}
             </button>
           </form>
@@ -542,16 +545,15 @@ export default function Sortie() {
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-blue-800">
-                  Information importante
+                  {t("expenses.importantInfo")}
                 </h3>
                 <div className="mt-1 text-sm text-blue-700">
                   <p>
-                    Un décaissement n'est jamais comptabilisé dans les ventes.
-                    Son reçu s'imprime depuis l'Historique des décaissements une fois validé.
+                    {t("expenses.infoText")}
                   </p>
                   {exchangeRate && (
                     <p className="mt-2 font-medium">
-                      💱 Taux utilisé: 1 USD = {new Intl.NumberFormat('fr-FR').format(exchangeRate.rate)} FC
+                      {t("expenses.rateUsed", { rate: new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate) })}
                     </p>
                   )}
                 </div>

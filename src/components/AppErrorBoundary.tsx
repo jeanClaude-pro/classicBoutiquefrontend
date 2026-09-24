@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { isChunkLoadError, reloadForNewVersion } from "../lib/chunkRecovery";
 
 interface Props {
@@ -49,34 +50,35 @@ export class AppErrorBoundary extends Component<Props, State> {
     const { error } = this.state;
     if (!error) return this.props.children;
 
-    const outdated = isChunkLoadError(error);
-    return (
-      <div className="app-error-fallback" role="alert">
-        <div className="app-error-card">
-          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden="true">
-            {outdated ? <RefreshCw className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
-          </span>
-          <h1>{outdated ? "Une nouvelle version est disponible" : "Une erreur inattendue est survenue"}</h1>
-          <p>
-            {outdated
-              ? "Cette page appartient à une version précédente de l'application. Rechargez pour utiliser la version à jour."
-              : "Cette page n'a pas pu s'afficher. Vos données enregistrées ne sont pas affectées. Réessayez ou revenez à l'accueil."}
-          </p>
-          {import.meta.env.DEV && !outdated && (
-            <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-slate-50 p-2 text-left text-xs text-slate-600">{error.message}</pre>
+    return <ErrorFallback error={error} onRetry={this.retry} />;
+  }
+}
+
+function ErrorFallback({ error, onRetry }: { error: Error; onRetry: () => void }) {
+  const { t } = useTranslation();
+  const outdated = isChunkLoadError(error);
+  return (
+    <div className="app-error-fallback" role="alert">
+      <div className="app-error-card">
+        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700" aria-hidden="true">
+          {outdated ? <RefreshCw className="h-6 w-6" /> : <AlertTriangle className="h-6 w-6" />}
+        </span>
+        <h1>{outdated ? t("errorBoundary.outdatedTitle") : t("errorBoundary.crashTitle")}</h1>
+        <p>{outdated ? t("errorBoundary.outdatedMessage") : t("errorBoundary.crashMessage")}</p>
+        {import.meta.env.DEV && !outdated && (
+          <pre className="mt-3 max-h-32 overflow-auto rounded-lg bg-slate-50 p-2 text-left text-xs text-slate-600">{error.message}</pre>
+        )}
+        <div className="app-error-actions">
+          {outdated ? (
+            <button type="button" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => window.location.reload()}>{t("errorBoundary.reload")}</button>
+          ) : (
+            <>
+              <button type="button" className="bg-blue-600 text-white hover:bg-blue-700" onClick={onRetry}>{t("errorBoundary.retry")}</button>
+              <a href="/" className="border border-slate-300 bg-white text-slate-800 hover:bg-slate-50">{t("errorBoundary.home")}</a>
+            </>
           )}
-          <div className="app-error-actions">
-            {outdated ? (
-              <button type="button" className="bg-blue-600 text-white hover:bg-blue-700" onClick={() => window.location.reload()}>Recharger l'application</button>
-            ) : (
-              <>
-                <button type="button" className="bg-blue-600 text-white hover:bg-blue-700" onClick={this.retry}>Réessayer</button>
-                <a href="/" className="border border-slate-300 bg-white text-slate-800 hover:bg-slate-50">Retour à l'accueil</a>
-              </>
-            )}
-          </div>
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 }

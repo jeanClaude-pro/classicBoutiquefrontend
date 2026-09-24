@@ -2,10 +2,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { currentLocale } from "../../i18n";
 import { toast } from "react-toastify";
 import { useAuth } from "../../hooks/useAuth";
 import { serverUrl } from "../../utils/constants";
-import { apiErrorFromResponse, requestJson } from "../../lib/apiError";
+import { apiErrorFromResponse, requestJson, userError } from "../../lib/apiError";
 import { notifyError } from "../../lib/notify";
 import { deleteUserCopy, roleChangeCopy, shareholderCategoryCopy, toggleUserStatusCopy } from "../../lib/confirmationCopy";
 import { ROLE_LABELS as SHARED_ROLE_LABELS, roleLabel } from "../../config/roles";
@@ -61,19 +63,12 @@ interface ShopSettings {
 }
 
 // Same names as the navigation (config/modules.ts). Only real, routed pages.
-const ALL_PAGES = PERMISSION_MODULE_IDS.map((id) => ({ path: MODULES[id].path, label: MODULES[id].label }));
+const ALL_PAGES = PERMISSION_MODULE_IDS.map((id) => ({ path: MODULES[id].path, labelKey: MODULES[id].labelKey }));
 
+// Action keys are stored in user permissions; names come from admin.actions.<key>.
 const ALL_ACTIONS = [
-  {
-    key: "edit_receipts",
-    label: "Modifier les reçus",
-    description: "Peut surcharger les prix et quantités dans le panier avant impression",
-  },
-  {
-    key: "reprint_receipts",
-    label: "Réimprimer les reçus",
-    description: "Peut réimprimer les anciens reçus depuis l'historique des ventes",
-  },
+  { key: "edit_receipts" },
+  { key: "reprint_receipts" },
 ];
 
 // Same role names as the sidebar and the mobile menu (config/roles.ts).
@@ -129,72 +124,31 @@ const ROLE_DEFAULT_PAGES: Record<AppRole, string[]> = {
 };
 
 // Canonical description of what each role can do in the app
+// (keys of admin.capabilities.* in the dictionaries).
 const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }> = {
   superadmin: {
-    pages: ["Toutes les pages", "Administration et configuration"],
-    actions: ["Contrôle complet du système", "Gestion des rôles, catégories et permissions"],
+    pages: ["allPages", "adminConfig"],
+    actions: ["fullControl", "manageRoles"],
   },
   admin: {
-    pages: ["Ventes, rapports et stock de la catégorie assignée"],
-    actions: ["Consultation strictement en lecture seule"],
+    pages: ["shareholderScope"],
+    actions: ["readOnly"],
   },
   manager: {
-    pages: [
-      "Point de Vente (POS)",
-      "Réservation & historique",
-      "Entrées de caisse, décaissements & historiques",
-      "Articles / Stock",
-      "Historique de Vente",
-      "Clients",
-    ],
-    actions: [
-      "Créer des ventes",
-      "Gérer les réservations",
-      "Enregistrer entrées de caisse et décaissements",
-      "Gérer le stock (articles)",
-      "Consulter l'historique des ventes",
-      "Modifier les reçus (si permission accordée)",
-    ],
+    pages: ["pos", "reservations", "cashFlows", "inventory", "salesHistory", "customers"],
+    actions: ["createSales", "manageReservations", "recordCash", "manageStock", "viewSales", "editReceiptsIfGranted"],
   },
   inventory_manager: {
-    pages: [
-      "Point de Vente (POS)",
-      "Réservation & historique",
-      "Entrées de caisse, décaissements & historiques",
-      "Articles / Stock",
-      "Historique de Vente",
-    ],
-    actions: [
-      "Créer des ventes",
-      "Gérer les réservations",
-      "Enregistrer entrées de caisse et décaissements",
-      "Gérer le stock (articles)",
-      "Consulter l'historique des ventes",
-    ],
+    pages: ["pos", "reservations", "cashFlows", "inventory", "salesHistory"],
+    actions: ["createSales", "manageReservations", "recordCash", "manageStock", "viewSales"],
   },
   cashier_supervisor: {
-    pages: [
-      "Point de Vente (POS)",
-      "Réservation & historique",
-      "Entrées de caisse, décaissements & historiques",
-      "Historique de Vente",
-      "Clients",
-    ],
-    actions: [
-      "Créer des ventes",
-      "Gérer les réservations",
-      "Enregistrer entrées de caisse et décaissements",
-      "Consulter l'historique des ventes",
-      "Gérer les clients",
-      "Modifier les reçus (si permission accordée)",
-    ],
+    pages: ["pos", "reservations", "cashFlows", "salesHistory", "customers"],
+    actions: ["createSales", "manageReservations", "recordCash", "viewSales", "manageCustomers", "editReceiptsIfGranted"],
   },
   staff: {
-    pages: ["Point de Vente (POS)"],
-    actions: [
-      "Créer des ventes uniquement",
-      "Impression du reçu après vente",
-    ],
+    pages: ["pos"],
+    actions: ["salesOnly", "printReceipt"],
   },
 };
 
@@ -213,6 +167,7 @@ function avatarColor(username: string) {
 type Tab = "users" | "permissions" | "receipt" | "roles";
 
 export default function AdminPanel() {
+  const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(false);
@@ -259,7 +214,7 @@ export default function AdminPanel() {
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/users`, { headers: authHeaders() });
-      if (!res.ok) throw new Error("Impossible de charger les utilisateurs");
+      if (!res.ok) throw userError(t("admin.loadUsersFailed"));
       const data = await res.json();
       setUsers(data);
     } catch (err: any) {
@@ -275,7 +230,7 @@ export default function AdminPanel() {
       const res = await fetch(`${API_BASE}/settings/receipt`, {
         headers: authHeaders(),
       });
-      if (!res.ok) throw new Error("Impossible de charger les réglages");
+      if (!res.ok) throw userError(t("admin.loadSettingsFailed"));
       const data = await res.json();
       setShopSettings({
         shopName: data.shopName || "",
@@ -310,7 +265,7 @@ export default function AdminPanel() {
 
   const saveUsername = async (userId: string) => {
     if (!editingUsernameValue.trim()) {
-      toast.error("Le nom d'utilisateur ne peut pas être vide");
+      toast.error(t("admin.usernameEmpty"));
       return;
     }
     try {
@@ -329,7 +284,7 @@ export default function AdminPanel() {
         )
       );
       cancelEditUsername();
-      toast.success("Nom d'utilisateur mis à jour");
+      toast.success(t("admin.usernameUpdated"));
     } catch (err: any) {
       notifyError(err);
     }
@@ -418,7 +373,7 @@ export default function AdminPanel() {
             : u
         )
       );
-      toast.success("Permissions mises à jour avec succès");
+      toast.success(t("admin.permissionsUpdated"));
     } catch (err: any) {
       notifyError(err);
     } finally {
@@ -441,7 +396,7 @@ export default function AdminPanel() {
       );
       setUseCustomPerms(false);
       setSelectedUserPerms([...ROLE_DEFAULT_PAGES[user.role]]);
-      toast.success("Permissions réinitialisées au rôle par défaut");
+      toast.success(t("admin.permissionsReset"));
     } catch (err: any) {
       notifyError(err);
     } finally {
@@ -469,7 +424,7 @@ export default function AdminPanel() {
       if (!res.ok) {
         throw await apiErrorFromResponse(res);
       }
-      toast.success("Réglages du reçu mis à jour avec succès");
+      toast.success(t("admin.settingsUpdated"));
     } catch (err: any) {
       notifyError(err);
     } finally {
@@ -488,10 +443,10 @@ export default function AdminPanel() {
   const selectedUser = users.find((u) => u._id === selectedUserId);
 
   const TABS = [
-    { key: "users" as Tab, label: "Utilisateurs", icon: Users },
-    { key: "permissions" as Tab, label: "Permissions", icon: Lock },
-    { key: "receipt" as Tab, label: "Réglages Reçu", icon: Store },
-    { key: "roles" as Tab, label: "Rôles & Droits", icon: BookOpen },
+    { key: "users" as Tab, label: t("admin.tabs.users"), icon: Users },
+    { key: "permissions" as Tab, label: t("admin.tabs.permissions"), icon: Lock },
+    { key: "receipt" as Tab, label: t("admin.tabs.receipt"), icon: Store },
+    { key: "roles" as Tab, label: t("admin.tabs.roles"), icon: BookOpen },
   ] as const;
 
   return (
@@ -515,17 +470,17 @@ export default function AdminPanel() {
           <div className="grid grid-cols-3 gap-4 mt-6">
             <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
               <p className="text-2xl font-bold text-gray-900">{users.length}</p>
-              <p className="text-sm text-gray-500 mt-0.5">Comptes totaux</p>
+              <p className="text-sm text-gray-500 mt-0.5">{t("admin.totalAccounts")}</p>
             </div>
             <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
               <p className="text-2xl font-bold text-emerald-600">{activeCount}</p>
-              <p className="text-sm text-gray-500 mt-0.5">Actifs</p>
+              <p className="text-sm text-gray-500 mt-0.5">{t("admin.active")}</p>
             </div>
             <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
               <p className="text-2xl font-bold text-red-500">
                 {users.length - activeCount}
               </p>
-              <p className="text-sm text-gray-500 mt-0.5">Désactivés</p>
+              <p className="text-sm text-gray-500 mt-0.5">{t("admin.deactivated")}</p>
             </div>
           </div>
         </div>
@@ -556,7 +511,8 @@ export default function AdminPanel() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Rechercher par nom ou email…"
+                  placeholder={t("admin.searchPlaceholder")}
+                  aria-label={t("admin.searchLabel")}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -568,7 +524,7 @@ export default function AdminPanel() {
                 className="flex items-center gap-2 px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-                Actualiser
+                {t("common.refresh")}
               </button>
             </div>
 
@@ -576,12 +532,12 @@ export default function AdminPanel() {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Utilisateur</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rôle</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Statut</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Permissions</th>
-                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Créé le</th>
-                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("admin.columns.user")}</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("admin.columns.role")}</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("admin.columns.status")}</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("admin.columns.permissions")}</th>
+                    <th className="text-left px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("admin.columns.createdAt")}</th>
+                    <th className="text-center px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">{t("common.actions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -589,14 +545,14 @@ export default function AdminPanel() {
                     <tr>
                       <td colSpan={6} className="text-center py-16 text-gray-400">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 opacity-40" />
-                        Chargement…
+                        {t("common.loading")}
                       </td>
                     </tr>
                   ) : filteredUsers.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-16 text-gray-400">
                         <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                        Aucun utilisateur trouvé
+                        {t("admin.noUsers")}
                       </td>
                     </tr>
                   ) : (
@@ -631,12 +587,14 @@ export default function AdminPanel() {
                                   <button
                                     onClick={() => saveUsername(user._id)}
                                     className="text-emerald-600 hover:text-emerald-800"
+                                    aria-label={t("admin.saveUsername")}
                                   >
                                     <Check className="w-3.5 h-3.5" />
                                   </button>
                                   <button
                                     onClick={cancelEditUsername}
                                     className="text-gray-400 hover:text-gray-600"
+                                    aria-label={t("admin.cancelEdit")}
                                   >
                                     <X className="w-3.5 h-3.5" />
                                   </button>
@@ -649,7 +607,8 @@ export default function AdminPanel() {
                                   <button
                                     onClick={() => startEditUsername(user)}
                                     className="text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
-                                    title="Modifier le nom d'utilisateur"
+                                    title={t("admin.editUsername")}
+                                    aria-label={t("admin.editUsername")}
                                   >
                                     <Pencil className="w-3 h-3" />
                                   </button>
@@ -676,18 +635,20 @@ export default function AdminPanel() {
                                 }}
                                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-blue-500 bg-white"
                                 autoFocus
+                                aria-label={t("admin.changeRole")}
                               >
                                 {(Object.keys(ROLE_LABELS) as AppRole[]).filter((r) => r !== "admin").map((r) => (
                                   <option key={r} value={r}>
                                     {ROLE_LABELS[r]}
                                   </option>
                                 ))}
-                                <option value="admin:CLOTHES">Actionnaire · Vêtements</option>
-                                <option value="admin:SHOES">Actionnaire · Chaussures</option>
+                                <option value="admin:CLOTHES">{ROLE_LABELS.admin} · {t("accounting.categoryTitles.CLOTHES")}</option>
+                                <option value="admin:SHOES">{ROLE_LABELS.admin} · {t("accounting.categoryTitles.SHOES")}</option>
                               </select>
                               <button
                                 onClick={() => setEditingRoleId(null)}
                                 className="text-gray-400 hover:text-gray-600"
+                                aria-label={t("admin.cancelRoleEdit")}
                               >
                                 <X className="w-3.5 h-3.5" />
                               </button>
@@ -697,7 +658,7 @@ export default function AdminPanel() {
                               <button
                                 onClick={() => setEditingRoleId(user._id)}
                                 disabled={isSelf(user)}
-                                title={isSelf(user) ? "Vous ne pouvez pas modifier le rôle de votre propre compte" : undefined}
+                                title={isSelf(user) ? t("admin.ownRole") : undefined}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${ROLE_COLORS[user.role]} hover:opacity-80 transition-opacity`}
                               >
                                 {ROLE_LABELS[user.role]}
@@ -709,10 +670,10 @@ export default function AdminPanel() {
                                   onChange={(event) => requestRoleChange(user, "admin", event.target.value as "CLOTHES" | "SHOES")}
                                   disabled={confirmAction.busy}
                                   className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900"
-                                  aria-label={`Catégorie de ${user.username}`}
+                                  aria-label={t("admin.categoryOf", { name: user.username })}
                                 >
-                                  <option value="CLOTHES">Vêtements</option>
-                                  <option value="SHOES">Chaussures</option>
+                                  <option value="CLOTHES">{t("accounting.categoryTitles.CLOTHES")}</option>
+                                  <option value="SHOES">{t("accounting.categoryTitles.SHOES")}</option>
                                 </select>
                               )}
                             </div>
@@ -722,7 +683,7 @@ export default function AdminPanel() {
                         {/* Status */}
                         <td className="px-5 py-3.5">
                           {isSelf(user) ? (
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">Actif · votre compte</span>
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">{t("admin.activeSelf")}</span>
                           ) : <button
                             onClick={() => handleToggleStatus(user)}
                             disabled={confirmAction.busy}
@@ -733,9 +694,9 @@ export default function AdminPanel() {
                             }`}
                           >
                             {user.isActive ? (
-                              <><ToggleRight className="w-3.5 h-3.5" />Actif</>
+                              <><ToggleRight className="w-3.5 h-3.5" />{t("admin.statusActive")}</>
                             ) : (
-                              <><ToggleLeft className="w-3.5 h-3.5" />Désactivé</>
+                              <><ToggleLeft className="w-3.5 h-3.5" />{t("admin.statusDeactivated")}</>
                             )}
                           </button>}
                         </td>
@@ -751,12 +712,12 @@ export default function AdminPanel() {
                               }`}
                             >
                               {user.permissions && user.permissions.length > 0
-                                ? `${user.permissions.length} pages`
-                                : "Par rôle"}
+                                ? t("admin.pagesCount", { count: user.permissions.length })
+                                : t("admin.byRole")}
                             </span>
                             {user.actionPermissions && user.actionPermissions.length > 0 && (
                               <span className="text-xs px-2.5 py-1 rounded-full border bg-amber-50 text-amber-700 border-amber-200 w-fit">
-                                {user.actionPermissions.length} action{user.actionPermissions.length > 1 ? "s" : ""}
+                                {t("admin.actionsCount", { count: user.actionPermissions.length })}
                               </span>
                             )}
                           </div>
@@ -764,7 +725,7 @@ export default function AdminPanel() {
 
                         {/* Created at */}
                         <td className="px-5 py-3.5 text-xs text-gray-500">
-                          {new Date(user.createdAt).toLocaleDateString("fr-FR")}
+                          {new Date(user.createdAt).toLocaleDateString(currentLocale())}
                         </td>
 
                         {/* Actions */}
@@ -776,7 +737,8 @@ export default function AdminPanel() {
                                 setTab("permissions");
                               }}
                               className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Gérer les permissions"
+                              title={t("admin.managePermissions")}
+                              aria-label={t("admin.managePermissions")}
                             >
                               <Shield className="w-4 h-4" />
                             </button>
@@ -784,8 +746,8 @@ export default function AdminPanel() {
                               onClick={() => handleDeleteUser(user)}
                               disabled={confirmAction.busy}
                               className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Supprimer l'utilisateur"
-                              aria-label={`Supprimer ${user.username}`}
+                              title={t("admin.deleteUser")}
+                              aria-label={t("admin.deleteNamed", { name: user.username })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>}
@@ -809,8 +771,8 @@ export default function AdminPanel() {
                   <Lock className="w-5 h-5 text-purple-600" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Gestion des permissions</h2>
-                  <p className="text-sm text-gray-500">Pages accessibles et actions autorisées par utilisateur</p>
+                  <h2 className="text-lg font-semibold text-gray-900">{t("admin.permissionsTitle")}</h2>
+                  <p className="text-sm text-gray-500">{t("admin.permissionsHint")}</p>
                 </div>
               </div>
             </div>
@@ -819,7 +781,7 @@ export default function AdminPanel() {
               {/* User selector */}
               <div className="mb-6">
                 <label htmlFor="admin-utilisateur" className="block text-sm font-medium text-gray-700 mb-2">
-                  Sélectionner un utilisateur
+                  {t("admin.selectUser")}
                 </label>
                 <div className="relative max-w-sm">
                   <select
@@ -828,7 +790,7 @@ export default function AdminPanel() {
                     onChange={(e) => handleSelectUserForPerms(e.target.value)}
                     className="w-full px-4 py-3 pr-10 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white appearance-none"
                   >
-                    <option value="">— Choisir un utilisateur —</option>
+                    <option value="">{t("admin.chooseUser")}</option>
                     {users.map((u) => (
                       <option key={u._id} value={u._id}>
                         {u.username} ({ROLE_LABELS[u.role]})
@@ -842,7 +804,7 @@ export default function AdminPanel() {
               {!selectedUserId && (
                 <div className="text-center py-16 text-gray-400">
                   <Shield className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Sélectionnez un utilisateur pour gérer ses permissions</p>
+                  <p className="text-sm">{t("admin.selectUserHint")}</p>
                 </div>
               )}
 
@@ -866,17 +828,17 @@ export default function AdminPanel() {
                   <div className="mb-6">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                       <Lock className="w-4 h-4 text-blue-500" />
-                      Accès aux pages
+                      {t("admin.pageAccess")}
                     </h3>
 
                     {/* Custom perms toggle */}
                     <div className="flex items-center justify-between mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
                       <div>
-                        <p className="text-sm font-semibold text-amber-800">Permissions personnalisées</p>
+                        <p className="text-sm font-semibold text-amber-800">{t("admin.customPermissions")}</p>
                         <p className="text-xs text-amber-600 mt-0.5">
                           {useCustomPerms
-                            ? "Les pages cochées ci-dessous remplacent les droits du rôle"
-                            : "Cet utilisateur accède aux pages selon son rôle (par défaut)"}
+                            ? t("admin.customOn")
+                            : t("admin.customOff")}
                         </p>
                       </div>
                       <button
@@ -887,6 +849,9 @@ export default function AdminPanel() {
                             setSelectedUserPerms([...ROLE_DEFAULT_PAGES[selectedUser.role]]);
                           }
                         }}
+                        role="switch"
+                        aria-checked={useCustomPerms}
+                        aria-label={t("admin.customPermissions")}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${useCustomPerms ? "bg-amber-500" : "bg-gray-300"}`}
                       >
                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${useCustomPerms ? "translate-x-6" : "translate-x-1"}`} />
@@ -928,10 +893,10 @@ export default function AdminPanel() {
                               className="w-4 h-4 rounded text-blue-600 border-gray-300 focus:ring-blue-500 flex-shrink-0"
                             />
                             <span className={`text-sm ${isChecked ? "text-gray-800 font-medium" : "text-gray-500"}`}>
-                              {page.label}
+                              {t(page.labelKey)}
                             </span>
                             {!useCustomPerms && checkedByRole && (
-                              <span className="ml-auto text-xs text-emerald-600 font-medium">Rôle</span>
+                              <span className="ml-auto text-xs text-emerald-600 font-medium">{t("admin.roleBadge")}</span>
                             )}
                           </label>
                         );
@@ -943,10 +908,10 @@ export default function AdminPanel() {
                   <div className="mb-6">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                       <Shield className="w-4 h-4 text-purple-500" />
-                      Permissions d'actions
+                      {t("admin.actionPermissions")}
                     </h3>
                     <p className="text-xs text-gray-500 mb-3">
-                      Ces droits s'appliquent indépendamment du rôle et des pages.
+                      {t("admin.actionPermissionsHint")}
                     </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       {(selectedUser.role === "admin" ? [] : ALL_ACTIONS).map((action) => {
@@ -968,9 +933,9 @@ export default function AdminPanel() {
                             />
                             <div>
                               <p className={`text-sm font-medium ${isGranted ? "text-purple-800" : "text-gray-700"}`}>
-                                {action.label}
+                                {t(`admin.actions.${action.key}.label`)}
                               </p>
-                              <p className="text-xs text-gray-500 mt-0.5">{action.description}</p>
+                              <p className="text-xs text-gray-500 mt-0.5">{t(`admin.actions.${action.key}.description`)}</p>
                             </div>
                           </label>
                         );
@@ -986,9 +951,9 @@ export default function AdminPanel() {
                       className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       {savingPerms ? (
-                        <><RefreshCw className="w-4 h-4 animate-spin" />Sauvegarde…</>
+                        <><RefreshCw className="w-4 h-4 animate-spin" />{t("admin.saving")}</>
                       ) : (
-                        <><Check className="w-4 h-4" />Sauvegarder</>
+                        <><Check className="w-4 h-4" />{t("admin.save")}</>
                       )}
                     </button>
 
@@ -999,7 +964,7 @@ export default function AdminPanel() {
                         className="flex items-center gap-2 px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-medium transition-colors disabled:opacity-40"
                       >
                         <X className="w-4 h-4" />
-                        Réinitialiser au rôle
+                        {t("admin.resetToRole")}
                       </button>
                     )}
                   </div>
@@ -1019,9 +984,9 @@ export default function AdminPanel() {
                     <Store className="w-5 h-5 text-orange-600" />
                   </div>
                   <div>
-                    <h2 className="text-lg font-semibold text-gray-900">Réglages du reçu</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">{t("admin.receiptTitle")}</h2>
                     <p className="text-sm text-gray-500">
-                      Ces informations apparaissent sur tous les reçus imprimés
+                      {t("admin.receiptHint")}
                     </p>
                   </div>
                 </div>
@@ -1030,13 +995,13 @@ export default function AdminPanel() {
               {loadingSettings ? (
                 <div className="flex items-center justify-center py-16 text-gray-400">
                   <RefreshCw className="w-6 h-6 animate-spin mr-2 opacity-40" />
-                  Chargement…
+                  {t("common.loading")}
                 </div>
               ) : (
                 <form onSubmit={handleSaveSettings} className="p-6 space-y-5">
                   <div>
                     <label htmlFor="admin-nom-etablissement" className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Nom de l'établissement
+                      {t("admin.shopName")}
                     </label>
                     <input
                       id="admin-nom-etablissement"
@@ -1053,7 +1018,7 @@ export default function AdminPanel() {
 
                   <div>
                     <label htmlFor="admin-adresse" className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Adresse
+                      {t("admin.address")}
                     </label>
                     <input
                       id="admin-adresse"
@@ -1069,7 +1034,7 @@ export default function AdminPanel() {
 
                   <div>
                     <label htmlFor="admin-numero-de-telephone" className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Numéro(s) de téléphone
+                      {t("admin.phoneNumbers")}
                     </label>
                     <input
                       id="admin-numero-de-telephone"
@@ -1085,7 +1050,7 @@ export default function AdminPanel() {
 
                   <div>
                     <label htmlFor="admin-numero-d-enregistrement" className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Numéro d'enregistrement (RCCM)
+                      {t("admin.registration")}
                     </label>
                     <input
                       id="admin-numero-d-enregistrement"
@@ -1101,7 +1066,7 @@ export default function AdminPanel() {
 
                   <div>
                     <label htmlFor="admin-pied-de-page" className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Pied de page du reçu
+                      {t("admin.footer")}
                     </label>
                     <textarea
                       id="admin-pied-de-page"
@@ -1109,19 +1074,19 @@ export default function AdminPanel() {
                       onChange={(e) =>
                         setShopSettings((s) => ({ ...s, receiptFooter: e.target.value }))
                       }
-                      placeholder="Merci pour votre confiance ! À bientôt."
+                      placeholder={t("admin.footerPlaceholder")}
                       rows={3}
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm resize-none"
                     />
                     <p className="text-xs text-gray-400 mt-1">
-                      Apparaît en bas de chaque reçu imprimé.
+                      {t("admin.footerHint")}
                     </p>
                   </div>
 
                   {/* Live preview */}
                   <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl p-4">
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-                      Aperçu de l'en-tête du reçu
+                      {t("admin.preview")}
                     </p>
                     <div className="bg-white border border-gray-200 rounded-lg p-4 text-center font-mono text-xs leading-relaxed">
                       <p className="font-bold text-base">{shopSettings.shopName || "ETS DOUBLE M CLASSIC BOUTIQUE"}</p>
@@ -1129,14 +1094,14 @@ export default function AdminPanel() {
                         <p className="text-gray-600">{shopSettings.shopAddress}</p>
                       )}
                       {shopSettings.shopNumber && (
-                        <p className="text-gray-600">TEL: {shopSettings.shopNumber}</p>
+                        <p className="text-gray-600">{t("receipt.tel")}: {shopSettings.shopNumber}</p>
                       )}
                       {shopSettings.shopRegistration && (
                         <p className="text-gray-500 text-[10px]">{shopSettings.shopRegistration}</p>
                       )}
                       <div className="border-t border-dashed border-gray-300 my-2" />
                       <p className="text-gray-400 italic text-[10px]">
-                        {shopSettings.receiptFooter || "Pied de page du reçu"}
+                        {shopSettings.receiptFooter || t("admin.footer")}
                       </p>
                     </div>
                   </div>
@@ -1147,9 +1112,9 @@ export default function AdminPanel() {
                     className="w-full bg-orange-600 hover:bg-orange-700 text-white py-3 rounded-xl font-semibold text-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                   >
                     {savingSettings ? (
-                      <><RefreshCw className="w-4 h-4 animate-spin" />Sauvegarde…</>
+                      <><RefreshCw className="w-4 h-4 animate-spin" />{t("admin.saving")}</>
                     ) : (
-                      <><Save className="w-4 h-4" />Enregistrer les réglages</>
+                      <><Save className="w-4 h-4" />{t("admin.saveSettings")}</>
                     )}
                   </button>
                 </form>
@@ -1167,10 +1132,9 @@ export default function AdminPanel() {
                   <BookOpen className="w-5 h-5 text-indigo-600" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Rôles & Droits par défaut</h2>
+                  <h2 className="text-lg font-semibold text-gray-900">{t("admin.rolesTitle")}</h2>
                   <p className="text-sm text-gray-500">
-                    Ce tableau décrit ce que chaque rôle peut faire dans l'application par défaut.
-                    Les permissions individuelles peuvent outrepasser ces valeurs.
+                    {t("admin.rolesHint")}
                   </p>
                 </div>
               </div>
@@ -1185,13 +1149,13 @@ export default function AdminPanel() {
                       {ROLE_LABELS[role]}
                     </span>
                     <span className="text-xs text-gray-400">
-                      {cap.pages.length} page{cap.pages.length > 1 ? "s" : ""} • {cap.actions.length} action{cap.actions.length > 1 ? "s" : ""}
+                      {t("admin.pageCount", { count: cap.pages.length })} • {t("admin.actionsCount", { count: cap.actions.length })}
                     </span>
                   </div>
                   <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Pages accessibles
+                        {t("admin.accessiblePages")}
                       </p>
                       <ul className="space-y-1.5">
                         {cap.pages.map((p, i) => (
@@ -1199,14 +1163,14 @@ export default function AdminPanel() {
                             <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center flex-shrink-0">
                               <Check className="w-2.5 h-2.5" />
                             </span>
-                            {p}
+                            {t(`admin.capabilities.${p}`)}
                           </li>
                         ))}
                       </ul>
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                        Actions autorisées
+                        {t("admin.allowedActions")}
                       </p>
                       <ul className="space-y-1.5">
                         {cap.actions.map((a, i) => (
@@ -1214,7 +1178,7 @@ export default function AdminPanel() {
                             <span className="w-4 h-4 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center flex-shrink-0">
                               <Check className="w-2.5 h-2.5" />
                             </span>
-                            {a}
+                            {t(`admin.capabilities.${a}`)}
                           </li>
                         ))}
                       </ul>
@@ -1222,13 +1186,13 @@ export default function AdminPanel() {
                   </div>
                   {/* Pages grid preview */}
                   <div className="px-5 pb-4">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Routes</p>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{t("admin.routes")}</p>
                     <div className="flex flex-wrap gap-1.5">
                       {ROLE_DEFAULT_PAGES[role].map((path) => {
                         const page = ALL_PAGES.find((p) => p.path === path);
                         return page ? (
                           <span key={path} className="px-2.5 py-0.5 bg-gray-100 text-gray-600 rounded-full text-xs border border-gray-200">
-                            {page.label}
+                            {t(page.labelKey)}
                           </span>
                         ) : null;
                       })}
@@ -1240,13 +1204,13 @@ export default function AdminPanel() {
 
             {/* Security note */}
             <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-5">
-              <p className="text-sm font-semibold text-yellow-800 mb-1">Note de sécurité</p>
+              <p className="text-sm font-semibold text-yellow-800 mb-1">{t("admin.securityNote")}</p>
               <ul className="text-sm text-yellow-700 space-y-1 list-disc list-inside">
-                <li>Les mots de passe sont hachés (bcrypt) — jamais stockés en clair.</li>
-                <li>Les tokens JWT expirent et sont validés à chaque requête.</li>
-                <li>Les comptes désactivés ne peuvent pas se connecter ni accéder aux endpoints.</li>
-                <li>Un compte administrateur protégé est masqué et non modifiable par les autres admins.</li>
-                <li>L'inscription est publique via la page de connexion, mais chaque nouveau compte reçoit automatiquement le rôle « {roleLabel("staff")} » ; seuls les administrateurs peuvent ensuite changer les rôles et permissions.</li>
+                <li>{t("admin.security.hashed")}</li>
+                <li>{t("admin.security.jwt")}</li>
+                <li>{t("admin.security.deactivated")}</li>
+                <li>{t("admin.security.protected")}</li>
+                <li>{t("admin.security.signup", { role: roleLabel("staff") })}</li>
               </ul>
             </div>
 
@@ -1254,7 +1218,7 @@ export default function AdminPanel() {
             <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
               <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <Shield className="w-4 h-4 text-purple-500" />
-                Permissions d'actions disponibles
+                {t("admin.availableActions")}
               </p>
               <div className="space-y-3">
                 {ALL_ACTIONS.map((action) => (
@@ -1263,8 +1227,8 @@ export default function AdminPanel() {
                       {action.key}
                     </span>
                     <div>
-                      <p className="text-sm font-medium text-gray-800">{action.label}</p>
-                      <p className="text-xs text-gray-500">{action.description}</p>
+                      <p className="text-sm font-medium text-gray-800">{t(`admin.actions.${action.key}.label`)}</p>
+                      <p className="text-xs text-gray-500">{t(`admin.actions.${action.key}.description`)}</p>
                     </div>
                   </div>
                 ))}
@@ -1277,7 +1241,7 @@ export default function AdminPanel() {
         {currentUser && (
           <div className="mt-6 flex items-center gap-2 text-xs text-gray-400">
             <Shield className="w-3 h-3" />
-            Connecté en tant que{" "}
+            {t("admin.signedInAs")}{" "}
             <span className="font-semibold text-gray-600">{currentUser.username}</span>
             <span className={`px-2 py-0.5 rounded-full border text-xs font-medium ${ROLE_COLORS[currentUser.role as AppRole]}`}>
               {ROLE_LABELS[currentUser.role as AppRole]}

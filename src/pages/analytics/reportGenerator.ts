@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import jsPDF from "jspdf";
 import { formatNowGMT2 } from "../../utils/dateUtils";
+import { t } from "../../i18n";
 import { categoryPresentation, type AccountingCategory, type CategoryAccountingDTO } from "./accountingPresentation";
 
 interface TopProduct {
@@ -50,7 +51,7 @@ export interface ReportConfig {
 }
 
 const COMPANY = "ETS DOUBLE M CLASSIC BOUTIQUE";
-const COMPANY_SUB = "Gestion de Vente";
+// Labels are read when the PDF is generated, in the interface language.
 const PW = 210;
 const PH = 297;
 const M = 18;
@@ -80,6 +81,11 @@ function pdfText(text: string): string {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[‘’]/g, "'")
     .replace(/[–—]/g, "-");
+}
+
+/** Translated, plain-ASCII text for the PDF. */
+function tr(key: string, options?: Record<string, unknown>): string {
+  return pdfText(t(key, options));
 }
 
 function color(doc: jsPDF, rgb: readonly number[]): void {
@@ -118,9 +124,9 @@ function drawFooter(doc: jsPDF, page: number, total: number, genAt: string): voi
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7);
   color(doc, ink.muted);
-  doc.text(`Genere le ${genAt}`, M, FTR_TOP + 5);
-  doc.text(`Page ${page} / ${total}`, PW - M, FTR_TOP + 5, { align: "right" });
-  doc.text(`${COMPANY} - ${COMPANY_SUB}`, PW / 2, FTR_TOP + 5, { align: "center" });
+  doc.text(tr("pdfReport.generatedOn", { date: genAt }), M, FTR_TOP + 5);
+  doc.text(tr("pdfReport.page", { page, total }), PW - M, FTR_TOP + 5, { align: "right" });
+  doc.text(`${COMPANY} - ${tr("pdfReport.companySub")}`, PW / 2, FTR_TOP + 5, { align: "center" });
 }
 
 function sectionTitle(doc: jsPDF, title: string, y: number): number {
@@ -283,15 +289,15 @@ function drawCertificationBox(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   color(doc, ink.navy);
-  doc.text("Signature administrateur", M + 4, y + 8);
-  doc.text("Cachet officiel", stX + 4, y + 8);
+  doc.text(tr("pdfReport.adminSignature"), M + 4, y + 8);
+  doc.text(tr("pdfReport.officialStamp"), stX + 4, y + 8);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   color(doc, ink.muted);
-  doc.text(`Nom: ${adminUsername}`, M + 4, y + 17);
-  if (adminSignatureText) doc.text(`Titre: ${adminSignatureText}`, M + 4, y + 24);
-  doc.text(hasSignature ? "Signature confirmee" : "Signature non confirmee", M + 4, y + 50);
+  doc.text(tr("pdfReport.name", { name: adminUsername }), M + 4, y + 17);
+  if (adminSignatureText) doc.text(tr("pdfReport.title", { title: adminSignatureText }), M + 4, y + 24);
+  doc.text(hasSignature ? tr("pdfReport.signatureConfirmed") : tr("pdfReport.signatureNotConfirmed"), M + 4, y + 50);
 
   stroke(doc, ink.border);
   doc.line(M + 4, y + 42, M + sigW - 6, y + 42);
@@ -305,8 +311,8 @@ function drawCertificationBox(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(6.4);
   color(doc, hasStamp ? ink.blue : ink.muted);
-  doc.text("CACHET", eCx, eCy - 2, { align: "center" });
-  doc.text(hasStamp ? "CONFIRME" : "NON CONFIRME", eCx, eCy + 4, { align: "center" });
+  doc.text(tr("pdfReport.stamp"), eCx, eCy - 2, { align: "center" });
+  doc.text(hasStamp ? tr("pdfReport.confirmed") : tr("pdfReport.notConfirmed"), eCx, eCy + 4, { align: "center" });
   doc.setLineWidth(0.2);
 
   return y + 64;
@@ -332,19 +338,19 @@ export function generateCompanyReport(config: ReportConfig): void {
   const official = hasSignature && hasStamp;
 
   const secNames: string[] = [];
-  if (sections.financial) secNames.push("Resume financier");
-  if (sections.sales) secNames.push("Ventes");
-  if (sections.products) secNames.push("Produits");
-  if (sections.clients) secNames.push("Clients");
-  if (sections.expenses) secNames.push("Depenses");
-  if (sections.entries) secNames.push("Entrees");
+  if (sections.financial) secNames.push(tr("pdfReport.sec.financial"));
+  if (sections.sales) secNames.push(tr("pdfReport.sec.sales"));
+  if (sections.products) secNames.push(tr("pdfReport.sec.products"));
+  if (sections.clients) secNames.push(tr("pdfReport.sec.clients"));
+  if (sections.expenses) secNames.push(tr("pdfReport.sec.expenses"));
+  if (sections.entries) secNames.push(tr("pdfReport.sec.entries"));
 
   const allSelected = Object.values(sections).every(Boolean);
   const reportTitle = allSelected
-    ? "Rapport complet d'entreprise"
+    ? tr("pdfReport.fullTitle")
     : secNames.length === 1
       ? secNames[0]
-      : "Rapport selectif";
+      : tr("pdfReport.selectiveTitle");
 
   fill(doc, ink.white);
   doc.rect(0, 0, PW, PH, "F");
@@ -360,7 +366,7 @@ export function generateCompanyReport(config: ReportConfig): void {
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(COMPANY_SUB, PW / 2, 33, { align: "center" });
+  doc.text(tr("pdfReport.companySub"), PW / 2, 33, { align: "center" });
 
   doc.setFontSize(7.8);
   doc.text(companyAddress, PW / 2, 42, { align: "center" });
@@ -376,17 +382,17 @@ export function generateCompanyReport(config: ReportConfig): void {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9.5);
   color(doc, ink.muted);
-  doc.text(`Periode: ${timeframeLabel}`, M, coverY + 9);
+  doc.text(tr("pdfReport.period", { period: timeframeLabel }), M, coverY + 9);
 
   fill(doc, ink.surface);
   stroke(doc, ink.borderSoft);
   doc.rect(M, coverY + 22, CW, 50, "FD");
 
   const metaRows: [string, string][] = [
-    ["Date de generation", genAt],
-    ["Prepare par", adminUsername],
-    ["Sections incluses", secNames.join(", ") || "Aucune section"],
-    ["Statut du document", official ? "Document officiel" : "Document non officiel"],
+    [tr("pdfReport.meta.generatedAt"), genAt],
+    [tr("pdfReport.meta.preparedBy"), adminUsername],
+    [tr("pdfReport.meta.sections"), secNames.join(", ") || tr("pdfReport.meta.noSection")],
+    [tr("pdfReport.meta.status"), official ? tr("pdfReport.officialDoc") : tr("pdfReport.unofficialDoc")],
   ];
 
   metaRows.forEach(([label, value], i) => {
@@ -407,15 +413,15 @@ export function generateCompanyReport(config: ReportConfig): void {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.6);
   color(doc, official ? ink.success : ink.warning);
-  doc.text(official ? "CERTIFICATION" : "NOTE DE VALIDATION", M + 5, noticeY + 8);
+  doc.text(official ? tr("pdfReport.certificationHeading") : tr("pdfReport.validationNote"), M + 5, noticeY + 8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   color(doc, ink.navy);
   doc.text(
     doc.splitTextToSize(
       official
-        ? "Ce rapport a ete confirme avec signature administrateur et cachet officiel."
-        : "Ce rapport reste non officiel tant que la signature et le cachet ne sont pas confirmes.",
+        ? tr("pdfReport.certifiedText")
+        : tr("pdfReport.notCertifiedText"),
       CW - 10,
     ),
     M + 5,
@@ -440,16 +446,16 @@ export function generateCompanyReport(config: ReportConfig): void {
   if (sections.financial) {
     secNum++;
     ensure(86);
-    Y = sectionTitle(doc, `${secNum}. Resume financier`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.financialTitle", { n: secNum }), Y);
     Y = metricGrid(
       doc,
       [
-        { label: "Ventes totales", value: String(analytics.totalSales), note: "Transactions completees" },
-        { label: "Encaissements ventes", value: formatCurrency(analytics.totalRevenue), note: "Ventes + acomptes reservations" },
-        { label: "Entrees caisse", value: formatCurrency(analytics.totalEntries), note: "Montant recu" },
-        { label: "Depenses", value: formatCurrency(analytics.totalValidatedExpenses), note: "Montant valide" },
-        { label: "Tresorerie nette", value: formatCurrency(analytics.netRevenue), note: "Ventes + entrees - depenses validees" },
-        { label: "Clients uniques", value: String(analytics.totalCustomers), note: "Sur la periode" },
+        { label: tr("pdfReport.metrics.totalSales"), value: String(analytics.totalSales), note: tr("pdfReport.metrics.totalSalesNote") },
+        { label: tr("pdfReport.metrics.salesReceipts"), value: formatCurrency(analytics.totalRevenue), note: tr("pdfReport.metrics.salesReceiptsNote") },
+        { label: tr("pdfReport.metrics.cashEntries"), value: formatCurrency(analytics.totalEntries), note: tr("pdfReport.metrics.cashEntriesNote") },
+        { label: tr("pdfReport.metrics.expenses"), value: formatCurrency(analytics.totalValidatedExpenses), note: tr("pdfReport.metrics.expensesNote") },
+        { label: tr("pdfReport.metrics.netCash"), value: formatCurrency(analytics.netRevenue), note: tr("pdfReport.metrics.netCashNote") },
+        { label: tr("pdfReport.metrics.uniqueCustomers"), value: String(analytics.totalCustomers), note: tr("pdfReport.metrics.uniqueCustomersNote") },
       ],
       Y,
       3,
@@ -461,13 +467,13 @@ export function generateCompanyReport(config: ReportConfig): void {
       if (!row) continue;
       const view = categoryPresentation(key, row);
       ensure(70);
-      Y = sectionTitle(doc, `Situation ${pdfText(view.title).toUpperCase()} - periode`, Y);
+      Y = sectionTitle(doc, tr("pdfReport.categoryPeriod", { category: pdfText(view.title).toUpperCase() }), Y);
       Y = metricGrid(doc, view.period.map((metric) => ({ label: pdfText(metric.label), value: formatCurrency(metric.value) })), Y, 2);
       if (view.balance.length > 0) {
         ensure(40);
-        Y = sectionTitle(doc, `${pdfText(view.title)} - situation actuelle (cumul)`, Y);
+        Y = sectionTitle(doc, tr("pdfReport.categoryCurrent", { category: pdfText(view.title) }), Y);
         Y = metricGrid(doc, view.balance.map((metric) => ({ label: pdfText(metric.label), value: formatCurrency(metric.value) })), Y, 2);
-        Y = infoPanel(doc, "Regle de reapprovisionnement", pdfText(view.fundsExplanation), Y);
+        Y = infoPanel(doc, tr("pdfReport.restockingRule"), pdfText(view.fundsExplanation), Y);
       }
     }
   }
@@ -475,12 +481,12 @@ export function generateCompanyReport(config: ReportConfig): void {
   if (sections.sales) {
     secNum++;
     ensure(34);
-    Y = sectionTitle(doc, `${secNum}. Rapport de ventes`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.salesTitle", { n: secNum }), Y);
     const trend = analytics.recentTrends.revenueGrowth;
     Y = infoPanel(
       doc,
-      "Performance commerciale",
-      `Ventes: ${analytics.totalSales} | Revenu: ${formatCurrency(analytics.totalRevenue)} | Clients: ${analytics.totalCustomers} | Tendance: ${trend === null ? "N/A" : `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%`}`,
+      tr("pdfReport.commercialPerformance"),
+      tr("pdfReport.salesLine", { sales: analytics.totalSales, revenue: formatCurrency(analytics.totalRevenue), customers: analytics.totalCustomers, trend: trend === null ? tr("pdfReport.notAvailable") : `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%` }),
       Y,
     );
   }
@@ -488,15 +494,15 @@ export function generateCompanyReport(config: ReportConfig): void {
   if (sections.products) {
     secNum++;
     ensure(42);
-    Y = sectionTitle(doc, `${secNum}. Rapport des produits`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.productsTitle", { n: secNum }), Y);
     if (analytics.topProducts.length > 0) {
       Y = dataTable(
         doc,
-        ["#", "Article", "Qte", "Revenu"],
+        ["#", tr("pdfReport.columns.item"), tr("pdfReport.columns.qty"), tr("pdfReport.columns.revenue")],
         analytics.topProducts.map((p, i) => [
           String(i + 1),
           p.name,
-          `${p.quantity} u.`,
+          tr("pdfReport.units", { count: p.quantity }),
           formatCurrency(p.revenue),
         ]),
         M,
@@ -509,19 +515,19 @@ export function generateCompanyReport(config: ReportConfig): void {
         },
       );
     } else {
-      Y = infoPanel(doc, "Aucune vente produit", "Aucun produit vendu dans cette periode.", Y);
+      Y = infoPanel(doc, tr("pdfReport.noProductSales"), tr("pdfReport.noProductSalesText"), Y);
     }
   }
 
   if (sections.clients) {
     secNum++;
     ensure(34);
-    Y = sectionTitle(doc, `${secNum}. Rapport clients`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.clientsTitle", { n: secNum }), Y);
     const trend = analytics.recentTrends.customerGrowth;
     Y = infoPanel(
       doc,
-      "Activite client",
-      `Clients actifs: ${analytics.totalCustomers} | Tendance: ${trend === null ? "N/A" : `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%`}`,
+      tr("pdfReport.customerActivity"),
+      tr("pdfReport.clientsLine", { customers: analytics.totalCustomers, trend: trend === null ? tr("pdfReport.notAvailable") : `${trend >= 0 ? "+" : ""}${trend.toFixed(1)}%` }),
       Y,
     );
   }
@@ -529,19 +535,19 @@ export function generateCompanyReport(config: ReportConfig): void {
   if (sections.expenses) {
     secNum++;
     ensure(34);
-    Y = sectionTitle(doc, `${secNum}. Rapport des depenses`, Y);
-    Y = infoPanel(doc, "Sorties validees", `Total caisse: ${formatCurrency(analytics.totalValidatedExpenses)}. Les depenses d'entreprise reduisent le benefice net; les achats de marchandises consomment les fonds de reapprovisionnement sans etre traites comme charge d'exploitation.`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.expensesTitle", { n: secNum }), Y);
+    Y = infoPanel(doc, tr("pdfReport.validatedOutflows"), tr("pdfReport.expensesText", { amount: formatCurrency(analytics.totalValidatedExpenses) }), Y);
   }
 
   if (sections.entries) {
     secNum++;
     ensure(34);
-    Y = sectionTitle(doc, `${secNum}. Rapport des entrees de caisse`, Y);
-    Y = infoPanel(doc, "Entrees de caisse", `Total recu: ${formatCurrency(analytics.totalEntries)}`, Y);
+    Y = sectionTitle(doc, tr("pdfReport.entriesTitle", { n: secNum }), Y);
+    Y = infoPanel(doc, tr("pdfReport.cashEntries"), tr("pdfReport.totalReceived", { amount: formatCurrency(analytics.totalEntries) }), Y);
   }
 
   ensure(112);
-  Y = sectionTitle(doc, "Certification et signature", Y);
+  Y = sectionTitle(doc, tr("pdfReport.certificationTitle"), Y);
   Y = drawCertificationBox(doc, Y, {
     adminUsername,
     adminSignatureText,
@@ -555,15 +561,15 @@ export function generateCompanyReport(config: ReportConfig): void {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.6);
   color(doc, official ? ink.success : ink.warning);
-  doc.text(official ? "DOCUMENT OFFICIEL" : "DOCUMENT NON OFFICIEL", M + 5, Y + 8);
+  doc.text(official ? tr("pdfReport.officialBanner") : tr("pdfReport.unofficialBanner"), M + 5, Y + 8);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   color(doc, ink.navy);
   doc.text(
     doc.splitTextToSize(
       official
-        ? "Document signe et tamponne par un administrateur autorise."
-        : "Document genere sans validation complete de signature et/ou de cachet officiel.",
+        ? tr("pdfReport.officialBannerText")
+        : tr("pdfReport.unofficialBannerText"),
       CW - 10,
     ),
     M + 5,
@@ -574,7 +580,7 @@ export function generateCompanyReport(config: ReportConfig): void {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(7.5);
   color(doc, ink.muted);
-  doc.text(`Rapport genere le ${genAt} par ${adminUsername}`, PW / 2, Y, { align: "center" });
+  doc.text(tr("pdfReport.generatedBy", { date: genAt, name: adminUsername }), PW / 2, Y, { align: "center" });
 
   const totalPgs = doc.getNumberOfPages();
   for (let p = 2; p <= totalPgs; p++) {
@@ -583,5 +589,5 @@ export function generateCompanyReport(config: ReportConfig): void {
   }
 
   const dateStamp = new Date().toISOString().split("T")[0];
-  doc.save(`rapport-double-m-classic-boutique-${dateStamp}.pdf`);
+  doc.save(`${tr("pdfReport.fileName")}-${dateStamp}.pdf`);
 }

@@ -2,8 +2,9 @@
 
 import type React from "react";
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Package, Plus, Search, Edit, Trash2, Eye, X, Calculator } from "lucide-react";
-import { getProductStatus } from "../../utils/constants";
+import { productStatusLabel } from "../../lib/labels";
 import type { Product } from "../../types";
 import { units, serverUrl } from "../../utils/constants";
 import CategoriesDropdown from "../../components/CategoriesDropdown";
@@ -28,6 +29,7 @@ interface User {
 }
 
 export default function Products() {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -236,7 +238,7 @@ export default function Products() {
       setProducts((prev) => (id ? prev.map((p) => (p._id === id ? saved : p)) : [...prev, saved]));
       if (id) setShowEditModal(false); else setShowAddModal(false);
       resetForm();
-      notifySuccess(id ? "Modification enregistrée avec succès." : "Article ajouté avec succès.");
+      notifySuccess(id ? t("products.saved") : t("products.added"));
     } catch (error) {
       // The form stays open with the user's input so it can be corrected.
       notifyError(error);
@@ -318,15 +320,15 @@ export default function Products() {
       // Staff sees stock status instead of exact numbers
       if (product.stock === 0) {
         return (
-          <span className="text-sm text-red-600 font-medium">En rupture</span>
+          <span className="text-sm text-red-600 font-medium">{t("products.outOfStock")}</span>
         );
       } else if (product.stock <= product.minStock) {
         return (
-          <span className="text-sm text-orange-600 font-medium">Stock faible</span>
+          <span className="text-sm text-orange-600 font-medium">{t("products.lowStock")}</span>
         );
       } else {
         return (
-          <span className="text-sm text-green-600 font-medium">En stock</span>
+          <span className="text-sm text-green-600 font-medium">{t("products.inStock")}</span>
         );
       }
     }
@@ -339,7 +341,7 @@ export default function Products() {
       return (
         <>
           <div className="flex justify-between">
-            <span className="text-gray-600">Stock Actuel:</span>
+            <span className="text-gray-600">{t("products.currentStockLabel")}</span>
             <span
               className={`font-medium ${
                 product.stock <= product.minStock
@@ -351,7 +353,7 @@ export default function Products() {
             </span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600">Stock minimal:</span>
+            <span className="text-gray-600">{t("products.minStockLabel")}</span>
             <span className="font-medium">
               {product.minStock} {product.unit}
             </span>
@@ -362,13 +364,13 @@ export default function Products() {
       // Staff sees only stock status
       return (
         <div className="flex justify-between">
-          <span className="text-gray-600">Statut du stock:</span>
+          <span className="text-gray-600">{t("products.stockStatusLabel")}</span>
           {product.stock === 0 ? (
-            <span className="font-medium text-red-600">En rupture</span>
+            <span className="font-medium text-red-600">{t("products.outOfStock")}</span>
           ) : product.stock <= product.minStock ? (
-            <span className="font-medium text-orange-600">Stock faible</span>
+            <span className="font-medium text-orange-600">{t("products.lowStock")}</span>
           ) : (
-            <span className="font-medium text-green-600">En stock</span>
+            <span className="font-medium text-green-600">{t("products.inStock")}</span>
           )}
         </div>
       );
@@ -384,7 +386,7 @@ export default function Products() {
           <p className="text-gray-600">{MODULES.products.description}</p>
           {!isAdmin && (
             <p className="text-sm text-blue-600 mt-1">
-              Staff
+              {t("products.staff")}
             </p>
           )}
         </div>
@@ -393,7 +395,7 @@ export default function Products() {
           className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors"
         >
           <Plus className="w-4 h-4 " />
-          Ajouter un nouvel Article
+          {t("products.addNew")}
         </button>
       </div>
 
@@ -405,7 +407,8 @@ export default function Products() {
               <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="Recherchez des Articles par nom..."
+                placeholder={t("products.searchPlaceholder")}
+                aria-label={t("products.searchLabel")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
@@ -426,12 +429,12 @@ export default function Products() {
         {loading ? (
           <div className="p-8 text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Chargement des Articles......</p>
+            <p className="mt-2 text-gray-600">{t("products.loading")}</p>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="p-8 text-center">
             <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-            <p className="text-gray-600">Aucun article trouvé</p>
+            <p className="text-gray-600">{t("products.noneFound")}</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -442,19 +445,19 @@ export default function Products() {
                     #
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Article
+                    {t("products.columns.item")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Categorie
+                    {t("products.columns.category")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Stock
+                    {t("products.columns.stock")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
+                    {t("products.columns.status")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t("common.actions")}
                   </th>
                 </tr>
               </thead>
@@ -477,7 +480,7 @@ export default function Products() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <span className="font-semibold">{product.mainCategory || "À classer"}</span>
+                      <span className="font-semibold">{product.mainCategory || t("products.unclassified")}</span>
                       {product.subcategory && <span className="block text-xs text-gray-500">{product.subcategory}</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -491,7 +494,7 @@ export default function Products() {
                             : "bg-red-100 text-red-800"
                         }`}
                       >
-                        {getProductStatus(product.status)}
+                        {productStatusLabel(product.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -499,6 +502,8 @@ export default function Products() {
                         <button
                           onClick={() => openViewModal(product)}
                           className="text-blue-600 hover:text-blue-900 p-1 rounded"
+                          title={t("products.view")}
+                          aria-label={t("products.view")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -507,14 +512,16 @@ export default function Products() {
                             <button
                               onClick={() => openEditModal(product)}
                               className="text-green-600 hover:text-green-900 p-1 rounded"
+                              title={t("products.edit")}
+                              aria-label={t("products.edit")}
                             >
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => deleteProduct(product)}
                               className="text-red-600 hover:text-red-900 p-1 rounded"
-                              title="Supprimer l'article"
-                              aria-label={`Supprimer ${product.name}`}
+                              title={t("products.delete")}
+                              aria-label={t("products.deleteNamed", { name: product.name })}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -537,7 +544,7 @@ export default function Products() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  {showEditModal ? "Modifier l'Article" : "Ajouter un Article"}
+                  {showEditModal ? t("products.editTitle") : t("products.addTitle")}
                 </h2>
                 <button
                   onClick={() => {
@@ -546,6 +553,7 @@ export default function Products() {
                     resetForm();
                   }}
                   className="text-gray-400 hover:text-gray-600"
+                  aria-label={t("common.close")}
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -557,12 +565,12 @@ export default function Products() {
                 {/* Basic Information */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-gray-900">
-                    Information Basique
+                    {t("products.basicInfo")}
                   </h3>
 
                   <div>
                     <label htmlFor="product-nom" className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom de l'Article *
+                      {t("products.name")}
                     </label>
                     <input
                       id="product-nom"
@@ -581,7 +589,7 @@ export default function Products() {
 
                   <div>
                     <label htmlFor="product-description" className="block text-sm font-medium text-gray-700 mb-1">
-                      Description
+                      {t("products.description")}
                     </label>
                     <textarea
                       id="product-description"
@@ -599,7 +607,7 @@ export default function Products() {
 
                   <div>
                     <label htmlFor="product-categorie-principale" className="block text-sm font-medium text-gray-700 mb-1">
-                      Catégorie principale *
+                      {t("products.mainCategory")}
                     </label>
                     <select
                       id="product-categorie-principale"
@@ -612,14 +620,14 @@ export default function Products() {
                       }))}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="CLOTHES">CLOTHES — Vêtements</option>
-                      <option value="SHOES">SHOES — Chaussures</option>
+                      <option value="CLOTHES">CLOTHES — {t("accounting.categoryTitles.CLOTHES")}</option>
+                      <option value="SHOES">SHOES — {t("accounting.categoryTitles.SHOES")}</option>
                     </select>
                   </div>
 
                   <div>
                     <label htmlFor="product-sous-categorie" className="block text-sm font-medium text-gray-700 mb-1">
-                      Sous-catégorie (facultative)
+                      {t("products.subcategory")}
                     </label>
                     <CategoriesDropdown
                       id="product-sous-categorie"
@@ -634,7 +642,7 @@ export default function Products() {
 
                   <div>
                     <label htmlFor="product-marques" className="block text-sm font-medium text-gray-700 mb-1">
-                      Marques
+                      {t("products.brands")}
                     </label>
                     <input
                       id="product-marques"
@@ -652,7 +660,7 @@ export default function Products() {
 
                   <div>
                     <label htmlFor="product-statut" className="block text-sm font-medium text-gray-700 mb-1">
-                      Statut
+                      {t("products.status")}
                     </label>
                     <select
                       id="product-statut"
@@ -665,8 +673,8 @@ export default function Products() {
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
                     >
-                      <option value="active">Actif</option>
-                      <option value="inactive">Inactif</option>
+                      <option value="active">{productStatusLabel("active")}</option>
+                      <option value="inactive">{productStatusLabel("inactive")}</option>
                     </select>
                   </div>
                 </div>
@@ -674,13 +682,13 @@ export default function Products() {
                 {/* Pricing & Inventory */}
                 <div className="space-y-4">
                   <h3 className="text-lg font-medium text-gray-900">
-                    Prix & Stock
+                    {t("products.pricingStock")}
                   </h3>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
                       <label htmlFor="product-prix-de-vente" className="block text-sm font-medium text-gray-700">
-                        Prix de vente par pièce *
+                        {t("products.salePrice")}
                       </label>
                       <button
                         type="button"
@@ -700,7 +708,7 @@ export default function Products() {
                         required
                         value={formData.price}
                         onChange={(e) => handlePriceUsdChange(e.target.value)}
-                        placeholder="Entrer le prix en USD"
+                        placeholder={t("products.priceUsdPlaceholder")}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
                       />
                     ) : (
@@ -712,7 +720,7 @@ export default function Products() {
                         required
                         value={priceFCInput}
                         onChange={(e) => handlePriceFcChange(e.target.value)}
-                        placeholder="Entrer le prix en FC"
+                        placeholder={t("products.priceFcPlaceholder")}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
                       />
                     )}
@@ -722,14 +730,14 @@ export default function Products() {
                       </p>
                     )}
                     <p className="mt-1 text-xs text-gray-500">
-                      Ce prix préremplit la vente; les utilisateurs autorisés peuvent le modifier.
+                      {t("products.priceHint")}
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="product-quantite-achetee" className="block text-sm font-medium text-gray-700 mb-1">
-                        Quantité achetée (pièces) *
+                        {t("products.purchasedQuantity")}
                       </label>
                       <input
                         id="product-quantite-achetee"
@@ -749,7 +757,7 @@ export default function Products() {
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label htmlFor="product-cout-d-acquisition" className="block text-sm font-medium text-gray-700">
-                          Coût d’acquisition par pièce *
+                          {t("products.unitCost")}
                         </label>
                       </div>
                       {currencyMode === "usd" ? (
@@ -761,7 +769,7 @@ export default function Products() {
                           required
                           value={formData.unitCost}
                           onChange={(e) => handleUnitCostUsdChange(e.target.value)}
-                          placeholder="0 si acquis gratuitement"
+                          placeholder={t("products.freePlaceholder")}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         />
                       ) : (
@@ -773,7 +781,7 @@ export default function Products() {
                           required
                           value={unitCostFCInput}
                           onChange={(e) => handleUnitCostFcChange(e.target.value)}
-                          placeholder="0 si acquis gratuitement"
+                          placeholder={t("products.freePlaceholder")}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                         />
                       )}
@@ -785,7 +793,7 @@ export default function Products() {
                     </div>
                   </div>
                   <p className="-mt-2 text-xs text-gray-500">
-                    Indiquez le coût d’achat/acquisition d’une seule pièce (0 si donation). Valeur totale du stock acquis :{" "}
+                    {t("products.costHint")}{" "}
                     {exchangeRate
                       ? formatFC((formData.unitCost || 0) * (formData.purchasedQuantity || 1) * exchangeRate.rate)
                       : formatUSD((formData.unitCost || 0) * (formData.purchasedQuantity || 1))}
@@ -797,7 +805,7 @@ export default function Products() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="product-stock-actuel" className="block text-sm font-medium text-gray-700 mb-1">
-                        Stock actuel
+                        {t("products.currentStock")}
                       </label>
                       <input
                         id="product-stock-actuel"
@@ -817,7 +825,7 @@ export default function Products() {
                     </div>
                     <div>
                       <label htmlFor="product-unite" className="block text-sm font-medium text-gray-700 mb-1">
-                        Unité
+                        {t("products.unit")}
                       </label>
                       <select
                         id="product-unite"
@@ -842,7 +850,7 @@ export default function Products() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label htmlFor="product-stock-minimum" className="block text-sm font-medium text-gray-700 mb-1">
-                        Stock minimum
+                        {t("products.minStock")}
                       </label>
                       <input
                         id="product-stock-minimum"
@@ -872,14 +880,14 @@ export default function Products() {
                   }}
                   className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {saving ? "Enregistrement…" : showEditModal ? "Mettre à jour l'article" : "Ajouter l'article"}
+                  {saving ? t("products.saving") : showEditModal ? t("products.update") : t("products.add")}
                 </button>
               </div>
             </form>
@@ -894,11 +902,12 @@ export default function Products() {
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Détails de l'Article
+                  {t("products.detailsTitle")}
                 </h2>
                 <button
                   onClick={() => setShowViewModal(false)}
                   className="text-gray-400 hover:text-gray-600"
+                  aria-label={t("common.close")}
                 >
                   <X className="w-6 h-6" />
                 </button>
@@ -934,7 +943,7 @@ export default function Products() {
                           : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {selectedProduct.status}
+                      {productStatusLabel(selectedProduct.status)}
                     </span>
                   </div>
                 </div>
@@ -943,24 +952,24 @@ export default function Products() {
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <h4 className="font-semibold text-gray-900">
-                    Informations sur l'Article
+                    {t("products.itemInfo")}
                   </h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Categorie:</span>
+                      <span className="text-gray-600">{t("products.categoryLabel")}</span>
                       <span className="font-medium">
-                        {selectedProduct.mainCategory || "À classer"}
+                        {selectedProduct.mainCategory || t("products.unclassified")}
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Sous-catégorie:</span>
+                      <span className="text-gray-600">{t("products.subcategoryLabel")}</span>
                       <span className="font-medium">{selectedProduct.subcategory || "—"}</span>
                     </div>
                     {isAdmin && (
                       <>
-                        <div className="flex justify-between"><span className="text-gray-600">Quantité achetée:</span><span className="font-medium">{selectedProduct.purchasedQuantity ?? "—"}</span></div>
+                        <div className="flex justify-between"><span className="text-gray-600">{t("products.purchasedQuantityLabel")}</span><span className="font-medium">{selectedProduct.purchasedQuantity ?? "—"}</span></div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Coût total:</span>
+                          <span className="text-gray-600">{t("products.totalCostLabel")}</span>
                           <span className="font-medium text-right">
                             {selectedProduct.totalAcquisitionCost === undefined ? "—" : (
                               <>
@@ -974,7 +983,7 @@ export default function Products() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-gray-600">Coût unitaire:</span>
+                          <span className="text-gray-600">{t("products.unitCostLabel")}</span>
                           <span className="font-medium text-right">
                             {selectedProduct.unitCost === undefined ? "—" : (
                               <>
@@ -990,7 +999,7 @@ export default function Products() {
                       </>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Unité:</span>
+                      <span className="text-gray-600">{t("products.unitLabel")}</span>
                       <span className="font-medium">
                         {selectedProduct.unit}
                       </span>
@@ -999,7 +1008,7 @@ export default function Products() {
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-semibold text-gray-900">Stock</h4>
+                  <h4 className="font-semibold text-gray-900">{t("products.columns.stock")}</h4>
                   <div className="space-y-2 text-sm">
                     {renderStockDetails(selectedProduct)}
                   </div>
@@ -1009,11 +1018,11 @@ export default function Products() {
               {selectedProduct.weight > 0 && (
                 <div className="space-y-3">
                   <h4 className="font-semibold text-gray-900">
-                    Propriétés physiques
+                    {t("products.physical")}
                   </h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Poids:</span>
+                      <span className="text-gray-600">{t("products.weightLabel")}</span>
                       <span className="font-medium">
                         {selectedProduct.weight} kg
                       </span>
@@ -1032,7 +1041,7 @@ export default function Products() {
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2"
                   >
                     <Edit className="w-4 h-4" />
-                    Modifier l'Article
+                    {t("products.editButton")}
                   </button>
                 </div>
               )}

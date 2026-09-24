@@ -1,6 +1,7 @@
 // Shared by the Analytics screen and the PDF report so both show the same
 // authoritative backend numbers under the same labels. This module only
 // selects and labels fields; it never recalculates accounting values.
+import i18n, { t } from "../../i18n/index.ts";
 
 export type AccountingCategory = "CLOTHES" | "SHOES";
 
@@ -64,49 +65,51 @@ export interface CategoryPresentation {
   fundsExplanation: string;
 }
 
-export const CATEGORY_TITLES: Record<AccountingCategory, string> = {
-  CLOTHES: "Vêtements",
-  SHOES: "Chaussures",
-};
+const localized = <K extends string>(keys: readonly K[], prefix: string): Record<K, string> =>
+  Object.defineProperties({} as Record<K, string>, Object.fromEntries(keys.map((key) => [key, { enumerable: true, get: () => t(`${prefix}.${key}`) }])));
 
-export const FUNDS_LABEL = "Fonds disponibles pour réapprovisionnement";
-export const FUNDS_DEFINITION =
-  "Montant récupéré sur le coût d'achat des articles vendus et encore disponible pour acheter de nouvelles marchandises.";
-export const FUNDS_RULE: Record<AccountingCategory, string> = {
-  CLOTHES: "Pour les vêtements, le réapprovisionnement peut utiliser le capital récupéré ainsi que le bénéfice disponible.",
-  SHOES: "Pour les chaussures, seul le capital récupéré peut financer le réapprovisionnement. Le bénéfice des actionnaires reste séparé.",
-};
+const CATEGORIES = ["CLOTHES", "SHOES"] as const;
+export const CATEGORY_TITLES: Record<AccountingCategory, string> = localized(CATEGORIES, "accounting.categoryTitles");
+
+// Live bindings, refreshed when the interface language changes.
+export let FUNDS_LABEL = t("accounting.fundsLabel");
+export let FUNDS_DEFINITION = t("accounting.fundsDefinition");
+i18n.on("languageChanged", () => {
+  FUNDS_LABEL = t("accounting.fundsLabel");
+  FUNDS_DEFINITION = t("accounting.fundsDefinition");
+});
+export const FUNDS_RULE: Record<AccountingCategory, string> = localized(CATEGORIES, "accounting.fundsRule");
 
 export function categoryPresentation(category: AccountingCategory, row: CategoryAccountingDTO): CategoryPresentation {
   const isLoss = row.netProfit < 0;
   const period: AccountingMetric[] = [
-    { id: "revenue", label: "Chiffre d'affaires", value: row.revenue, valueFC: row.revenueFC, tone: "neutral" },
-    { id: "costOfGoodsSold", label: "Coût des articles vendus", value: row.costOfGoodsSold, valueFC: row.costOfGoodsSoldFC, tone: "neutral" },
-    { id: "grossProfit", label: "Bénéfice brut", value: row.grossProfit, valueFC: row.grossProfitFC, tone: row.grossProfit < 0 ? "negative" : "positive" },
-    { id: "companyExpenses", label: "Dépenses de l'entreprise", value: row.companyExpenses, valueFC: row.companyExpensesFC, tone: "negative" },
-    { id: "netProfit", label: isLoss ? "Résultat net (perte)" : "Résultat net", value: row.netProfit, valueFC: row.netProfitFC, tone: isLoss ? "negative" : "positive" },
-    { id: "goodsPurchases", label: "Achats de marchandises", value: row.goodsPurchases, tone: "neutral" },
+    { id: "revenue", label: t("accounting.metrics.revenue"), value: row.revenue, valueFC: row.revenueFC, tone: "neutral" },
+    { id: "costOfGoodsSold", label: t("accounting.metrics.costOfGoodsSold"), value: row.costOfGoodsSold, valueFC: row.costOfGoodsSoldFC, tone: "neutral" },
+    { id: "grossProfit", label: t("accounting.metrics.grossProfit"), value: row.grossProfit, valueFC: row.grossProfitFC, tone: row.grossProfit < 0 ? "negative" : "positive" },
+    { id: "companyExpenses", label: t("accounting.metrics.companyExpenses"), value: row.companyExpenses, valueFC: row.companyExpensesFC, tone: "negative" },
+    { id: "netProfit", label: isLoss ? t("accounting.metrics.netLoss") : t("accounting.metrics.netProfit"), value: row.netProfit, valueFC: row.netProfitFC, tone: isLoss ? "negative" : "positive" },
+    { id: "goodsPurchases", label: t("accounting.metrics.goodsPurchases"), value: row.goodsPurchases, tone: "neutral" },
   ];
   if (category === "CLOTHES" && row.profitUsedForPurchases > 0) {
-    period.push({ id: "profitUsedForPurchases", label: "Bénéfice utilisé pour réapprovisionnement", value: row.profitUsedForPurchases, tone: "neutral" });
+    period.push({ id: "profitUsedForPurchases", label: t("accounting.metrics.profitUsedForPurchases"), value: row.profitUsedForPurchases, tone: "neutral" });
   }
   if (category === "CLOTHES") {
-    period.push({ id: "distributableProfit", label: "Bénéfice distribuable", value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? "Aucune distribution : la période est en perte" : undefined });
+    period.push({ id: "distributableProfit", label: t("accounting.metrics.distributableProfit"), value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined });
   } else {
     period.push(
-      { id: "distributableProfit", label: "Bénéfice total distribuable", value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? "Aucune distribution : la période est en perte" : undefined },
-      { id: "shareholder1", label: "Part actionnaire 1", value: row.shareholder1, valueFC: row.shareholder1FC, tone: "shareholder" },
-      { id: "shareholder2", label: "Part actionnaire 2", value: row.shareholder2, valueFC: row.shareholder2FC, tone: "shareholder" },
+      { id: "distributableProfit", label: t("accounting.metrics.totalDistributableProfit"), value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined },
+      { id: "shareholder1", label: t("accounting.metrics.shareholder1"), value: row.shareholder1, valueFC: row.shareholder1FC, tone: "shareholder" },
+      { id: "shareholder2", label: t("accounting.metrics.shareholder2"), value: row.shareholder2, valueFC: row.shareholder2FC, tone: "shareholder" },
     );
   }
 
   const current = row.balance;
   const balance: AccountingMetric[] = current ? [
-    { id: "balance.recoveredCapital", label: "Capital récupéré (cumul)", value: current.recoveredCapital, tone: "neutral", hint: "Coût d'achat des articles vendus depuis le début" },
+    { id: "balance.recoveredCapital", label: t("accounting.metrics.recoveredCapital"), value: current.recoveredCapital, tone: "neutral", hint: t("accounting.hints.recoveredCapital") },
     { id: "balance.availablePurchaseFunds", label: FUNDS_LABEL, value: current.availablePurchaseFunds, tone: "funds", hint: FUNDS_DEFINITION },
   ] : [];
   if (current && current.fundingShortfall > 0) {
-    balance.push({ id: "balance.fundingShortfall", label: "Capital à reconstituer", value: current.fundingShortfall, tone: "negative", hint: "Achats déjà effectués au-delà du capital encore disponible (vente annulée ou perte)" });
+    balance.push({ id: "balance.fundingShortfall", label: t("accounting.metrics.fundingShortfall"), value: current.fundingShortfall, tone: "negative", hint: t("accounting.hints.fundingShortfall") });
   }
   return { title: CATEGORY_TITLES[category], period, balance, fundsExplanation: FUNDS_RULE[category] };
 }

@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { currentLocale, t as translate } from "../i18n";
 import { apiErrorFromPayload, toApiError } from "../lib/apiError";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
@@ -19,7 +21,9 @@ import {
   type SaleCurrency,
 } from "../utils/salePricing";
 
-const compactFc = (value: number) => `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(value)}FC`;
+const compactFc = (value: number) => `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(value)}FC`;
+// Payment line of the browser receipt; the raw value still goes to the print API.
+const receiptPayment = (method: string) => translate(`saleReceipt.payments.${method}`, { defaultValue: method.toUpperCase() });
 const compactDualUnit = (item: CartItem, rate?: number) => {
   const fc = getItemFcUnitPrice(item, rate);
   return `${item.priceUSD.toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
@@ -131,6 +135,7 @@ class PrintService {
 }
 
 export default function NewSale() {
+  const { t } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -147,7 +152,7 @@ export default function NewSale() {
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
     shopNumber: "+243 836 017 031",
     shopRegistration: "LSH/RCCM/22-A-01266",
-    receiptFooter: "Merci pour Achat! À bientôt.",
+    receiptFooter: translate("pos.defaultFooter"),
   });
   const receiptRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -455,15 +460,15 @@ export default function NewSale() {
   const renderStockInfo = (product: Product) => {
     if (isAdmin) {
       // Admin sees exact stock numbers
-      return `(Stock: ${product.stock})`;
+      return t("pos.stockCount", { count: product.stock });
     } else {
       // Staff sees stock status instead of exact numbers
       if (product.stock === 0) {
-        return "(En rupture)";
+        return t("pos.outOfStockShort");
       } else if (product.stock <= 5) { // You can adjust this threshold
-        return "(Stock faible)";
+        return t("pos.lowStockShort");
       } else {
-        return "(En stock)";
+        return t("pos.inStockShort");
       }
     }
   };
@@ -482,18 +487,18 @@ export default function NewSale() {
       
       return (
         <p className="text-sm text-gray-600 mb-4">
-          Stock disponible: <strong>{product.stock}</strong>
+          {t("pos.availableStock")} <strong>{product.stock}</strong>
           {currentCartQuantity > 0 && (
             <span className="ml-2 text-blue-600">
-              (Déjà dans panier: {currentCartQuantity})
+              {t("pos.alreadyInCart", { count: currentCartQuantity })}
             </span>
           )}
           {quantity > 0 && (
             <span className={`ml-4 ${canAddToCart ? 'text-green-600' : 'text-red-600'}`}>
-              Stock restant après vente:{" "}
+              {t("pos.remainingAfterSale")}{" "}
               {availableStock - quantity >= 0
                 ? availableStock - quantity
-                : "❌ pas assez de stock!"}
+                : t("pos.notEnoughStock")}
             </span>
           )}
         </p>
@@ -503,31 +508,31 @@ export default function NewSale() {
       if (product.stock === 0) {
         return (
           <p className="text-sm text-red-600 mb-4">
-            <strong>❌ En rupture de stock</strong>
+            <strong>{t("pos.outOfStock")}</strong>
           </p>
         );
       } else if (product.stock <= 5) {
         return (
           <p className="text-sm text-orange-600 mb-4">
-            <strong>⚠️ Stock faible</strong>
+            <strong>{t("pos.lowStock")}</strong>
           </p>
         );
       } else if (quantity > 0 && !canAddToCart) {
         return (
           <p className="text-sm text-red-600 mb-4">
-            <strong>❌ Quantité demandée non disponible</strong>
+            <strong>{t("pos.quantityUnavailable")}</strong>
           </p>
         );
       } else if (quantity > 0) {
         return (
           <p className="text-sm text-green-600 mb-4">
-            <strong>✅ Stock suffisant</strong>
+            <strong>{t("pos.stockSufficient")}</strong>
           </p>
         );
       } else {
         return (
           <p className="text-sm text-green-600 mb-4">
-            <strong>✅ En stock</strong>
+            <strong>{t("pos.inStock")}</strong>
           </p>
         );
       }
@@ -537,23 +542,23 @@ export default function NewSale() {
   function handleAddToCart() {
     // Comprehensive validation
     if (!product) {
-      setError("Veuillez sélectionner un produit");
+      setError(t("pos.selectProduct"));
       return;
     }
 
     if (quantity <= 0) {
-      setError("La quantité doit être supérieure à zéro");
+      setError(t("pos.quantityPositive"));
       return;
     }
 
     if (!currentPrice) {
-      setError("Le prix unitaire doit être supérieur à zéro");
+      setError(t("pos.pricePositive"));
       return;
     }
 
     // Check if adding this quantity would result in negative stock
     if (!checkStockAfterAdd(product._id, quantity)) {
-      setError("Stock insuffisant pour ajouter cette quantité au panier");
+      setError(t("pos.insufficientStock"));
       return;
     }
 
@@ -631,7 +636,7 @@ export default function NewSale() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Reçu de vente</title>
+    <title>${t("saleReceipt.title")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -903,31 +908,31 @@ export default function NewSale() {
       <div class="header">
         <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">TEL: <strong>${receiptData.shopNumber}</strong></div>
+        <div class="shop-details">${t("saleReceipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopRegistration}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">RECU #: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("saleReceipt.date")}: <strong>${receiptData.date}</strong></div>
+        <div class="shop-details">${t("saleReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
       </div>
       
       <div class="customer-info">
-        <div class="customer-field">CLIENT: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
+        <div class="customer-field">${t("saleReceipt.customer")}: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
         ${
           receiptData.customerPhone
-            ? `<div class="customer-field">TELEPHONE: <strong>${receiptData.customerPhone}</strong></div>`
+            ? `<div class="customer-field">${t("saleReceipt.phone")}: <strong>${receiptData.customerPhone}</strong></div>`
             : ""
         }
       </div>
 
-      <div class="receipt-title">ARTICLES ACHETES</div>
+      <div class="receipt-title">${t("saleReceipt.itemsBought")}</div>
       
       <div class="items-col-header">
-        <span class="col-article">Article</span>
-        <span class="col-qte">Qte</span>
+        <span class="col-article">${t("saleReceipt.item")}</span>
+        <span class="col-qte">${t("saleReceipt.qty")}</span>
       </div>
       
       <div class="items-section">
@@ -946,27 +951,27 @@ export default function NewSale() {
       
       <div class="total-section">
         <div class="total-row">
-          <div><strong>SOUS-TOTAL:</strong></div>
+          <div><strong>${t("saleReceipt.subtotal")}:</strong></div>
           <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
         </div>
         <div class="total-row">
-          <div><strong>TOTAL:</strong></div>
+          <div><strong>${t("saleReceipt.total")}:</strong></div>
           <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
         </div>
         <div class="total-row">
-          <div><strong>PAIEMENT:</strong></div>
-          <div class="payment-method"><strong>${receiptData.paymentMethod.toUpperCase()}</strong></div>
+          <div><strong>${t("saleReceipt.payment")}:</strong></div>
+          <div class="payment-method"><strong>${receiptPayment(receiptData.paymentMethod)}</strong></div>
         </div>
       </div>
       
       <div class="sales-person">
-        Agent: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
+        ${t("saleReceipt.agent")}: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
       </div>
 
       <div class="footer">
-        <div class="thank-you"><strong>${receiptData.receiptFooter || "MERCI POUR VOTRE ACHAT !"}</strong></div>
-        <div class="warning"><strong>Article non echangeable</strong></div>
-        <div class="warning"><strong>Non remboursable</strong></div>
+        <div class="thank-you"><strong>${receiptData.receiptFooter || t("saleReceipt.thanks")}</strong></div>
+        <div class="warning"><strong>${t("saleReceipt.noExchange")}</strong></div>
+        <div class="warning"><strong>${t("saleReceipt.noRefund")}</strong></div>
       </div>
 
       <!-- PAPER CUT INDICATOR -->
@@ -1001,7 +1006,7 @@ export default function NewSale() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Souche de vente</title>
+    <title>${t("saleReceipt.stubTitle")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -1283,34 +1288,34 @@ export default function NewSale() {
       <div class="header">
         <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">TEL: <strong>${receiptData.shopNumber}</strong></div>
+        <div class="shop-details">${t("saleReceipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">RECU #: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("saleReceipt.date")}: <strong>${receiptData.date}</strong></div>
+        <div class="shop-details">${t("saleReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
       </div>
       
       <div class="stub-number">
-        SOUCHE N°<strong>${receiptData.stubNumber}</strong>
+        ${t("saleReceipt.stubNo")}<strong>${receiptData.stubNumber}</strong>
       </div>
       
       <div class="customer-info">
-        <div class="customer-field">CLIENT: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
+        <div class="customer-field">${t("saleReceipt.customer")}: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
         ${
           receiptData.customerPhone
-            ? `<div class="customer-field">TELEPHONE: <strong>${receiptData.customerPhone}</strong></div>`
+            ? `<div class="customer-field">${t("saleReceipt.phone")}: <strong>${receiptData.customerPhone}</strong></div>`
             : ""
         }
       </div>
 
-      <div class="receipt-title">ARTICLES VENDUS</div>
+      <div class="receipt-title">${t("saleReceipt.itemsSold")}</div>
       
       <div class="items-col-header">
-        <span class="col-article">Article</span>
-        <span class="col-qte">Qte</span>
+        <span class="col-article">${t("saleReceipt.item")}</span>
+        <span class="col-qte">${t("saleReceipt.qty")}</span>
       </div>
       
       <div class="items-section">
@@ -1329,25 +1334,25 @@ export default function NewSale() {
       
       <div class="total-section">
         <div class="total-row">
-          <div><strong>TOTAL VENTE:</strong></div>
+          <div><strong>${t("saleReceipt.saleTotal")}:</strong></div>
           <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
         </div>
         <div class="total-row">
-          <div><strong>PAIEMENT:</strong></div>
-          <div class="payment-method"><strong>${receiptData.paymentMethod.toUpperCase()}</strong></div>
+          <div><strong>${t("saleReceipt.payment")}:</strong></div>
+          <div class="payment-method"><strong>${receiptPayment(receiptData.paymentMethod)}</strong></div>
         </div>
       </div>
       
       <div class="sales-person">
-        Agent: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
+        ${t("saleReceipt.agent")}: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
       </div>
 
       <div class="stub-footer">
-        <div class="thank-you"><strong>SOUCHE DE CAISSE</strong></div>
+        <div class="thank-you"><strong>${t("saleReceipt.stubFooter")}</strong></div>
         <div class="warning"><strong>${receiptData.shopName}</strong></div>
-        <div class="warning"><strong>Conserver cette souche</strong></div>
-        <div class="warning">Recu #: <strong>${receiptData.receiptNumber}</strong></div>
-        <div class="warning">Date: <strong>${receiptData.date}</strong></div>
+        <div class="warning"><strong>${t("saleReceipt.keepStub")}</strong></div>
+        <div class="warning">${t("saleReceipt.receiptNoShort")}: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="warning">${t("saleReceipt.dateShort")}: <strong>${receiptData.date}</strong></div>
       </div>
 
       <!-- PAPER CUT INDICATOR -->
@@ -1486,12 +1491,12 @@ export default function NewSale() {
         shopNumber: shopSettings.shopNumber,
         shopRegistration: shopSettings.shopRegistration,
         receiptFooter: shopSettings.receiptFooter,
-        customerName: form.isWalkIn ? "Client de passage" : form.customerName,
+        customerName: form.isWalkIn ? t("pos.walkIn") : form.customerName,
         customerPhone: form.isWalkIn ? "" : form.customerPhone,
         items: cart,
         total: cartTotal,
         paymentMethod: form.paymentMethod,
-        salesPerson: currentUser?.username || "Agent",
+        salesPerson: currentUser?.username || t("pos.agent"),
         date: formatNowGMT2(),
         receiptNumber: saleId, // Use actual sale ID from API
         stubNumber: saleId, // Use actual sale ID from API for stub as well
@@ -1516,9 +1521,9 @@ export default function NewSale() {
       setSearchTerm("");
 
       setMessage(
-        "✅ Vente effectuée avec succès ! Impression du reçu et de la souche..."
+        t("pos.saleDonePrinting")
       );
-      notifySuccess("Vente enregistrée avec succès.");
+      notifySuccess(t("pos.saleRecorded"));
     } catch (e: any) {
       setError(toApiError(e).message);
     } finally {
@@ -1550,21 +1555,21 @@ export default function NewSale() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">Taux du jour:</span>
+                  <span className="font-semibold text-blue-900">{t("pos.todayRate")}</span>
                 </div>
                 {loadingRate ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
                 ) : exchangeRate ? (
                   <div className="text-right">
                     <div className="font-bold text-blue-800 text-lg">
-                      1 USD = {new Intl.NumberFormat('fr-FR').format(exchangeRate.rate)} FC
+                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
                     <div className="text-xs text-blue-600">
-                      Effectif depuis {formatDateGMT2(exchangeRate.effectiveFrom)}
+                      {t("pos.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
                 ) : (
-                  <span className="text-red-600 text-sm">Taux non disponible</span>
+                  <span className="text-red-600 text-sm">{t("pos.rateUnavailable")}</span>
                 )}
               </div>
             </div>
@@ -1582,11 +1587,11 @@ export default function NewSale() {
 
         <div className="pos-workspace">
         <div className="pos-catalog-panel bg-white shadow-lg rounded-xl p-6 mb-6 border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4 text-gray-900">Ajouter les articles</h3>
+          <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.addItems")}</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="relative" ref={searchRef}>
-              <label htmlFor="new-sale-articles" className="block mb-2 font-medium text-gray-700">Articles</label>
+              <label htmlFor="new-sale-articles" className="block mb-2 font-medium text-gray-700">{t("pos.items")}</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -1595,7 +1600,7 @@ export default function NewSale() {
                   value={searchTerm}
                   onChange={handleSearchChange}
                   onFocus={() => setShowSearchResults(true)}
-                  placeholder="Rechercher un article..."
+                  placeholder={t("pos.searchPlaceholder")}
                   className="w-full p-3 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   disabled={loadingProducts || products.length === 0}
                 />
@@ -1612,7 +1617,7 @@ export default function NewSale() {
                     >
                       <div className="font-medium text-gray-900">{product.name}</div>
                       <div className="text-sm text-gray-600 flex justify-between">
-                        <span>{product.sku && `SKU: ${product.sku}`}</span>
+                        <span>{product.sku && t("pos.sku", { sku: product.sku })}</span>
                         <span className={product.stock === 0 ? "text-red-600" : product.stock <= 5 ? "text-orange-600" : "text-green-600"}>
                           {renderStockInfo(product)}
                         </span>
@@ -1625,20 +1630,20 @@ export default function NewSale() {
               {/* No Results Message */}
               {showSearchResults && searchTerm && filteredProducts.length === 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-center text-gray-500">
-                  Aucun article trouvé
+                  {t("pos.noItemFound")}
                 </div>
               )}
             </div>
 
             <div>
-              <label htmlFor="new-sale-quantity" className="block mb-2 font-medium text-gray-700">Nombre de pièces</label>
+              <label htmlFor="new-sale-quantity" className="block mb-2 font-medium text-gray-700">{t("pos.quantity")}</label>
               <input
                 id="new-sale-quantity"
                 type="number"
                 name="quantity"
                 value={form.quantity}
                 onChange={handleChange}
-                placeholder="Entrer le nombre de pièces"
+                placeholder={t("pos.quantityPlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 min={1}
               />
@@ -1646,7 +1651,7 @@ export default function NewSale() {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label htmlFor="new-sale-unit-price" className="block font-medium text-gray-700">Prix unitaire</label>
+                <label htmlFor="new-sale-unit-price" className="block font-medium text-gray-700">{t("pos.unitPrice")}</label>
                 <button
                   type="button"
                   onClick={toggleCurrencyMode}
@@ -1659,7 +1664,7 @@ export default function NewSale() {
               
               {!canEditPrice && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-2">
-                  Prix verrouillé — permission requise pour modifier les prix.
+                  {t("pos.priceLocked")}
                 </p>
               )}
               {form.currencyMode === 'usd' ? (
@@ -1671,7 +1676,7 @@ export default function NewSale() {
                   value={form.unitPrice}
                   onChange={(e) => canEditPrice && handleUsdPriceChange(e.target.value)}
                   readOnly={!canEditPrice}
-                  placeholder={product?.price ? `ex: ${product.price}` : "Entrer le prix en USD"}
+                  placeholder={product?.price ? t("pos.priceExample", { price: product.price }) : t("pos.priceUsdPlaceholder")}
                   className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
                   min={0.01}
                 />
@@ -1683,7 +1688,7 @@ export default function NewSale() {
                   value={form.priceInFC}
                   onChange={(e) => canEditPrice && handleFcPriceChange(e.target.value)}
                   readOnly={!canEditPrice}
-                  placeholder="Entrer le prix en FC"
+                  placeholder={t("pos.priceFcPlaceholder")}
                   className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
                   min={1}
                 />
@@ -1716,21 +1721,21 @@ export default function NewSale() {
             } transition-colors`}
           >
             <RefreshCw className="w-4 h-4" />
-            Ajouter au panier
+            {t("pos.addToCart")}
           </button>
 
           {cart.length > 0 && (
             <div className="mt-6">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900">Articles du panier</h3>
+              <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.cartItems")}</h3>
               <div className="overflow-hidden rounded-lg border border-gray-200">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Articles</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Pièces</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Prix unitaire</th>
-                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Total</th>
-                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">Actions</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">{t("pos.columns.items")}</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">{t("pos.columns.pieces")}</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">{t("pos.columns.unitPrice")}</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">{t("pos.columns.total")}</th>
+                      <th className="px-4 py-3 text-center text-sm font-semibold text-gray-700">{t("common.actions")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -1770,8 +1775,9 @@ export default function NewSale() {
                           <button
                             onClick={() => removeFromCart(index)}
                             className="text-red-600 hover:text-red-800 text-sm font-medium"
+                            aria-label={t("pos.removeNamed", { name: item.name })}
                           >
-                            Enlever
+                            {t("pos.remove")}
                           </button>
                         </td>
                       </tr>
@@ -1780,7 +1786,7 @@ export default function NewSale() {
                   <tfoot className="bg-gray-50">
                     <tr>
                       <td colSpan={3} className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
-                        Total:
+                        {t("pos.totalLabel")}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
                         {cartOriginalTotals.USD > 0 && (
@@ -1791,7 +1797,7 @@ export default function NewSale() {
                         )}
                         {cartOriginalTotals.FC > 0 && (
                           <div className="text-xs text-gray-500">
-                            Total reçu ≈ {formatUSD(cartTotal)}
+                            {t("pos.totalReceived", { amount: formatUSD(cartTotal) })}
                           </div>
                         )}
                       </td>
@@ -1805,7 +1811,7 @@ export default function NewSale() {
         </div>
 
         <div className="pos-checkout-panel bg-white shadow-lg rounded-xl p-6 border border-gray-200">
-          <h3 className="text-lg font-semibold mb-4 text-gray-900">Informations du client</h3>
+          <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.customerInfo")}</h3>
 
           <label className="flex items-center gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer select-none">
             <input
@@ -1815,14 +1821,14 @@ export default function NewSale() {
               className="w-4 h-4"
             />
             <span className="text-sm font-medium text-gray-700">
-              Client de passage (vente sans coordonnées client)
+              {t("pos.walkInOption")}
             </span>
           </label>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
               <label htmlFor="new-sale-customer-name" className="block mb-2 font-medium text-gray-700">
-                Nom du client {!form.isWalkIn && "*"}
+                {t("pos.customerName")} {!form.isWalkIn && "*"}
               </label>
               <input
                 id="new-sale-customer-name"
@@ -1830,7 +1836,7 @@ export default function NewSale() {
                 name="customerName"
                 value={form.customerName}
                 onChange={handleChange}
-                placeholder={form.isWalkIn ? "Client de passage" : "Entrer le nom du client"}
+                placeholder={form.isWalkIn ? t("pos.walkIn") : t("pos.customerNamePlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
                 disabled={form.isWalkIn}
                 required={!form.isWalkIn}
@@ -1839,7 +1845,7 @@ export default function NewSale() {
 
             <div>
               <label htmlFor="new-sale-customer-phone" className="block mb-2 font-medium text-gray-700">
-                Numéro de téléphone du client {!form.isWalkIn && "*"}
+                {t("pos.customerPhone")} {!form.isWalkIn && "*"}
               </label>
               <input
                 id="new-sale-customer-phone"
@@ -1847,7 +1853,7 @@ export default function NewSale() {
                 name="customerPhone"
                 value={form.customerPhone}
                 onChange={handleChange}
-                placeholder={form.isWalkIn ? "—" : "Entrer le numéro de téléphone"}
+                placeholder={form.isWalkIn ? "—" : t("pos.customerPhonePlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
                 disabled={form.isWalkIn}
               />
@@ -1855,7 +1861,7 @@ export default function NewSale() {
 
             <div>
               <label htmlFor="new-sale-payment-method" className="block mb-2 font-medium text-gray-700">
-                Méthode de paiement
+                {t("pos.paymentMethod")}
               </label>
               <select
                 id="new-sale-payment-method"
@@ -1865,11 +1871,11 @@ export default function NewSale() {
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="cash">Espèces</option>
-                <option value="mpesa">M-Pesa ou Airtel Money (Transfert)</option>
-                <option value="bank">Transfert Bank</option>
-                <option value="card">Carte Visa</option>
-                <option value="other">Autres</option>
+                <option value="cash">{t("pos.payment.cash")}</option>
+                <option value="mpesa">{t("pos.payment.mpesa")}</option>
+                <option value="bank">{t("pos.payment.bank")}</option>
+                <option value="card">{t("pos.payment.card")}</option>
+                <option value="other">{t("pos.payment.other")}</option>
               </select>
             </div>
           </div>
@@ -1887,10 +1893,10 @@ export default function NewSale() {
             {submitting ? (
               <span className="flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                En cours d'enregistrement...
+                {t("pos.saving")}
               </span>
             ) : (
-              "Enregistrer la vente"
+              t("pos.save")
             )}
           </button>
         </div>

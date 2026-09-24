@@ -1,4 +1,6 @@
 import "@testing-library/jest-dom/vitest";
+// Same as src/main.tsx: translations are initialized before anything renders.
+import "../src/i18n";
 
 // Vitest runs without globals, so Testing Library cannot register its
 // automatic unmount; do it explicitly so each test starts from an empty DOM.

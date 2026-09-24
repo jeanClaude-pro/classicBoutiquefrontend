@@ -2,6 +2,7 @@
 import type { LoginPayload, RegisterPayload, LoginResponse, User } from "../types/auth";
 import { serverUrl } from "../utils/constants";
 import { ApiError, apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { t } from "../i18n";
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}) {
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -24,7 +25,7 @@ export async function apiFetch<T>(path: string, options: RequestInit = {}) {
   if (!res.ok) {
     // On the login form a 401 means wrong credentials, not an expired session.
     if (path === "/auth/login" && res.status === 401) {
-      throw new ApiError({ status: 401, title: "Connexion refusée", message: "Email ou mot de passe incorrect." });
+      throw new ApiError({ status: 401, title: t("apiErrors.titles.loginRefused"), message: t("apiErrors.server.invalidCredentials") });
     }
     throw apiErrorFromPayload(res.status, data);
   }

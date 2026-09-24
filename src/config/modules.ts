@@ -2,34 +2,52 @@
 // navigation, the "Plus" sheet, page headers and the permission editor all
 // read from here, so one module can never carry several names.
 // Paths and ids stay stable: they are stored in user permissions.
+// Names live in the dictionaries (modules.<id>.*); `label`, `shortLabel` and
+// `description` are read in the current language each time they are used.
+import { t } from "../i18n/index.ts";
 
 export interface ModuleDefinition {
   id: string;
   path: string;
+  labelKey: string;
+  shortLabelKey?: string;
+  descriptionKey: string;
   /** Canonical name used everywhere a module is listed. */
-  label: string;
+  readonly label: string;
   /** Compact name for the mobile tab bar only. */
-  shortLabel?: string;
+  readonly shortLabel?: string;
   /** One short sentence explaining what the page actually does. */
-  description: string;
+  readonly description: string;
+}
+
+function defineModule(id: string, path: string, hasShortLabel: boolean): ModuleDefinition {
+  const labelKey = `modules.${id}.label`;
+  const shortLabelKey = hasShortLabel ? `modules.${id}.short` : undefined;
+  const descriptionKey = `modules.${id}.description`;
+  return {
+    id, path, labelKey, shortLabelKey, descriptionKey,
+    get label() { return t(labelKey); },
+    get shortLabel() { return shortLabelKey ? t(shortLabelKey) : undefined; },
+    get description() { return t(descriptionKey); },
+  };
 }
 
 export const MODULES = {
-  pos: { id: "pos", path: "/", label: "Point de vente", shortLabel: "Vente", description: "Enregistrez une vente encaissée et imprimez le reçu du client." },
-  reservation: { id: "reservation", path: "/reservation", label: "Nouvelle réservation", shortLabel: "Réserver", description: "Réservez des articles pour un client. Le stock est bloqué immédiatement ; la vente est comptabilisée lorsque la réservation est terminée." },
-  sales: { id: "sales", path: "/sales", label: "Historique des ventes", shortLabel: "Ventes", description: "Consultez, corrigez ou annulez les ventes enregistrées." },
-  reservationhistory: { id: "reservationhistory", path: "/reservationhistory", label: "Suivi des réservations", shortLabel: "Réservations", description: "Terminez, modifiez ou supprimez les réservations en attente et consultez celles déjà remises." },
-  products: { id: "products", path: "/products", label: "Articles & stock", shortLabel: "Stock", description: "Gérez les articles, leurs prix, leur coût d'achat et le stock disponible." },
-  entry: { id: "entry", path: "/entry", label: "Entrée de caisse", shortLabel: "Entrée", description: "Enregistrez l'argent reçu en dehors des ventes." },
-  sortie: { id: "sortie", path: "/sortie", label: "Décaissements", shortLabel: "Décaisser", description: "Enregistrez une dépense de l'entreprise, un achat de marchandises ou un remboursement de dette." },
-  entryhistory: { id: "entryhistory", path: "/entryhistory", label: "Historique des entrées", description: "Consultez, corrigez ou supprimez les entrées de caisse enregistrées." },
-  historicsortie: { id: "historicsortie", path: "/sortiehistory", label: "Historique des décaissements", description: "Suivez, validez ou rejetez les décaissements et consultez leur statut." },
-  rate: { id: "rate", path: "/rate", label: "Taux de change", shortLabel: "Taux", description: "Définissez le taux USD → FC appliqué aux nouvelles opérations. Les opérations passées gardent leur taux." },
-  remboursements: { id: "remboursements", path: "/remboursements", label: "Dettes & emprunts", shortLabel: "Dettes", description: "Suivez les créanciers, les emprunts reçus et le solde restant dû. Les remboursements se saisissent dans Décaissements." },
-  reports: { id: "reports", path: "/reports", label: "Rapports & analyses", shortLabel: "Rapports", description: "Analysez les ventes, la rentabilité par catégorie et les fonds de réapprovisionnement." },
-  customers: { id: "customers", path: "/customers", label: "Clients", description: "Consultez les clients et leurs achats. Un client est créé automatiquement lors d'une vente avec ses coordonnées." },
-  admin: { id: "admin", path: "/admin", label: "Administration", shortLabel: "Admin", description: "Gérez les comptes utilisateurs, leurs droits et les réglages du reçu." },
-} as const satisfies Record<string, ModuleDefinition>;
+  pos: defineModule("pos", "/", true),
+  reservation: defineModule("reservation", "/reservation", true),
+  sales: defineModule("sales", "/sales", true),
+  reservationhistory: defineModule("reservationhistory", "/reservationhistory", true),
+  products: defineModule("products", "/products", true),
+  entry: defineModule("entry", "/entry", true),
+  sortie: defineModule("sortie", "/sortie", true),
+  entryhistory: defineModule("entryhistory", "/entryhistory", false),
+  historicsortie: defineModule("historicsortie", "/sortiehistory", false),
+  rate: defineModule("rate", "/rate", true),
+  remboursements: defineModule("remboursements", "/remboursements", true),
+  reports: defineModule("reports", "/reports", true),
+  customers: defineModule("customers", "/customers", false),
+  admin: defineModule("admin", "/admin", true),
+} satisfies Record<string, ModuleDefinition>;
 
 export type ModuleId = keyof typeof MODULES;
 

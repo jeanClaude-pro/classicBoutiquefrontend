@@ -5,6 +5,8 @@ import React from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { Eye, EyeOff, LockKeyhole, UserPlus } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { LanguageToggle } from "../../components/LanguageToggle";
 
 import { useAuth } from "../../hooks/useAuth";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
@@ -15,6 +17,7 @@ const SESSION_EXPIRED_TOAST_ID = "session-expired";
 type Mode = "login" | "signup";
 
 const LoginPage = () => {
+  const { t } = useTranslation();
   const [mode, setMode] = React.useState<Mode>("login");
 
   const [email, setEmail] = React.useState("");
@@ -34,7 +37,7 @@ const LoginPage = () => {
 
   React.useEffect(() => {
     if (searchParams.get("reason") === "session-expired") {
-      toast.error("Votre session a expiré. Veuillez vous reconnecter.", {
+      toast.error(t("login.sessionExpired"), {
         toastId: SESSION_EXPIRED_TOAST_ID,
       });
     }
@@ -66,7 +69,7 @@ const LoginPage = () => {
   const handleLogin = async () => {
     const { user, token } = await loginApi({ email, password });
     setAuth({ token, user });
-    toast.success("Connexion réussie !");
+    toast.success(t("login.success"));
     const destination = user.role === "admin"
       ? (user.permissions?.find((path) => ["/sales", "/reports", "/products"].includes(path)) || "/sales")
       : getReturnTo();
@@ -75,13 +78,13 @@ const LoginPage = () => {
 
   const handleSignup = async () => {
     if (!username.trim()) {
-      throw new Error("Le nom d'utilisateur est requis");
+      throw new Error(t("login.usernameRequired"));
     }
     if (password.length < 10) {
-      throw new Error("Le mot de passe doit comporter au moins 10 caractères");
+      throw new Error(t("login.passwordTooShort"));
     }
     if (password !== confirmPassword) {
-      throw new Error("Les mots de passe ne correspondent pas");
+      throw new Error(t("login.passwordMismatch"));
     }
 
     const { user, token } = await registerApi({
@@ -90,7 +93,7 @@ const LoginPage = () => {
       password,
     });
     setAuth({ token, user });
-    toast.success("Compte créé avec succès !");
+    toast.success(t("login.accountCreated"));
     navigate(getReturnTo(), { replace: true });
   };
 
@@ -108,7 +111,7 @@ const LoginPage = () => {
     } catch (err: any) {
       const msg =
         err?.message ||
-        (mode === "login" ? "Email ou mot de passe incorrect" : "Impossible de créer le compte");
+        (mode === "login" ? t("login.invalidCredentials") : t("login.signupFailed"));
       setError(msg);
       toast.error(msg);
     } finally {
@@ -120,6 +123,7 @@ const LoginPage = () => {
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(56,189,248,0.18),transparent_30rem),linear-gradient(135deg,#020617_0%,#0f2942_48%,#0f172a_100%)]" />
       <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/40 to-transparent" />
+      <LanguageToggle className="login-language" />
       <div className="w-full max-w-md relative z-10">
         {/* Logo / Brand */}
         <div className="text-center mb-8">
@@ -128,7 +132,7 @@ const LoginPage = () => {
           </div>
           <h1 className="text-3xl font-bold text-white tracking-wide">DOUBLE M</h1>
           <p className="mt-2 text-xs font-semibold uppercase tracking-[0.24em] text-amber-200">Classic Boutique</p>
-          <p className="text-amber-100/75 text-sm mt-2">Vêtements · Chaussures · Élégance</p>
+          <p className="text-amber-100/75 text-sm mt-2">{t("login.tagline")}</p>
         </div>
 
         {/* Card */}
@@ -144,7 +148,7 @@ const LoginPage = () => {
                   : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              Connexion
+              {t("login.signIn")}
             </button>
             <button
               type="button"
@@ -155,7 +159,7 @@ const LoginPage = () => {
                   : "text-gray-400 hover:text-gray-600"
               }`}
             >
-              Créer un compte
+              {t("login.createAccount")}
             </button>
           </div>
 
@@ -165,25 +169,25 @@ const LoginPage = () => {
                 {mode === "login" ? <LockKeyhole className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
               </div>
               <h2 className="text-xl font-semibold text-gray-900">
-                {mode === "login" ? "Connexion" : "Créer un compte"}
+                {mode === "login" ? t("login.signIn") : t("login.createAccount")}
               </h2>
             </div>
             <p className="text-gray-500 text-sm mb-6">
               {mode === "login"
-                ? "Entrez vos identifiants pour accéder au système"
-                : "Renseignez vos informations pour créer votre compte"}
+                ? t("login.signInHint")
+                : t("login.signupHint")}
             </p>
 
             <form onSubmit={handleSubmit} className="space-y-5">
               {mode === "signup" && (
                 <div>
                   <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Nom d'utilisateur
+                    {t("login.username")}
                   </label>
                   <input
                     id="username"
                     type="text"
-                    placeholder="ex: Jean Claude"
+                    placeholder={t("login.usernamePlaceholder")}
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
@@ -196,12 +200,12 @@ const LoginPage = () => {
 
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Adresse email
+                  {t("login.email")}
                 </label>
                 <input
                   id="email"
                   type="email"
-                  placeholder="ex: utilisateur@example.com"
+                  placeholder={t("login.emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
@@ -212,13 +216,13 @@ const LoginPage = () => {
 
               <div>
                 <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Mot de passe
+                  {t("login.password")}
                 </label>
                 <div className="relative">
                   <input
                     id="password"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Votre mot de passe"
+                    placeholder={t("login.passwordPlaceholder")}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full px-4 py-3 pr-11 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
@@ -230,25 +234,27 @@ const LoginPage = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? t("login.hidePassword") : t("login.showPassword")}
+                    aria-pressed={showPassword}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition"
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
                 {mode === "signup" && (
-                  <p className="text-xs text-gray-400 mt-1">Au moins 10 caractères</p>
+                  <p className="text-xs text-gray-400 mt-1">{t("login.minLength")}</p>
                 )}
               </div>
 
               {mode === "signup" && (
                 <div>
                   <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Confirmer le mot de passe
+                    {t("login.confirmPassword")}
                   </label>
                   <input
                     id="confirmPassword"
                     type={showPassword ? "text" : "password"}
-                    placeholder="Confirmez votre mot de passe"
+                    placeholder={t("login.confirmPasswordPlaceholder")}
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
@@ -276,12 +282,12 @@ const LoginPage = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    {mode === "login" ? "Connexion en cours..." : "Création en cours..."}
+                    {mode === "login" ? t("login.signingIn") : t("login.creating")}
                   </span>
                 ) : mode === "login" ? (
-                  "Se connecter"
+                  t("login.submitSignIn")
                 ) : (
-                  "Créer mon compte"
+                  t("login.submitSignup")
                 )}
               </button>
             </form>
@@ -291,24 +297,24 @@ const LoginPage = () => {
             <p className="text-xs text-gray-500">
               {mode === "login" ? (
                 <>
-                  Pas encore de compte ?{" "}
+                  {t("login.noAccount")}{" "}
                   <button
                     type="button"
                     onClick={() => switchMode("signup")}
                     className="text-blue-600 font-semibold hover:underline"
                   >
-                    Créer un compte
+                    {t("login.createAccount")}
                   </button>
                 </>
               ) : (
                 <>
-                  Vous avez déjà un compte ?{" "}
+                  {t("login.haveAccount")}{" "}
                   <button
                     type="button"
                     onClick={() => switchMode("login")}
                     className="text-blue-600 font-semibold hover:underline"
                   >
-                    Se connecter
+                    {t("login.submitSignIn")}
                   </button>
                 </>
               )}

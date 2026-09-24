@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useRef } from "react";
+import { useTranslation } from "react-i18next";
+import { currentLocale } from "../i18n";
+import { ENTRY_CATEGORIES, ENTRY_SOURCES, entryCategoryLabel, entrySourceLabel } from "../lib/entryOptions";
 import { apiErrorFromPayload, toApiError } from "../lib/apiError";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
@@ -57,6 +60,7 @@ async function readJsonSafe(res: Response) {
 }
 
 export default function Entry() {
+  const { t } = useTranslation();
   const [submitting, setSubmitting] = useState(false);
   // Synchronous guard: a second click can arrive before `submitting` re-renders.
   const submitLock = useRef(false);
@@ -83,28 +87,12 @@ export default function Entry() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Sources prédéfinies
-  const sources = [
-    "Paiement Client",
-    "Dépôt Bancaire",
-    "Reçu d'Espèces",
-    "Remboursement Prêt",
-    "Investissement",
-    "Revenue Divers",
-    "Transfert Mobile",
-    "Autre Source"
-  ];
-
-  // Catégories prédéfinies
-  const categories = [
-    "Revenue Ventes",
-    "Dépôt Espèces",
-    "Remboursement",
-    "Prêt",
-    "Investissement",
-    "Revenue Divers",
-    "Autre Catégorie"
-  ];
+  // Predefined sources and categories: stable stored values, translated labels.
+  const sources = ENTRY_SOURCES;
+  const categories = ENTRY_CATEGORIES;
+  // Receipt helpers: labels in the language active when the receipt is printed.
+  const receiptAmount = (data: any) => data.enteredCurrency === "FC" ? `${data.enteredAmount.toLocaleString(currentLocale())} FC` : `$${data.enteredAmount.toFixed(2)}`;
+  const receiptPayment = (data: any) => t(`entryOptions.payment.${data.paymentMethod}`, { defaultValue: data.paymentMethod }).toUpperCase();
 
   // Load exchange rate
   const loadExchangeRate = async () => {
@@ -192,7 +180,7 @@ export default function Entry() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Reçu d'Entrée d'Argent</title>
+    <title>${t("entryReceipt.title")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -425,63 +413,63 @@ export default function Entry() {
       <div class="header">
         <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">TEL: <strong>${receiptData.shopNumber}</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopRegistration}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">REÇU #: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("receipt.date")}: <strong>${receiptData.date}</strong></div>
+        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
       </div>
       
       <div class="entry-badge">
-        <strong>💰 ENTRÉE D'ARGENT CONFIRMÉE 💰</strong>
+        <strong>${t("entryReceipt.confirmed")}</strong>
       </div>
       
       <div class="sender-info">
-        <div class="sender-field">REÇU DE: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
-        <div class="sender-field">TÉLÉPHONE: <strong>${receiptData.receivedFrom.phone}</strong></div>
+        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
+        <div class="sender-field">${t("receipt.phone")}: <strong>${receiptData.receivedFrom.phone}</strong></div>
         ${
           receiptData.receivedFrom.email
-            ? `<div class="sender-field">EMAIL: <strong>${receiptData.receivedFrom.email}</strong></div>`
+            ? `<div class="sender-field">${t("receipt.email")}: <strong>${receiptData.receivedFrom.email}</strong></div>`
             : ""
         }
       </div>
       
       ${receiptData.description ? `
         <div class="description">
-          <strong>DESCRIPTION:</strong> <strong>${receiptData.description}</strong>
+          <strong>${t("receipt.description")}:</strong> <strong>${receiptData.description}</strong>
         </div>
       ` : ''}
       
-      <div class="receipt-title">DÉTAILS DE L'ENTRÉE</div>
+      <div class="receipt-title">${t("entryReceipt.details")}</div>
       
       <div class="details-section">
         <div class="detail-row">
-          <div class="detail-label"><strong>SOURCE:</strong></div>
-          <div class="detail-value"><strong>${receiptData.source}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.source")}:</strong></div>
+          <div class="detail-value"><strong>${entrySourceLabel(receiptData.source)}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>CATÉGORIE:</strong></div>
-          <div class="detail-value"><strong>${receiptData.category}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.category")}:</strong></div>
+          <div class="detail-value"><strong>${entryCategoryLabel(receiptData.category)}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>MÉTHODE PAIEMENT:</strong></div>
-          <div class="detail-value"><strong>${receiptData.paymentMethod.toUpperCase()}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.paymentMethod")}:</strong></div>
+          <div class="detail-value"><strong>${receiptPayment(receiptData)}</strong></div>
         </div>
       </div>
       
       <div class="amount-section">
         <div class="amount-row">
-          <div><strong>MONTANT REÇU:</strong></div>
-          <div><strong>${receiptData.enteredCurrency === "FC" ? `${receiptData.enteredAmount.toLocaleString("fr-FR")} FC` : `$${receiptData.enteredAmount.toFixed(2)}`}</strong></div>
+          <div><strong>${t("receipt.amountReceived")}:</strong></div>
+          <div><strong>${receiptAmount(receiptData)}</strong></div>
         </div>
         ${
           receiptData.enteredCurrency === "FC"
             ? `<div class="amount-row">
-                 <div><strong>ÉQUIVALENT FC:</strong></div>
+                 <div><strong>${t("entryReceipt.usdEquivalent")}:</strong></div>
                  <div><strong>$${receiptData.amountUSD.toFixed(2)}</strong></div>
                </div>`
             : ''
@@ -489,14 +477,14 @@ export default function Entry() {
       </div>
       
       <div class="agent-info">
-        Enregistré par: <strong>${receiptData.agent.toUpperCase()}</strong>
+        ${t("receipt.recordedBy")}: <strong>${receiptData.agent.toUpperCase()}</strong>
       </div>
       
       <div class="footer">
-        <div class="thank-you"><strong>ENTRÉE ENREGISTRÉE AVEC SUCCÈS !</strong></div>
-        <div class="warning"><strong>Conserver ce reçu comme preuve</strong></div>
-        <div class="warning"><strong>Merci pour votre confiance</strong></div>
-        <div class="thank-you"><strong>À BIENTÔT !</strong></div>
+        <div class="thank-you"><strong>${t("entryReceipt.success")}</strong></div>
+        <div class="warning"><strong>${t("entryReceipt.keep")}</strong></div>
+        <div class="warning"><strong>${t("entryReceipt.thanks")}</strong></div>
+        <div class="thank-you"><strong>${t("entryReceipt.seeYou")}</strong></div>
       </div>
 
       <!-- PAPER CUT INDICATOR -->
@@ -530,7 +518,7 @@ export default function Entry() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Souche Entrée d'Argent</title>
+    <title>${t("entryReceipt.stubTitle")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -763,67 +751,67 @@ export default function Entry() {
       <div class="header">
         <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
         <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">TEL: <strong>${receiptData.shopNumber}</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">REÇU #: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("receipt.date")}: <strong>${receiptData.date}</strong></div>
+        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
       </div>
       
       <div class="stub-number">
-        <strong>SOUCHE ENTRÉE N°${receiptData.stubNumber}</strong>
+        <strong>${t("entryReceipt.stubNumber", { number: receiptData.stubNumber })}</strong>
       </div>
       
       <div class="sender-info">
-        <div class="sender-field">REÇU DE: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
-        <div class="sender-field">TÉLÉPHONE: <strong>${receiptData.receivedFrom.phone}</strong></div>
+        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
+        <div class="sender-field">${t("receipt.phone")}: <strong>${receiptData.receivedFrom.phone}</strong></div>
       </div>
       
       ${receiptData.description ? `
         <div class="description">
-          <strong>DESCRIPTION:</strong> <strong>${receiptData.description}</strong>
+          <strong>${t("receipt.description")}:</strong> <strong>${receiptData.description}</strong>
         </div>
       ` : ''}
       
-      <div class="receipt-title">DÉTAILS ENTRÉE</div>
+      <div class="receipt-title">${t("entryReceipt.stubDetails")}</div>
       
       <div class="details-section">
         <div class="detail-row">
-          <div class="detail-label"><strong>SOURCE:</strong></div>
-          <div class="detail-value"><strong>${receiptData.source}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.source")}:</strong></div>
+          <div class="detail-value"><strong>${entrySourceLabel(receiptData.source)}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>CATÉGORIE:</strong></div>
-          <div class="detail-value"><strong>${receiptData.category}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.category")}:</strong></div>
+          <div class="detail-value"><strong>${entryCategoryLabel(receiptData.category)}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>MÉTHODE PAIEMENT:</strong></div>
-          <div class="detail-value"><strong>${receiptData.paymentMethod.toUpperCase()}</strong></div>
+          <div class="detail-label"><strong>${t("receipt.paymentMethod")}:</strong></div>
+          <div class="detail-value"><strong>${receiptPayment(receiptData)}</strong></div>
         </div>
       </div>
       
       <div class="amount-section">
         <div class="amount-row">
-          <div><strong>MONTANT REÇU:</strong></div>
-          <div><strong>${receiptData.enteredCurrency === "FC" ? `${receiptData.enteredAmount.toLocaleString("fr-FR")} FC` : `$${receiptData.enteredAmount.toFixed(2)}`}</strong></div>
+          <div><strong>${t("receipt.amountReceived")}:</strong></div>
+          <div><strong>${receiptAmount(receiptData)}</strong></div>
         </div>
       </div>
       
       <div class="agent-info">
-        Enregistré par: <strong>${receiptData.agent.toUpperCase()}</strong>
+        ${t("receipt.recordedBy")}: <strong>${receiptData.agent.toUpperCase()}</strong>
       </div>
       
       <div class="stub-footer">
-        <div class="thank-you"><strong>SOUCHE ENTRÉE D'ARGENT</strong></div>
+        <div class="thank-you"><strong>${t("entryReceipt.stubFooter")}</strong></div>
         <div class="warning"><strong>${receiptData.shopName}</strong></div>
-        <div class="warning"><strong>Conserver cette souche</strong></div>
-        <div class="warning">Reçu #: <strong>${receiptData.receiptNumber}</strong></div>
-        <div class="warning">Date: <strong>${receiptData.date}</strong></div>
-        <div class="warning">Source: <strong>${receiptData.source}</strong></div>
-        <div class="warning">Montant: <strong>${receiptData.enteredCurrency === "FC" ? `${receiptData.enteredAmount.toLocaleString("fr-FR")} FC` : `$${receiptData.enteredAmount.toFixed(2)}`}</strong></div>
+        <div class="warning"><strong>${t("entryReceipt.keepStub")}</strong></div>
+        <div class="warning">${t("entryReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="warning">${t("entryReceipt.date")}: <strong>${receiptData.date}</strong></div>
+        <div class="warning">${t("entryReceipt.source")}: <strong>${entrySourceLabel(receiptData.source)}</strong></div>
+        <div class="warning">${t("entryReceipt.amount")}: <strong>${receiptAmount(receiptData)}</strong></div>
       </div>
       
       <!-- PAPER CUT INDICATOR -->
@@ -944,7 +932,7 @@ export default function Entry() {
           phone: form.receivedFromPhone,
           email: form.receivedFromEmail,
         },
-        agent: currentUser?.username || "Agent",
+        agent: currentUser?.username || t("entry.agent"),
         date: formatNowGMT2(),
         receiptNumber: entryId,
         stubNumber: entryId,
@@ -968,9 +956,9 @@ export default function Entry() {
       });
 
       setMessage(
-        "✅ Entrée d'argent enregistrée avec succès ! Impression du reçu et de la souche..."
+        t("entry.recordedPrinting")
       );
-      notifySuccess("Entrée de caisse enregistrée avec succès.");
+      notifySuccess(t("entry.recorded"));
     } catch (e: any) {
       console.error("Error creating entry:", e);
       setError(toApiError(e).message);
@@ -996,21 +984,21 @@ export default function Entry() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">Taux du jour:</span>
+                  <span className="font-semibold text-blue-900">{t("entry.todayRate")}</span>
                 </div>
                 {loadingRate ? (
                   <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
                 ) : exchangeRate ? (
                   <div className="text-right">
                     <div className="font-bold text-blue-800 text-lg">
-                      1 USD = {new Intl.NumberFormat('fr-FR').format(exchangeRate.rate)} FC
+                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
                     <div className="text-xs text-blue-600">
-                      Effectif depuis {formatDateGMT2(exchangeRate.effectiveFrom)}
+                      {t("entry.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
                 ) : (
-                  <span className="text-red-600 text-sm">Taux non disponible</span>
+                  <span className="text-red-600 text-sm">{t("entry.rateUnavailable")}</span>
                 )}
               </div>
             </div>
@@ -1031,14 +1019,14 @@ export default function Entry() {
           <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />
-              Informations de l'Entrée
+              {t("entry.info")}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label htmlFor="entry-amount" className="block font-medium text-gray-700">
-                    Montant *
+                    {t("entry.amount")}
                   </label>
                   <button
                     type="button"
@@ -1058,7 +1046,7 @@ export default function Entry() {
                     name="amount"
                     value={form.amount}
                     onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    placeholder="Entrer le montant en USD"
+                    placeholder={t("entry.amountUsdPlaceholder")}
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     min="0.01"
                     required
@@ -1070,7 +1058,7 @@ export default function Entry() {
                     name="amountInFC"
                     value={form.amountInFC}
                     onChange={(e) => setForm({ ...form, amountInFC: e.target.value })}
-                    placeholder="Entrer le montant en FC"
+                    placeholder={t("entry.amountFcPlaceholder")}
                     className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     min="1"
                     required
@@ -1092,7 +1080,7 @@ export default function Entry() {
 
               <div>
                 <label htmlFor="entry-source" className="block mb-2 font-medium text-gray-700">
-                  Source *
+                  {t("entry.source")}
                 </label>
                 <select
                   id="entry-source"
@@ -1102,10 +1090,10 @@ export default function Entry() {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 >
-                  <option value="">Sélectionner la source</option>
+                  <option value="">{t("entry.selectSource")}</option>
                   {sources.map((source) => (
                     <option key={source} value={source}>
-                      {source}
+                      {entrySourceLabel(source)}
                     </option>
                   ))}
                 </select>
@@ -1113,7 +1101,7 @@ export default function Entry() {
 
               <div>
                 <label htmlFor="entry-category" className="block mb-2 font-medium text-gray-700">
-                  Catégorie *
+                  {t("entry.category")}
                 </label>
                 <select
                   id="entry-category"
@@ -1123,10 +1111,10 @@ export default function Entry() {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 >
-                  <option value="">Sélectionner la catégorie</option>
+                  <option value="">{t("entry.selectCategory")}</option>
                   {categories.map((category) => (
                     <option key={category} value={category}>
-                      {category}
+                      {entryCategoryLabel(category)}
                     </option>
                   ))}
                 </select>
@@ -1134,7 +1122,7 @@ export default function Entry() {
 
               <div>
                 <label htmlFor="entry-payment-method" className="block mb-2 font-medium text-gray-700">
-                  Méthode de Paiement *
+                  {t("entry.paymentMethod")}
                 </label>
                 <select
                   id="entry-payment-method"
@@ -1144,25 +1132,25 @@ export default function Entry() {
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 >
-                  <option value="cash">Espèces</option>
-                  <option value="mpesa">M-Pesa ou Airtel Money (Transfert)</option>
-                  <option value="bank">Transfert Bancaire</option>
-                  <option value="card">Carte Visa</option>
-                  <option value="other">Autre</option>
+                  <option value="cash">{t("entryOptions.payment.cash")}</option>
+                  <option value="mpesa">{t("entryOptions.payment.mpesa")}</option>
+                  <option value="bank">{t("entryOptions.payment.bank")}</option>
+                  <option value="card">{t("entryOptions.payment.card")}</option>
+                  <option value="other">{t("entryOptions.payment.other")}</option>
                 </select>
               </div>
             </div>
 
             <div className="mt-4">
               <label htmlFor="entry-description" className="block mb-2 font-medium text-gray-700">
-                Description (Optionnel)
+                {t("entry.description")}
               </label>
               <textarea
                 id="entry-description"
                 name="description"
                 value={form.description}
                 onChange={handleChange}
-                placeholder="Description de l'entrée d'argent..."
+                placeholder={t("entry.descriptionPlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 rows={3}
               />
@@ -1173,13 +1161,13 @@ export default function Entry() {
           <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
               <User className="w-5 h-5 text-blue-600" />
-              Informations de l'Expéditeur
+              {t("entry.sender")}
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label htmlFor="entry-received-from-name" className="block mb-2 font-medium text-gray-700">
-                  Nom de l'Expéditeur *
+                  {t("entry.senderName")}
                 </label>
                 <input
                   id="entry-received-from-name"
@@ -1187,7 +1175,7 @@ export default function Entry() {
                   name="receivedFromName"
                   value={form.receivedFromName}
                   onChange={handleChange}
-                  placeholder="Entrer le nom de la personne"
+                  placeholder={t("entry.senderNamePlaceholder")}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -1195,7 +1183,7 @@ export default function Entry() {
 
               <div>
                 <label htmlFor="entry-received-from-phone" className="block mb-2 font-medium text-gray-700">
-                  Téléphone de l'Expéditeur *
+                  {t("entry.senderPhone")}
                 </label>
                 <input
                   id="entry-received-from-phone"
@@ -1203,7 +1191,7 @@ export default function Entry() {
                   name="receivedFromPhone"
                   value={form.receivedFromPhone}
                   onChange={handleChange}
-                  placeholder="Entrer le numéro de téléphone"
+                  placeholder={t("entry.senderPhonePlaceholder")}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   required
                 />
@@ -1211,7 +1199,7 @@ export default function Entry() {
 
               <div className="md:col-span-2">
                 <label htmlFor="entry-received-from-email" className="block mb-2 font-medium text-gray-700">
-                  Email de l'Expéditeur (Optionnel)
+                  {t("entry.senderEmail")}
                 </label>
                 <input
                   id="entry-received-from-email"
@@ -1219,7 +1207,7 @@ export default function Entry() {
                   name="receivedFromEmail"
                   value={form.receivedFromEmail}
                   onChange={handleChange}
-                  placeholder="Entrer l'email de l'expéditeur"
+                  placeholder={t("entry.senderEmailPlaceholder")}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -1240,19 +1228,19 @@ export default function Entry() {
               {submitting ? (
                 <span className="flex items-center gap-2">
                   <RefreshCw className="w-5 h-5 animate-spin" />
-                  Enregistrement en cours...
+                  {t("entry.saving")}
                 </span>
               ) : (
                 <span className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  Enregistrer l'Entrée d'Argent
+                  {t("entry.save")}
                 </span>
               )}
             </button>
 
             {!isFormValid && (
               <p className="text-sm text-orange-600 mt-2 text-center">
-                * Veuillez remplir tous les champs obligatoires (Montant, Source, Catégorie, Nom et Téléphone)
+                {t("entry.requiredFields")}
               </p>
             )}
           </div>

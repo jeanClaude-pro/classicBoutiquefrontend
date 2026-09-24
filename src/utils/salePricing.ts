@@ -1,3 +1,5 @@
+import { currentLocale } from "../i18n/index.ts";
+
 export type SaleCurrency = "USD" | "FC";
 
 export interface PriceSnapshot {
@@ -124,7 +126,7 @@ export function getSaleFcTotal(totalUSD: number, items: StoredSaleItemPrice[], s
 
 export function formatFC(amount: number | undefined | null): string {
   const value = Number.isFinite(amount as number) ? (amount as number) : 0;
-  return `${new Intl.NumberFormat("fr-FR", {
+  return `${new Intl.NumberFormat(currentLocale(), {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(Math.round(value))} FC`;
@@ -132,7 +134,7 @@ export function formatFC(amount: number | undefined | null): string {
 
 export function formatUSD(amount: number | undefined | null): string {
   const value = Number.isFinite(amount as number) ? (amount as number) : 0;
-  return new Intl.NumberFormat("fr-FR", {
+  return new Intl.NumberFormat(currentLocale(), {
     style: "currency",
     currency: "USD",
   }).format(value);

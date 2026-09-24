@@ -1,5 +1,7 @@
-// Turns any failed request into a controlled, French, user-facing error.
-// Pages never render raw backend payloads, error codes or stack traces.
+// Turns any failed request into a controlled, user-facing error in the
+// selected language. Pages never render raw backend payloads, error codes or
+// stack traces. Behavior depends on the HTTP status and error code only.
+import { currentLanguage, currentLocale, t } from "../i18n/index.ts";
 
 export interface ApiErrorInit {
   status: number;
@@ -30,71 +32,88 @@ export class ApiError extends Error {
   get isConflict(): boolean { return this.status === 409 && this.code !== "INSUFFICIENT_PURCHASE_FUNDS"; }
 }
 
-export const MESSAGES = {
-  network: "Impossible de contacter le serveur. Vérifiez votre connexion puis réessayez.",
-  timeout: "Le serveur met trop de temps à répondre. Vérifiez la liste avant de réessayer : l'opération a peut-être été enregistrée.",
-  unauthorized: "Votre session a expiré. Veuillez vous reconnecter.",
-  forbidden: "Vous n'avez pas l'autorisation d'effectuer cette opération.",
-  notFound: "Cet élément est introuvable. Il a peut-être été supprimé ou n'est plus accessible.",
-  conflict: "Cette opération a été modifiée entre-temps. Les données ont été actualisées. Veuillez vérifier puis réessayer.",
-  invalid: "Certaines informations sont invalides. Vérifiez le formulaire puis réessayez.",
-  tooLarge: "La demande est trop volumineuse.",
-  rateLimited: "Trop de tentatives. Patientez quelques instants puis réessayez.",
-  server: "Une erreur interne est survenue. L'opération n'a pas été effectuée. Réessayez ; si le problème persiste, contactez l'administrateur.",
-  unavailable: "Le service est momentanément indisponible. Réessayez dans quelques instants.",
-  unexpected: "Une erreur inattendue est survenue. Réessayez.",
-} as const;
+/** An error raised by page code whose message is already user-facing (and translated). */
+export function userError(message: string, title = t("apiErrors.titles.impossible")): ApiError {
+  return new ApiError({ status: -1, title, message });
+}
 
-const TITLES: Record<number, string> = {
-  0: "Connexion impossible",
-  400: "Données invalides",
-  401: "Session expirée",
-  403: "Accès refusé",
-  404: "Élément introuvable",
-  409: "Opération impossible",
-  413: "Demande trop volumineuse",
-  422: "Données invalides",
-  429: "Trop de tentatives",
+const MESSAGE_KEYS = ["network", "timeout", "unauthorized", "forbidden", "notFound", "conflict", "invalid", "tooLarge", "rateLimited", "server", "unavailable", "unexpected"] as const;
+type MessageKey = (typeof MESSAGE_KEYS)[number];
+
+/** Generic messages, read in the language active at the moment of use. */
+export const MESSAGES = Object.defineProperties({} as Record<MessageKey, string>, Object.fromEntries(
+  MESSAGE_KEYS.map((key) => [key, { enumerable: true, get: () => t(`apiErrors.messages.${key}`) }]),
+));
+
+const TITLE_KEYS: Record<number, string> = {
+  0: "connection", 400: "invalid", 401: "sessionExpired", 403: "forbidden", 404: "notFound",
+  409: "impossible", 413: "tooLarge", 422: "invalid", 429: "rateLimited",
+};
+const title = (status: number): string | undefined => (TITLE_KEYS[status] ? t(`apiErrors.titles.${TITLE_KEYS[status]}`) : undefined);
+
+// Stable server error codes: used when the server wording cannot be shown.
+const CODE_MESSAGES: Record<string, string> = {
+  DUPLICATE_EXPENSE_ID: "apiErrors.codes.duplicateExpenseId",
+  IDEMPOTENCY_CONFLICT: "apiErrors.codes.idempotencyConflict",
+  DUPLICATE_KEY: "apiErrors.codes.duplicateKey",
 };
 
-// Known English server messages, translated. Keys are matched case-insensitively
-// as prefixes so messages with an appended identifier still match.
-const TRANSLATIONS: Array<[RegExp, string]> = [
-  [/^insufficient stock for (.+?)\. available: (\d+)/i, "Stock insuffisant pour $1 (disponible : $2)."],
-  [/status changed; refresh and retry|reservation status changed/i, MESSAGES.conflict],
-  [/^sale is already voided/i, "Cette vente est déjà annulée."],
-  [/^reservation already completed/i, "Cette réservation est déjà terminée."],
-  [/^only a completed reservation can return to pending/i, "Seule une réservation terminée peut être remise en attente."],
-  [/^this is not a reservation/i, "Cette opération ne concerne que les réservations."],
-  [/^cannot edit a voided or corrected sale/i, "Une vente annulée ou corrigée ne peut plus être modifiée."],
-  [/^transaction type cannot be changed/i, "Le type d'opération ne peut pas être modifié."],
-  [/^cannot validate a rejected expense/i, "Une dépense rejetée ne peut plus être validée."],
-  [/^cannot reject a validated expense/i, "Une dépense validée ne peut pas être rejetée. Utilisez une contre-passation."],
-  [/^expense is already rejected/i, "Cette dépense est déjà rejetée."],
-  [/^rejection reason is required/i, "Indiquez le motif du rejet."],
-  [/^reversal reason is required/i, "Indiquez le motif de la contre-passation."],
-  [/^transaction already reversed/i, "Cette opération a déjà été contre-passée."],
-  [/^only validated company expenses or goods purchases can be reversed/i, "Seules les dépenses d'entreprise et les achats de marchandises validés peuvent être contre-passés."],
-  [/^validated accounting transactions are immutable|^validated accounting transactions cannot be deleted/i, "Une opération comptable validée ne peut être ni modifiée ni supprimée. Utilisez une contre-passation."],
-  [/^validated cash-outs cannot be deleted/i, "Un décaissement validé ne peut pas être supprimé."],
-  [/^the amount of a validated cash-out is immutable/i, "Le montant d'un décaissement validé ne peut pas être modifié."],
-  [/^repayment expenses are immutable/i, "Un remboursement ne peut pas être modifié. Rejetez-le puis créez-en un nouveau."],
-  [/^applied repayments cannot be deleted/i, "Un remboursement appliqué ne peut pas être supprimé."],
-  [/^repayment exceeds the available debt/i, "Le remboursement dépasse la dette restante de ce créancier."],
-  [/^repayment was already applied/i, "Ce remboursement a déjà été appliqué."],
-  [/^selected creditor is unavailable/i, "Le créancier sélectionné n'est plus disponible."],
-  [/^you can only (edit|delete) your own pending expenses/i, "Vous ne pouvez modifier ou supprimer que vos propres décaissements en attente."],
-  [/^only (admin|admins|administrators) can/i, MESSAGES.forbidden],
-  [/^insufficient permissions/i, MESSAGES.forbidden],
-  [/^access denied|^forbidden|^superadministrator access required/i, MESSAGES.forbidden],
-  [/^customer name is required/i, "Le nom du client est obligatoire."],
-  [/^sale must contain at least one item/i, "Ajoutez au moins un article."],
-  [/^each item requires/i, "Chaque article doit avoir une quantité et un prix valides."],
-  [/^(sale|expense|product|entry|user) not found|^not found/i, MESSAGES.notFound],
-  [/^invalid (sale|expense|product|entry|user) id/i, MESSAGES.notFound],
-  [/^username already (taken|exists)|^user already exists|^email already/i, "Ce nom d'utilisateur ou cet email est déjà utilisé."],
-  [/^invalid role/i, "Rôle invalide."],
-  [/^missing credentials|^invalid email or password/i, "Email ou mot de passe incorrect."],
+// Known server messages (English, or French written by the server), each
+// mapped to a dictionary entry. Matched case-insensitively as prefixes so
+// messages with an appended identifier still match. Captured groups become
+// the named interpolation values listed after the key.
+const TRANSLATIONS: Array<[RegExp, string, string[]?]> = [
+  [/^insufficient stock for (.+?)\. available: (\d+)/i, "server.insufficientStock", ["product", "available"]],
+  [/status changed; refresh and retry|reservation status changed/i, "messages.conflict"],
+  [/^sale is already voided/i, "server.saleAlreadyVoided"],
+  [/^reservation already completed/i, "server.reservationAlreadyCompleted"],
+  [/^only a completed reservation can return to pending/i, "server.onlyCompletedToPending"],
+  [/^this is not a reservation/i, "server.notAReservation"],
+  [/^cannot edit a voided or corrected sale/i, "server.cannotEditVoided"],
+  [/^transaction type cannot be changed/i, "server.typeImmutable"],
+  [/^cannot validate a rejected expense/i, "server.cannotValidateRejected"],
+  [/^cannot reject a validated expense/i, "server.cannotRejectValidated"],
+  [/^expense is already rejected/i, "server.alreadyRejected"],
+  [/^rejection reason is required/i, "server.rejectionReasonRequired"],
+  [/^reversal reason is required/i, "server.reversalReasonRequired"],
+  [/^transaction already reversed/i, "server.alreadyReversed"],
+  [/^only validated company expenses or goods purchases can be reversed/i, "server.onlyValidatedReversible"],
+  [/^validated accounting transactions are immutable|^validated accounting transactions cannot be deleted/i, "server.validatedImmutable"],
+  [/^validated cash-outs cannot be deleted/i, "server.validatedNotDeletable"],
+  [/^the amount of a validated cash-out is immutable/i, "server.validatedAmountImmutable"],
+  [/^repayment expenses are immutable/i, "server.repaymentImmutable"],
+  [/^applied repayments cannot be deleted/i, "server.appliedRepaymentNotDeletable"],
+  [/^repayment exceeds the available debt/i, "server.repaymentExceedsDebt"],
+  [/^repayment was already applied/i, "server.repaymentAlreadyApplied"],
+  [/^selected creditor is unavailable/i, "server.creditorUnavailable"],
+  [/^you can only (edit|delete) your own pending expenses/i, "server.ownPendingOnly"],
+  [/^only (admin|admins|administrators) can/i, "messages.forbidden"],
+  [/^insufficient permissions/i, "messages.forbidden"],
+  [/^access denied|^forbidden|^superadministrator access required/i, "messages.forbidden"],
+  [/^customer name is required/i, "server.customerNameRequired"],
+  [/^sale must contain at least one item/i, "server.saleNeedsItem"],
+  [/^each item requires/i, "server.itemNeedsQuantityPrice"],
+  [/^(sale|expense|product|entry|user) not found|^not found/i, "messages.notFound"],
+  [/^invalid (sale|expense|product|entry|user) id/i, "messages.notFound"],
+  [/^username already (taken|exists)|^user already exists|^email already/i, "server.userExists"],
+  [/^invalid role/i, "server.invalidRole"],
+  [/^missing credentials|^invalid email or password/i, "server.invalidCredentials"],
+  // Messages the server writes in French.
+  [/^les ventes à crédit ne sont pas prises en charge/i, "server.creditSalesUnsupported"],
+  [/^une réservation nécessite les coordonnées du client/i, "server.reservationNeedsCustomer"],
+  [/^réservation non trouvée/i, "messages.notFound"],
+  [/^stock insuffisant pour modifier cette vente/i, "server.insufficientStockToEdit"],
+  [/^une vente comptabilisée ne peut pas être supprimée/i, "server.recognizedSaleNotDeletable"],
+  [/^cette dépense historique n'est pas classée/i, "server.legacyExpenseUnclassified"],
+  [/^cette requête a déjà été utilisée/i, "codes.idempotencyConflict"],
+  [/^fonds de réapprovisionnement insuffisants/i, "server.insufficientFunds"],
+  [/^le nom d'utilisateur est requis/i, "server.usernameRequired"],
+  [/^le nom d'utilisateur ne peut pas être vide/i, "server.usernameEmpty"],
+  [/^le mot de passe doit comporter entre 10 et 128 caractères/i, "server.passwordLength"],
+  [/^cet email est déjà utilisé/i, "server.emailTaken"],
+  [/^vous ne pouvez pas modifier le rôle de votre propre compte/i, "server.ownRole"],
+  [/^vous ne pouvez pas désactiver votre propre compte/i, "server.ownStatus"],
+  [/^vous ne pouvez pas supprimer votre propre compte/i, "server.ownDelete"],
 ];
 
 const TECHNICAL = /mongo|e11000|replica set|cast to|objectid|validationerror|stack|exception|\bat\s+\S+\s+\(|undefined|null|typeerror|econn|timeout|syntaxerror/i;
@@ -103,20 +122,21 @@ const FRENCH = /[àâçéèêëîïôûùüœ]|\b(le|la|les|des|une|un|est|pas|p
 function formatUSD(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
-  return `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
+  return `${new Intl.NumberFormat(currentLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
 }
 
-/** Picks a safe, French message from a server-provided string, if possible. */
+/** Picks a safe, user-facing message from a server-provided string, if possible. */
 export function translateServerMessage(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const message = raw.trim();
   if (!message || message.length > 300) return null;
-  for (const [pattern, replacement] of TRANSLATIONS) {
+  for (const [pattern, key, names = []] of TRANSLATIONS) {
     const match = message.match(pattern);
-    if (match) return replacement.replace(/\$(\d)/g, (_, index: string) => match[Number(index)] ?? "");
+    if (match) return t(`apiErrors.${key}`, Object.fromEntries(names.map((name, index) => [name, match[index + 1] ?? ""])));
   }
-  // The server already writes some business messages in French for users.
-  if (FRENCH.test(message) && !TECHNICAL.test(message)) return message;
+  // The server writes some business messages in French for users. They are
+  // shown as-is in French; in English the generic status message is used.
+  if (currentLanguage() === "fr" && FRENCH.test(message) && !TECHNICAL.test(message)) return message;
   return null;
 }
 
@@ -142,23 +162,26 @@ export function apiErrorFromPayload(status: number, payload: unknown): ApiError 
   if (code === "INSUFFICIENT_PURCHASE_FUNDS") {
     return new ApiError({
       status, code,
-      title: "Fonds insuffisants",
-      message: `Montant demandé : ${formatUSD(body.requested)}\nFonds disponibles : ${formatUSD(body.available)}`,
+      title: t("apiErrors.titles.insufficientFunds"),
+      message: t("apiErrors.insufficientFunds", { requested: formatUSD(body.requested), available: formatUSD(body.available) }),
       details: { requested: body.requested, available: body.available, category: body.category },
     });
   }
 
   // Authorization always gets the same explanation, whatever the server said.
   if (status === 401 || status === 403) {
-    const deactivated = typeof body.message === "string" && /désactivé/i.test(body.message);
-    return new ApiError({ status, code, title: TITLES[status], message: deactivated ? String(body.message) : fallbackMessage(status) });
+    const deactivated = typeof body.message === "string" && /désactivé|deactivated/i.test(body.message);
+    return new ApiError({ status, code, title: title(status)!, message: deactivated ? t("apiErrors.accountDeactivated") : fallbackMessage(status) });
   }
 
-  const translated = translateServerMessage(body.error) ?? translateServerMessage(body.message);
+  // The server's own wording when it is known or already French (in French);
+  // otherwise the message for its stable error code (e.g. in English).
+  const translated = translateServerMessage(body.error) ?? translateServerMessage(body.message)
+    ?? (code && CODE_MESSAGES[code] ? t(CODE_MESSAGES[code]) : null);
   const isConflictStatus = status === 409 && (!translated || translated === MESSAGES.conflict);
   return new ApiError({
     status, code,
-    title: isConflictStatus ? "Données modifiées" : TITLES[status] ?? (status >= 500 ? "Erreur du serveur" : "Opération impossible"),
+    title: isConflictStatus ? t("apiErrors.titles.dataChanged") : title(status) ?? t(status >= 500 ? "apiErrors.titles.server" : "apiErrors.titles.impossible"),
     message: status >= 500 && status !== 503 ? fallbackMessage(status) : translated ?? fallbackMessage(status),
   });
 }
@@ -179,15 +202,15 @@ export async function apiErrorFromResponse(response: Response): Promise<ApiError
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) return error;
   if (error && typeof error === "object" && (error as { name?: string }).name === "AbortError") {
-    return new ApiError({ status: 0, title: "Délai dépassé", message: MESSAGES.timeout, code: "TIMEOUT" });
+    return new ApiError({ status: 0, title: t("apiErrors.titles.timeout"), message: MESSAGES.timeout, code: "TIMEOUT" });
   }
   if (error instanceof TypeError) {
-    return new ApiError({ status: 0, title: TITLES[0], message: MESSAGES.network, code: "NETWORK" });
+    return new ApiError({ status: 0, title: title(0)!, message: MESSAGES.network, code: "NETWORK" });
   }
-  // A plain Error raised by page code may already carry a French message.
+  // A plain Error raised by page code may already carry a user-facing message.
   const translated = error instanceof Error ? translateServerMessage(error.message) : translateServerMessage(error);
-  if (translated) return new ApiError({ status: -1, title: "Opération impossible", message: translated });
-  return new ApiError({ status: -1, title: "Erreur inattendue", message: MESSAGES.unexpected });
+  if (translated) return new ApiError({ status: -1, title: t("apiErrors.titles.impossible"), message: translated });
+  return new ApiError({ status: -1, title: t("apiErrors.titles.unexpected"), message: MESSAGES.unexpected });
 }
 
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {

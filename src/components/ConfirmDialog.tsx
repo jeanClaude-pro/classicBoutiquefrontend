@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 export type ConfirmVariant = "primary" | "danger" | "warning";
 
@@ -44,9 +45,10 @@ const VARIANT = {
 const FOCUSABLE = 'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 export function ConfirmDialog({
-  open, title, message, details, consequences, confirmLabel, pendingLabel, cancelLabel = "Annuler",
+  open, title, message, details, consequences, confirmLabel, pendingLabel, cancelLabel,
   variant = "primary", loading = false, disabled = false, error, reason, onConfirm, onCancel,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
   const panelRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
@@ -121,7 +123,7 @@ export function ConfirmDialog({
         <div className="confirm-dialog-header">
           <span className={`confirm-dialog-icon ${style.iconClass}`} aria-hidden="true"><Icon className="h-5 w-5" /></span>
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="confirm-dialog-close" onClick={onCancel} disabled={loading} aria-label="Fermer la fenêtre"><X className="h-5 w-5" /></button>
+          <button type="button" className="confirm-dialog-close" onClick={onCancel} disabled={loading} aria-label={t("system.closeWindow")}><X className="h-5 w-5" /></button>
         </div>
 
         <div className="confirm-dialog-body" id={bodyId}>
@@ -165,7 +167,7 @@ export function ConfirmDialog({
 
         <div className="confirm-dialog-actions">
           <button ref={cancelRef} type="button" onClick={onCancel} disabled={loading} className="confirm-dialog-cancel">
-            {cancelLabel}
+            {cancelLabel ?? t("common.cancel")}
           </button>
           <button
             ref={confirmRef}

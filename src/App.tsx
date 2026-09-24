@@ -10,6 +10,7 @@ import {
   useLocation,
 } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
+import { useTranslation } from "react-i18next";
 import "react-toastify/dist/ReactToastify.css";
 
 import Sidebar from "./components/Sidebar";
@@ -38,7 +39,8 @@ const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
 const Remboursements = lazy(() => import("./pages/Remboursements"));
 
 function RouteLoading() {
-  return <div className="route-loading" role="status" aria-live="polite"><span className="route-loading-spinner" /><span>Chargement…</span></div>;
+  const { t } = useTranslation();
+  return <div className="route-loading" role="status" aria-live="polite"><span className="route-loading-spinner" /><span>{t("common.loading")}</span></div>;
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {

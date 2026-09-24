@@ -1,15 +1,8 @@
 import type { Category } from "../../types";
+import { productStatusLabel } from "../../lib/labels";
 
-export const getProductStatus = (status: string) => {
-    switch (status) {
-        case 'active':
-            return 'Active';
-        case 'inactive':
-            return 'Inactive';
-        default:
-            return 'Unknown';
-    }
-}
+/** Display label for a stored product status, in the interface language. */
+export const getProductStatus = (status: string) => productStatusLabel(status);
 
 // Product categories are seeded server-side (see server/scripts/seedCategories.js)
 // and fetched live via CategoriesDropdown / GET /api/categories, not hardcoded here.

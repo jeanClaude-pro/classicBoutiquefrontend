@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import { ConfirmDialog, type ConfirmDetail, type ConfirmVariant } from "../components/ConfirmDialog";
+import { t } from "../i18n";
 import { toApiError, type ApiError } from "../lib/apiError";
 import { notifyError, notifySuccess } from "../lib/notify";
 
@@ -60,7 +61,7 @@ export function useConfirmAction(): ConfirmActionController {
     const pending = current;
     if (!pending || running.current) return;
     if (pending.reason?.required && !reason.trim()) {
-      setError({ title: "Information manquante", message: `${pending.reason.label} est obligatoire.` });
+      setError({ title: t("system.missingInfo"), message: t("system.fieldRequired", { field: pending.reason.label }) });
       return;
     }
     running.current = true;
@@ -97,9 +98,9 @@ export function useConfirmAction(): ConfirmActionController {
       message={current?.message}
       details={current?.details}
       consequences={current?.consequences}
-      confirmLabel={current?.confirmLabel ?? "Confirmer"}
+      confirmLabel={current?.confirmLabel ?? t("common.confirm")}
       pendingLabel={current?.pendingLabel}
-      cancelLabel={error ? "Fermer" : current?.cancelLabel}
+      cancelLabel={error ? t("common.close") : current?.cancelLabel}
       variant={current?.variant}
       loading={loading}
       error={error}

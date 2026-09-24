@@ -2,6 +2,7 @@
 
 import { formatDateGMT2, formatDateTimeGMT2 } from "../../utils/dateUtils";
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { serverUrl } from "../../utils/constants";
 import { formatUSD } from "../../utils/salePricing";
 import { requestJson, toApiError } from "../../lib/apiError";
@@ -35,6 +36,7 @@ interface Customer {
 }
 
 export default function Customers() {
+  const { t } = useTranslation();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -86,13 +88,13 @@ export default function Customers() {
   };
 
   const formatDate = (dateString: string) => {
-    if (!dateString || dateString === "null" || dateString === "undefined") return "N/A";
-    return formatDateGMT2(dateString) || "N/A";
+    if (!dateString || dateString === "null" || dateString === "undefined") return t("common.notAvailable");
+    return formatDateGMT2(dateString) || t("common.notAvailable");
   };
 
   const formatDateTime = (dateString: string) => {
-    if (!dateString || dateString === "null" || dateString === "undefined") return "N/A";
-    return formatDateTimeGMT2(dateString) || "N/A";
+    if (!dateString || dateString === "null" || dateString === "undefined") return t("common.notAvailable");
+    return formatDateTimeGMT2(dateString) || t("common.notAvailable");
   };
 
   const recalculateCustomerStats = async (customerId: string) => {
@@ -100,7 +102,7 @@ export default function Customers() {
       setRecalculating(customerId);
       await requestJson(`${serverUrl}/customers/${customerId}/recalculate`, { method: "POST" });
       await fetchCustomers();
-      notifySuccess("Statistiques du client recalculées avec succès.");
+      notifySuccess(t("customers.recalculated"));
     } catch (error) {
       notifyError(error);
     } finally {
@@ -128,9 +130,9 @@ export default function Customers() {
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Shield className="w-8 h-8 text-red-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Accès Refusé</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{t("customers.accessDenied")}</h2>
           <p className="text-gray-500 text-sm">
-            Cette section est réservée aux administrateurs uniquement.
+            {t("customers.adminOnly")}
           </p>
         </div>
       </div>
@@ -151,7 +153,7 @@ export default function Customers() {
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            {refreshing ? "Actualisation..." : "Actualiser"}
+            {refreshing ? t("common.refreshing") : t("common.refresh")}
           </button>
         </div>
       </div>
@@ -162,7 +164,8 @@ export default function Customers() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="rechercher les clients..."
+              placeholder={t("customers.searchPlaceholder")}
+              aria-label={t("customers.searchLabel")}
               className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -173,7 +176,7 @@ export default function Customers() {
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-blue-600" />
             <div>
-              <p className="text-sm text-gray-600">Nombre Total de Clients</p>
+              <p className="text-sm text-gray-600">{t("customers.totalCustomers")}</p>
               <p className="text-xl font-semibold text-gray-900">{customers.length}</p>
             </div>
           </div>
@@ -182,12 +185,12 @@ export default function Customers() {
           <div className="flex items-center gap-2">
             <DollarSign className="w-5 h-5 text-green-600" />
             <div>
-              <p className="text-sm text-gray-600">Total des achats clients</p>
+              <p className="text-sm text-gray-600">{t("customers.totalPurchases")}</p>
               <p className="text-xl font-semibold text-gray-900">
                 {formatUSD(calculateTotalRevenue())}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                {customers.filter((c) => c.totalSpent > 0).length} clients actifs
+                {t("customers.activeCustomers", { count: customers.filter((c) => c.totalSpent > 0).length })}
               </p>
             </div>
           </div>
@@ -204,12 +207,10 @@ export default function Customers() {
             <AlertCircle className="w-5 h-5 text-yellow-600" />
             <div>
               <p className="text-sm font-medium text-yellow-800">
-                Attention: Statistiques potentiellement inexactes
+                {t("customers.warningTitle")}
               </p>
               <p className="text-sm text-yellow-700">
-                Certaines statistiques clients peuvent être incorrectes suite à
-                des modifications de ventes. Utilisez "Recalculer les
-                statistiques" pour corriger.
+                {t("customers.warningText")}
               </p>
             </div>
           </div>
@@ -220,7 +221,7 @@ export default function Customers() {
         <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Users className="w-5 h-5" />
-            Répertoire clients ({filteredCustomers.length})
+            {t("customers.directory", { count: filteredCustomers.length })}
           </h2>
           <button
             onClick={refreshCustomers}
@@ -228,7 +229,7 @@ export default function Customers() {
             className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Actualiser
+            {t("common.refresh")}
           </button>
         </div>
 
@@ -236,43 +237,43 @@ export default function Customers() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Chargement des clients...</p>
+              <p className="text-gray-500 mt-2">{t("customers.loading")}</p>
             </div>
           ) : loadError ? (
             <div className="m-4 flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800" role="alert">
               <AlertCircle className="mt-0.5 h-5 w-5 flex-none" />
               <div>
-                <p className="font-semibold">Impossible de charger les clients</p>
+                <p className="font-semibold">{t("customers.loadFailed")}</p>
                 <p className="mt-1">{loadError}</p>
-                <button type="button" onClick={refreshCustomers} className="mt-3 rounded-lg bg-red-600 px-3 py-2 font-semibold text-white hover:bg-red-700">Réessayer</button>
+                <button type="button" onClick={refreshCustomers} className="mt-3 rounded-lg bg-red-600 px-3 py-2 font-semibold text-white hover:bg-red-700">{t("common.retry")}</button>
               </div>
             </div>
           ) : filteredCustomers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Aucun client trouvé</p>
+              <p>{t("customers.noneFound")}</p>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Client
+                    {t("customers.columns.customer")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Contact
+                    {t("customers.columns.contact")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Nombre d'achats
+                    {t("customers.columns.purchases")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Montant total dépensé
+                    {t("customers.columns.totalSpent")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Dernier Achat
+                    {t("customers.columns.lastPurchase")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t("common.actions")}
                   </th>
                 </tr>
               </thead>
@@ -293,7 +294,7 @@ export default function Customers() {
                             {customer.name}
                           </div>
                           <div className="text-sm text-gray-500">
-                            Client depuis {formatDate(customer.createdAt)}
+                            {t("customers.since", { date: formatDate(customer.createdAt) })}
                           </div>
                         </div>
                       </div>
@@ -329,7 +330,8 @@ export default function Customers() {
                         <button
                           onClick={() => viewCustomerDetails(customer)}
                           className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                          title="Voir les détails du client"
+                          title={t("customers.viewDetails")}
+                          aria-label={t("customers.viewDetails")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -337,7 +339,8 @@ export default function Customers() {
                           onClick={() => recalculateCustomerStats(customer._id)}
                           disabled={recalculating === customer._id}
                           className="text-green-600 hover:text-green-900 p-1 rounded disabled:opacity-50"
-                          title="Recalculer les statistiques"
+                          title={t("customers.recalculate")}
+                          aria-label={t("customers.recalculate")}
                         >
                           <RefreshCw
                             className={`w-4 h-4 ${
@@ -361,9 +364,10 @@ export default function Customers() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">Détails du client</h3>
+              <h3 className="text-lg font-semibold text-gray-900">{t("customers.details")}</h3>
               <button
                 onClick={() => setShowModal(false)}
+                aria-label={t("common.close")}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -382,14 +386,14 @@ export default function Customers() {
                 <div>
                   <h4 className="text-xl font-semibold text-gray-900">{selectedCustomer.name}</h4>
                   <p className="text-gray-600">
-                    Client depuis {formatDate(selectedCustomer.createdAt)}
+                    {t("customers.since", { date: formatDate(selectedCustomer.createdAt) })}
                   </p>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <span className="block text-sm font-medium text-gray-700 mb-1">Numéro de téléphone</span>
+                  <span className="block text-sm font-medium text-gray-700 mb-1">{t("customers.phoneNumber")}</span>
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4 text-gray-400" />
                     <span className="text-sm text-gray-900">{selectedCustomer.phone || "—"}</span>
@@ -397,7 +401,7 @@ export default function Customers() {
                 </div>
                 {selectedCustomer.email && (
                   <div>
-                    <span className="block text-sm font-medium text-gray-700 mb-1">Email</span>
+                    <span className="block text-sm font-medium text-gray-700 mb-1">{t("common.email")}</span>
                     <div className="flex items-center gap-2">
                       <Mail className="w-4 h-4 text-gray-400" />
                       <span className="text-sm text-gray-900">{selectedCustomer.email}</span>
@@ -411,7 +415,7 @@ export default function Customers() {
                   <div className="flex items-center gap-2">
                     <ShoppingBag className="w-5 h-5 text-blue-600" />
                     <div>
-                      <p className="text-sm text-blue-600">Nombre total d'achats</p>
+                      <p className="text-sm text-blue-600">{t("customers.purchaseCount")}</p>
                       <p className="text-xl font-semibold text-blue-900">{selectedCustomer.totalPurchases}</p>
                     </div>
                   </div>
@@ -420,7 +424,7 @@ export default function Customers() {
                   <div className="flex items-center gap-2">
                     <DollarSign className="w-5 h-5 text-green-600" />
                     <div>
-                      <p className="text-sm text-green-600">Somme dépensée</p>
+                      <p className="text-sm text-green-600">{t("customers.amountSpent")}</p>
                       <p className="text-xl font-semibold text-green-900">
                         {formatUSD(selectedCustomer.totalSpent)}
                       </p>
@@ -431,7 +435,7 @@ export default function Customers() {
                   <div className="flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-purple-600" />
                     <div>
-                      <p className="text-sm text-purple-600">Premier Achat</p>
+                      <p className="text-sm text-purple-600">{t("customers.firstPurchase")}</p>
                       <p className="text-sm font-semibold text-purple-900">
                         {formatDateTime(selectedCustomer.firstPurchaseDate)}
                       </p>
@@ -442,7 +446,7 @@ export default function Customers() {
                   <div className="flex items-center gap-2">
                     <Calendar className="w-5 h-5 text-orange-600" />
                     <div>
-                      <p className="text-sm text-orange-600">Dernier Achat</p>
+                      <p className="text-sm text-orange-600">{t("customers.columns.lastPurchase")}</p>
                       <p className="text-sm font-semibold text-orange-900">
                         {formatDateTime(selectedCustomer.lastPurchaseDate)}
                       </p>
@@ -457,13 +461,13 @@ export default function Customers() {
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
                 >
                   <RefreshCw className="w-4 h-4" />
-                  Recalculer les Statistiques
+                  {t("customers.recalculateButton")}
                 </button>
                 <button
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>

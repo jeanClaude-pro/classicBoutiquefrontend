@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { toast } from 'react-toastify'
 import { registerSW } from 'virtual:pwa-register'
+import { t } from './i18n'
 import './lib/authFetchInterceptor'
 import './index.css'
 import './design-system.css'
@@ -15,7 +16,7 @@ const updateSW = registerSW({
   onNeedRefresh() {
     toast.info(
       <div className="space-y-3">
-        <p>Une nouvelle version de l'application est disponible.</p>
+        <p>{t('system.updateAvailable')}</p>
         <button
           type="button"
           className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
@@ -24,7 +25,7 @@ const updateSW = registerSW({
             void updateSW(true)
           }}
         >
-          Mettre à jour
+          {t('system.update')}
         </button>
       </div>,
       {
@@ -41,7 +42,7 @@ const updateSW = registerSW({
 })
 
 const showOfflineToast = () => {
-  toast.warning('Mode hors ligne — certaines données peuvent être indisponibles.', {
+  toast.warning(t('system.offline'), {
     toastId: offlineToastId,
     autoClose: 4500,
   })
@@ -58,7 +59,7 @@ window.addEventListener('offline', showOfflineToast)
 
 window.addEventListener('online', () => {
   toast.dismiss(offlineToastId)
-  toast.success('Connexion rétablie')
+  toast.success(t('system.backOnline'))
 })
 
 if (!navigator.onLine) {

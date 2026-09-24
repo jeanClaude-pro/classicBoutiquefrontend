@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { serverUrl } from "../utils/constants";
 import type { Category } from "../types";
 
@@ -14,6 +15,7 @@ const CategoriesDropdown = ({
   selectedCategory,
   setSelectedCategory,
 }: Props) => {
+  const { t } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -46,7 +48,7 @@ const CategoriesDropdown = ({
   };
 
   return loading ? (
-    <p className="text-sm text-gray-600">Chargement des catégories…</p>
+    <p className="text-sm text-gray-600">{t("categoriesDropdown.loading")}</p>
   ) : (
     <select
       id={id}
@@ -54,7 +56,7 @@ const CategoriesDropdown = ({
       onChange={handleChange}
       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
     >
-      <option value="">Selectionner La Categorie</option>
+      <option value="">{t("categoriesDropdown.placeholder")}</option>
       {categories.map((category) => (
         <option key={category._id} value={category.name}>
           {category.name}

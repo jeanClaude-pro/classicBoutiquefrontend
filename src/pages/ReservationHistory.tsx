@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from "react";
-import { requestJson } from "../lib/apiError";
+import { useTranslation } from "react-i18next";
+import { currentLocale } from "../i18n";
+import { apiErrorFromPayload, requestJson } from "../lib/apiError";
 import { notifyInfo } from "../lib/notify";
 import { completeReservationCopy, deleteSaleCopy, revertReservationCopy } from "../lib/confirmationCopy";
 import { useConfirmAction } from "../hooks/useConfirmAction";
@@ -105,6 +107,7 @@ interface ReservationSummary {
 const API_BASE = serverUrl;
 
 export default function ReservationManagement() {
+  const { t } = useTranslation();
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,17 +193,17 @@ export default function ReservationManagement() {
           setSummary(data.summary || null);
         } else {
           console.warn("❌ Invalid data format from API");
-          setError("Format de données invalide reçu de l'API");
+          setError(t("reservationHistory.invalidFormat"));
           setReservations([]);
         }
       } else {
         console.error("❌ Reservations endpoint failed, status:", response.status);
-        setError("Impossible de charger les réservations");
+        setError(t("reservationHistory.loadFailed"));
         setReservations([]);
       }
     } catch (error) {
       console.error("❌ Error loading reservations:", error);
-      setError("Échec du chargement des réservations");
+      setError(t("reservationHistory.loadError"));
       setReservations([]);
     } finally {
       setLoading(false);
@@ -260,12 +263,12 @@ export default function ReservationManagement() {
 
   const formatDate = (dateString: string) => {
     const result = formatDateGMT2(dateString);
-    return result === '—' ? "Date invalide" : result;
+    return result === '—' ? t("common.invalidDate") : result;
   };
 
   const formatDateTime = (dateString: string) => {
     const result = formatDateTimeGMT2(dateString);
-    return result === '—' ? "Date invalide" : result;
+    return result === '—' ? t("common.invalidDate") : result;
   };
 
   // NEW: Improved function to display reservation date properly
@@ -305,7 +308,7 @@ export default function ReservationManagement() {
       }
     }
     
-    return "Heure non spécifiée";
+    return t("reservationHistory.timeNotSpecified");
   };
 
   const viewReservationDetails = (reservation: Reservation) => {
@@ -361,13 +364,13 @@ export default function ReservationManagement() {
   // EDIT FUNCTIONALITY
   const openEditModal = async (reservation: Reservation) => {
     if (reservation.status === 'cancelled') {
-      setError("Impossible de modifier une réservation annulée");
+      setError(t("reservationHistory.cannotEditCancelled"));
       return;
     }
 
     // Only admin can edit completed reservations
     if (reservation.status === 'completed' && userRole !== 'superadmin') {
-      setError("Seul l'administrateur peut modifier une réservation complétée");
+      setError(t("reservationHistory.onlyAdminEditCompleted"));
       return;
     }
 
@@ -414,7 +417,7 @@ export default function ReservationManagement() {
     );
 
     if (product && newQuantity > product.stock + updatedItems[index].quantity) {
-      setError(`Stock insuffisant. Disponible: ${product.stock}`);
+      setError(t("reservationHistory.insufficientStock", { stock: product.stock }));
       return;
     }
 
@@ -456,7 +459,7 @@ export default function ReservationManagement() {
 
   const addNewItem = () => {
     if (products.length === 0) {
-      setError("Aucun produit disponible. Veuillez actualiser les produits d'abord.");
+      setError(t("reservationHistory.noProducts"));
       return;
     }
 
@@ -482,7 +485,7 @@ export default function ReservationManagement() {
   const updateItemProduct = (index: number, productId: string) => {
     const product = products.find((p) => p._id === productId);
     if (!product) {
-      setError("Produit sélectionné non trouvé");
+      setError(t("reservationHistory.productNotFound"));
       return;
     }
 
@@ -513,17 +516,17 @@ export default function ReservationManagement() {
     if (!editingReservation) return;
 
     if (editForm.items.length === 0) {
-      setError("La réservation doit contenir au moins un article");
+      setError(t("reservationHistory.needItem"));
       return;
     }
 
     if (!editForm.customer.name || !editForm.customer.phone) {
-      setError("Le nom et le téléphone du client sont requis");
+      setError(t("reservationHistory.needCustomer"));
       return;
     }
 
     if (!editForm.reason) {
-      setError("Veuillez fournir une raison pour la modification de cette réservation");
+      setError(t("reservationHistory.needReason"));
       return;
     }
 
@@ -578,7 +581,7 @@ export default function ReservationManagement() {
         const updatedReservation = await response.json();
         console.log("Updated reservation:", updatedReservation);
 
-        setMessage("✅ Réservation mise à jour avec succès");
+        setMessage(t("reservationHistory.updated"));
 
         // Refresh the reservations list immediately
         await fetchReservations();
@@ -588,14 +591,11 @@ export default function ReservationManagement() {
       } else {
         const errorData = await response.json();
         console.error("Update error:", errorData);
-        setError(
-          errorData.error ||
-            `Échec de la mise à jour de la réservation: ${response.status} ${response.statusText}`
-        );
+        setError(apiErrorFromPayload(response.status, errorData).message);
       }
     } catch (error) {
       console.error("Error updating reservation:", error);
-      setError("Échec de la mise à jour de la réservation. Veuillez vérifier votre connexion.");
+      setError(t("reservationHistory.updateNetworkError"));
     } finally {
       setLoading(false);
     }
@@ -608,7 +608,7 @@ export default function ReservationManagement() {
   const printReservationReceipt = (reservation: Reservation) => {
     const printWindow = window.open("", "_blank", "width=320,height=600");
     if (printWindow) {
-      const username = localStorage.getItem("username") || "VENDEUR";
+      const username = localStorage.getItem("username") || t("reservationHistory.seller");
       const currentDate = formatNowGMT2();
       
       const isCompleted = reservation.status === 'completed';
@@ -616,7 +616,7 @@ export default function ReservationManagement() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Reçu Réservation</title>
+    <title>${t("resHistoryReceipt.title")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -843,36 +843,36 @@ export default function ReservationManagement() {
       <div class="header">
         <div class="shop-name"><strong>ETS DOUBLE M CLASSIC BOUTIQUE</strong></div>
         <div class="shop-details"><strong>780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi</strong></div>
-        <div class="shop-details">TEL: <strong>+243 836 017 031</strong></div>
+        <div class="shop-details">${t("saleReceipt.tel")}: <strong>+243 836 017 031</strong></div>
         <div class="shop-details"><strong>LSH/RCCM/22-A-01266</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="status-badge">
-        <strong>${isCompleted ? '✅ RÉSERVATION RÉCUPÉRÉE ✅' : '⏳ RÉSERVATION EN ATTENTE ⏳'}</strong>
+        <strong>${isCompleted ? t("resHistoryReceipt.collected") : t("resHistoryReceipt.pending")}</strong>
       </div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${currentDate}</strong></div>
-        <div class="shop-details">RESERVATION #: <strong>${reservation.saleId}</strong></div>
+        <div class="shop-details">${t("saleReceipt.date")}: <strong>${currentDate}</strong></div>
+        <div class="shop-details">${t("resHistoryReceipt.reservationNo")}: <strong>${reservation.saleId}</strong></div>
       </div>
       
       <div class="customer-info">
-        <div class="customer-field">CLIENT: <strong>${reservation.customer.name.toUpperCase()}</strong></div>
-        <div class="customer-field">TELEPHONE: <strong>${reservation.customer.phone}</strong></div>
+        <div class="customer-field">${t("saleReceipt.customer")}: <strong>${reservation.customer.name.toUpperCase()}</strong></div>
+        <div class="customer-field">${t("saleReceipt.phone")}: <strong>${reservation.customer.phone}</strong></div>
         ${reservation.customer.email ? `
-          <div class="customer-field">EMAIL: <strong>${reservation.customer.email}</strong></div>
+          <div class="customer-field">${t("reservationReceipt.email")}: <strong>${reservation.customer.email}</strong></div>
         ` : ''}
       </div>
       
       ${reservation.notes ? `
         <div class="notes">
-          <strong>NOTES:</strong> <strong>${reservation.notes}</strong>
+          <strong>${t("reservationReceipt.notes")}:</strong> <strong>${reservation.notes}</strong>
         </div>
       ` : ''}
       
-      <div class="receipt-title">ARTICLES RÉSERVÉS</div>
+      <div class="receipt-title">${t("reservationReceipt.items")}</div>
       
       <div class="items-section">
       ${reservation.items
@@ -881,13 +881,13 @@ export default function ReservationManagement() {
         <div class="item-row">
           <div class="item-name"><strong>${item.name}</strong></div>
           <div class="item-details">
-            <strong>${item.quantity}Pcs × ${item.enteredCurrency === "FC" && item.enteredPrice !== undefined ? `${item.enteredPrice.toLocaleString("fr-FR")} FC` : `$${(item.enteredPrice ?? item.price).toFixed(2)}`}</strong>
+            <strong>${item.quantity}${t("resHistoryReceipt.pcs")} × ${item.enteredCurrency === "FC" && item.enteredPrice !== undefined ? `${item.enteredPrice.toLocaleString(currentLocale())} FC` : `$${(item.enteredPrice ?? item.price).toFixed(2)}`}</strong>
           </div>
         </div>
         <div class="item-row">
-          <div class="item-name"><strong>Sous-total</strong></div>
+          <div class="item-name"><strong>${t("resHistoryReceipt.subtotal")}</strong></div>
           <div class="item-details">
-            <strong>${item.enteredCurrency === "FC" && item.enteredPrice !== undefined ? `${(item.enteredPrice * item.quantity).toLocaleString("fr-FR")} FC<br/>Équiv. USD: $${((item.priceUSD ?? item.price) * item.quantity).toFixed(2)}` : `$${item.total.toFixed(2)}`}</strong>
+            <strong>${item.enteredCurrency === "FC" && item.enteredPrice !== undefined ? `${(item.enteredPrice * item.quantity).toLocaleString(currentLocale())} FC<br/>${t("resHistoryReceipt.usdEquivalent")}: $${((item.priceUSD ?? item.price) * item.quantity).toFixed(2)}` : `$${item.total.toFixed(2)}`}</strong>
           </div>
         </div>
       `
@@ -897,36 +897,36 @@ export default function ReservationManagement() {
       
       <div class="total-section">
         <div class="total-row">
-          <div><strong>MONTANT TOTAL:</strong></div>
+          <div><strong>${t("resHistoryReceipt.totalAmount")}:</strong></div>
           <div><strong>$${reservation.total.toFixed(2)}</strong></div>
         </div>
         <div class="total-row">
-          <div><strong>ACOMPTE PERÇU:</strong></div>
+          <div><strong>${t("reservationReceipt.depositReceived")}:</strong></div>
           <div><strong>$${reservation.total.toFixed(2)}</strong></div>
         </div>
         <div class="total-row">
-          <div><strong>MÉTHODE PAIEMENT:</strong></div>
-          <div class="payment-method"><strong>${reservation.paymentMethod.toUpperCase()}</strong></div>
+          <div><strong>${t("receipt.paymentMethod")}:</strong></div>
+          <div class="payment-method"><strong>${paymentMethodLabel(reservation.paymentMethod).toUpperCase()}</strong></div>
         </div>
       </div>
       
       <div class="status-info">
-        <div><strong>${isCompleted ? 'RÉSERVATION COMPLÉTÉE AVEC SUCCÈS' : 'RÉSERVATION EN ATTENTE DE RETRAIT'}</strong></div>
-        <div><strong>${isCompleted ? 'Tous les articles ont été remis au client' : 'Présentez ce reçu pour retirer vos articles'}</strong></div>
-        <div><strong>${isCompleted ? `Date retrait: ${currentDate}` : `Date réservation: ${displayReservationDate(reservation)}`}</strong></div>
+        <div><strong>${isCompleted ? t("resHistoryReceipt.completedTitle") : t("resHistoryReceipt.pendingTitle")}</strong></div>
+        <div><strong>${isCompleted ? t("resHistoryReceipt.handedOver") : t("resHistoryReceipt.present")}</strong></div>
+        <div><strong>${isCompleted ? t("resHistoryReceipt.pickupDate", { date: currentDate }) : t("resHistoryReceipt.reservationDate", { date: displayReservationDate(reservation) })}</strong></div>
       </div>
       
       <div class="sales-person">
-        Agent: <strong>${username.toUpperCase()}</strong>
+        ${t("saleReceipt.agent")}: <strong>${username.toUpperCase()}</strong>
       </div>
       
       <div class="footer">
-        <div class="thank-you"><strong>${isCompleted ? 'RETRAIT EFFECTUÉ AVEC SUCCÈS !' : 'MERCI POUR VOTRE RÉSERVATION !'}</strong></div>
+        <div class="thank-you"><strong>${isCompleted ? t("resHistoryReceipt.pickedUp") : t("reservationReceipt.thanks")}</strong></div>
         ${!isCompleted ? `
-          <div class="warning"><strong>Validité: 7 jours</strong></div>
-          <div class="warning"><strong>Non remboursable</strong></div>
+          <div class="warning"><strong>${t("reservationReceipt.validity")}</strong></div>
+          <div class="warning"><strong>${t("saleReceipt.noRefund")}</strong></div>
         ` : ''}
-        <div class="warning"><strong>À BIENTÔT !</strong></div>
+        <div class="warning"><strong>${t("resHistoryReceipt.seeYou")}</strong></div>
       </div>
 
       <div class="cut-line">
@@ -976,12 +976,12 @@ export default function ReservationManagement() {
         <div className="flex gap-3 items-center">
           <div className="bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
             <div className="text-sm text-blue-600 font-medium">
-              En attente: <span className="font-bold">{summary?.pending ?? pendingReservations.length}</span>
+              {t("reservationHistory.pendingCount")} <span className="font-bold">{summary?.pending ?? pendingReservations.length}</span>
             </div>
           </div>
           <div className="bg-green-50 px-4 py-2 rounded-lg border border-green-200">
             <div className="text-sm text-green-600 font-medium">
-              Complétées: <span className="font-bold">{completedReservations.length}</span>
+              {t("reservationHistory.completedCount")} <span className="font-bold">{completedReservations.length}</span>
             </div>
           </div>
         </div>
@@ -991,15 +991,15 @@ export default function ReservationManagement() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="text-2xl font-bold text-blue-600">{summary?.totalReservations ?? reservations.length}</div>
-          <div className="text-sm text-gray-600">Total Réservations</div>
+          <div className="text-sm text-gray-600">{t("reservationHistory.totalReservations")}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="text-2xl font-bold text-orange-600">{summary?.pending ?? pendingReservations.length}</div>
-          <div className="text-sm text-gray-600">En Attente</div>
+          <div className="text-sm text-gray-600">{t("reservationHistory.pending")}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="text-2xl font-bold text-green-600">{summary?.completed ?? completedReservations.length}</div>
-          <div className="text-sm text-gray-600">Complétées</div>
+          <div className="text-sm text-gray-600">{t("reservationHistory.completed")}</div>
         </div>
         <div className="bg-white p-4 rounded-lg shadow border">
           <div className="text-2xl font-bold text-purple-600">
@@ -1011,7 +1011,7 @@ export default function ReservationManagement() {
               0
             )}
           </div>
-          <div className="text-sm text-gray-600">Articles Réservés</div>
+          <div className="text-sm text-gray-600">{t("reservationHistory.reservedItems")}</div>
         </div>
       </div>
 
@@ -1022,6 +1022,7 @@ export default function ReservationManagement() {
           <button
             onClick={() => setMessage(null)}
             className="float-right text-green-700 hover:text-green-900"
+            aria-label={t("reservationHistory.dismiss")}
           >
             ×
           </button>
@@ -1034,6 +1035,7 @@ export default function ReservationManagement() {
           <button
             onClick={() => setError(null)}
             className="float-right text-red-700 hover:text-red-900"
+            aria-label={t("reservationHistory.dismiss")}
           >
             ×
           </button>
@@ -1047,7 +1049,8 @@ export default function ReservationManagement() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Rechercher par ID, client, téléphone..."
+              placeholder={t("reservationHistory.searchPlaceholder")}
+              aria-label={t("reservationHistory.searchLabel")}
               className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1057,11 +1060,12 @@ export default function ReservationManagement() {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as any)}
+            aria-label={t("reservationHistory.statusFilter")}
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
-            <option value="all">Toutes les réservations</option>
-            <option value="pending">En attente seulement</option>
-            <option value="completed">Complétées seulement</option>
+            <option value="all">{t("reservationHistory.filters.all")}</option>
+            <option value="pending">{t("reservationHistory.filters.pending")}</option>
+            <option value="completed">{t("reservationHistory.filters.completed")}</option>
           </select>
 
           <div className="flex gap-2">
@@ -1071,7 +1075,7 @@ export default function ReservationManagement() {
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 disabled:opacity-50"
             >
               <RefreshCw className="w-4 h-4" />
-              {loading ? "Chargement..." : "Actualiser"}
+              {loading ? t("reservationHistory.loadingShort") : t("common.refresh")}
             </button>
           </div>
         </div>
@@ -1082,7 +1086,7 @@ export default function ReservationManagement() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-5 h-5" />
-            Liste des Réservations ({filteredReservations.length})
+            {t("reservationHistory.list", { count: filteredReservations.length })}
           </h2>
         </div>
 
@@ -1090,14 +1094,14 @@ export default function ReservationManagement() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Chargement des réservations...</p>
+              <p className="text-gray-500 mt-2">{t("reservationHistory.loading")}</p>
             </div>
           ) : filteredReservations.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <Calendar className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Aucune réservation trouvée</p>
+              <p>{t("reservationHistory.noneFound")}</p>
               <p className="text-sm">
-                Aucune réservation ne correspond à vos critères de recherche
+                {t("reservationHistory.noneFoundHint")}
               </p>
             </div>
           ) : (
@@ -1105,25 +1109,25 @@ export default function ReservationManagement() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID Réservation
+                    {t("reservationHistory.columns.id")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Client
+                    {t("reservationHistory.columns.customer")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date Réservation
+                    {t("reservationHistory.columns.date")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Articles
+                    {t("reservationHistory.columns.items")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Montant
+                    {t("reservationHistory.columns.amount")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
+                    {t("reservationHistory.columns.status")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t("common.actions")}
                   </th>
                 </tr>
               </thead>
@@ -1150,7 +1154,7 @@ export default function ReservationManagement() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {reservation.items.length} article(s)
+                      {t("reservationHistory.itemCount", { count: reservation.items.length })}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {formatUSD(reservation.total)}
@@ -1163,7 +1167,7 @@ export default function ReservationManagement() {
                             : 'bg-orange-100 text-orange-800'
                         }`}
                       >
-                        {reservation.status === 'completed' ? 'Complétée' : 'En Attente'}
+                        {reservation.status === 'completed' ? t("reservationHistory.statusCompleted") : t("reservationHistory.statusPending")}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -1171,7 +1175,8 @@ export default function ReservationManagement() {
                         <button
                           onClick={() => viewReservationDetails(reservation)}
                           className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                          title="Voir les détails"
+                          title={t("reservationHistory.viewDetails")}
+                          aria-label={t("reservationHistory.viewDetails")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -1179,7 +1184,8 @@ export default function ReservationManagement() {
                         <button
                           onClick={() => printReservationReceipt(reservation)}
                           className="text-purple-600 hover:text-purple-900 p-1 rounded"
-                          title="Imprimer le reçu"
+                          title={t("reservationHistory.printReceipt")}
+                          aria-label={t("reservationHistory.printReceipt")}
                         >
                           <Printer className="w-4 h-4" />
                         </button>
@@ -1194,7 +1200,8 @@ export default function ReservationManagement() {
                                 ? "text-gray-400 cursor-not-allowed"
                                 : "text-yellow-600 hover:text-yellow-900"
                             }`}
-                            title="Modifier la réservation"
+                            title={t("reservationHistory.edit")}
+                            aria-label={t("reservationHistory.edit")}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
@@ -1205,7 +1212,8 @@ export default function ReservationManagement() {
                           <button
                             onClick={() => handleDeleteReservation(reservation)}
                             className="text-red-600 hover:text-red-900 p-1 rounded"
-                            title="Supprimer la réservation"
+                            title={t("reservationHistory.delete")}
+                            aria-label={t("reservationHistory.delete")}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1218,7 +1226,8 @@ export default function ReservationManagement() {
                                 onClick={() => openCompletionDialog(reservation)}
                                 disabled={loading || confirmAction.busy}
                                 className="text-green-600 hover:text-green-900 p-1 rounded disabled:opacity-50"
-                                title="Terminer la réservation"
+                                title={t("reservationHistory.complete")}
+                                aria-label={t("reservationHistory.complete")}
                               >
                                 <CheckCircle className="w-4 h-4" />
                               </button>
@@ -1227,7 +1236,8 @@ export default function ReservationManagement() {
                                 onClick={() => markAsPending(reservation)}
                                 disabled={loading}
                                 className="text-orange-600 hover:text-orange-900 p-1 rounded disabled:opacity-50"
-                                title="Remettre en attente"
+                                title={t("reservationHistory.revert")}
+                                aria-label={t("reservationHistory.revert")}
                               >
                                 <XCircle className="w-4 h-4" />
                               </button>
@@ -1247,7 +1257,7 @@ export default function ReservationManagement() {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
           <span className="text-sm text-gray-600">
-            Page {pagination.page} sur {pagination.totalPages} · {pagination.totalRecords} résultats
+            {t("reservationHistory.pageInfo", { page: pagination.page, pages: pagination.totalPages, count: pagination.totalRecords })}
           </span>
           <div className="flex gap-2">
             <button
@@ -1256,7 +1266,7 @@ export default function ReservationManagement() {
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-40"
             >
-              Précédent
+              {t("reservationHistory.previous")}
             </button>
             <button
               type="button"
@@ -1264,7 +1274,7 @@ export default function ReservationManagement() {
               onClick={() => setCurrentPage((page) => page + 1)}
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-40"
             >
-              Suivant
+              {t("reservationHistory.next")}
             </button>
           </div>
         </div>
@@ -1279,10 +1289,11 @@ export default function ReservationManagement() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Détails de la Réservation - {selectedReservation.saleId}
+                {t("reservationHistory.detailsTitle", { id: selectedReservation.saleId })}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
+                aria-label={t("common.close")}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1296,13 +1307,13 @@ export default function ReservationManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    ID Réservation
+                    {t("reservationHistory.columns.id")}
                   </span>
                   <p className="text-sm text-gray-900">{selectedReservation.saleId}</p>
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Date de Création
+                    {t("reservationHistory.createdAt")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {formatDateTime(selectedReservation.createdAt)}
@@ -1310,18 +1321,18 @@ export default function ReservationManagement() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Date de Réservation
+                    {t("reservationHistory.reservationDate")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {selectedReservation.reservationDate 
-                      ? `${formatDate(selectedReservation.reservationDate)} à ${selectedReservation.reservationTime || displayReservationTime(selectedReservation)}`
-                      : 'Non spécifiée'
+                      ? t("reservationHistory.dateAt", { date: formatDate(selectedReservation.reservationDate), time: selectedReservation.reservationTime || displayReservationTime(selectedReservation) })
+                      : t("reservationHistory.notSpecifiedF")
                     }
                   </p>
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de paiement
+                    {t("reservationHistory.paymentMethod")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {paymentMethodLabel(selectedReservation.paymentMethod)}
@@ -1329,7 +1340,7 @@ export default function ReservationManagement() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Statut
+                    {t("reservationHistory.columns.status")}
                   </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
@@ -1338,22 +1349,22 @@ export default function ReservationManagement() {
                         : 'bg-orange-100 text-orange-800'
                     }`}
                   >
-                    {selectedReservation.status === 'completed' ? 'Complétée' : 'En Attente'}
+                    {selectedReservation.status === 'completed' ? t("reservationHistory.statusCompleted") : t("reservationHistory.statusPending")}
                   </span>
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Vendeur
+                    {t("reservationHistory.seller2")}
                   </span>
                   <p className="text-sm text-gray-900">
-                    {selectedReservation.salesPerson || "Non spécifié"}
+                    {selectedReservation.salesPerson || t("reservationHistory.notSpecified")}
                   </p>
                 </div>
                 {selectedReservation.completedAt && (
                   <>
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Complétée le
+                        {t("reservationHistory.completedOn")}
                       </span>
                       <p className="text-sm text-gray-900">
                         {formatDateTime(selectedReservation.completedAt)}
@@ -1361,10 +1372,10 @@ export default function ReservationManagement() {
                     </div>
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Complétée par
+                        {t("reservationHistory.completedBy")}
                       </span>
                       <p className="text-sm text-gray-900">
-                        {selectedReservation.completedBy || "Inconnu"}
+                        {selectedReservation.completedBy || t("common.unknown")}
                       </p>
                     </div>
                   </>
@@ -1375,21 +1386,21 @@ export default function ReservationManagement() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  Informations du Client
+                  {t("reservationHistory.customerInfo")}
                 </h4>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
                       <User className="w-4 h-4 text-gray-500" />
                       <div>
-                        <p className="text-sm font-medium text-gray-700">Nom</p>
+                        <p className="text-sm font-medium text-gray-700">{t("reservationHistory.name")}</p>
                         <p className="text-sm text-gray-900">{selectedReservation.customer.name}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
                       <Phone className="w-4 h-4 text-gray-500" />
                       <div>
-                        <p className="text-sm font-medium text-gray-700">Téléphone</p>
+                        <p className="text-sm font-medium text-gray-700">{t("reservationHistory.phone")}</p>
                         <p className="text-sm text-gray-900">{selectedReservation.customer.phone}</p>
                       </div>
                     </div>
@@ -1397,7 +1408,7 @@ export default function ReservationManagement() {
                       <div className="flex items-center gap-3">
                         <Mail className="w-4 h-4 text-gray-500" />
                         <div>
-                          <p className="text-sm font-medium text-gray-700">Email</p>
+                          <p className="text-sm font-medium text-gray-700">{t("reservationHistory.email")}</p>
                           <p className="text-sm text-gray-900">{selectedReservation.customer.email}</p>
                         </div>
                       </div>
@@ -1410,7 +1421,7 @@ export default function ReservationManagement() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Articles Réservés ({selectedReservation.items.length})
+                  {t("reservationHistory.reservedItemsCount", { count: selectedReservation.items.length })}
                 </h4>
                 <div className="space-y-3">
                   {selectedReservation.items.map((item, index) => (
@@ -1419,7 +1430,7 @@ export default function ReservationManagement() {
                         <div>
                           <h5 className="font-medium text-gray-900">{item.name}</h5>
                           <p className="text-sm text-gray-600">
-                            Quantité: {item.quantity} × {formatUSD(item.price)}
+                            {t("reservationHistory.quantityLine", { quantity: item.quantity, price: formatUSD(item.price) })}
                           </p>
                         </div>
                         <div className="text-right">
@@ -1437,7 +1448,7 @@ export default function ReservationManagement() {
               {selectedReservation.notes && (
                 <div>
                   <h4 className="text-md font-medium text-gray-900 mb-3">
-                    Notes
+                    {t("reservationHistory.notes")}
                   </h4>
                   <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
                     <p className="text-sm text-gray-700">{selectedReservation.notes}</p>
@@ -1448,7 +1459,7 @@ export default function ReservationManagement() {
               {/* Totals */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span className="text-gray-900">Montant Total:</span>
+                  <span className="text-gray-900">{t("reservationHistory.totalAmount")}</span>
                   <span className="text-gray-900">
                     {formatUSD(selectedReservation.total)}
                   </span>
@@ -1462,7 +1473,7 @@ export default function ReservationManagement() {
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Printer className="w-4 h-4" />
-                  Imprimer le Reçu
+                  {t("reservationHistory.printReceiptButton")}
                 </button>
                 
                 {canEditReservation && (
@@ -1477,7 +1488,7 @@ export default function ReservationManagement() {
                       }`}
                     >
                       <Edit className="w-4 h-4" />
-                      Modifier la Réservation
+                      {t("reservationHistory.editButton")}
                     </button>
 
                     {selectedReservation.status === 'pending' ? (
@@ -1486,7 +1497,7 @@ export default function ReservationManagement() {
                         className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                       >
                         <CheckCircle className="w-4 h-4" />
-                        Terminer la réservation
+                        {t("reservationHistory.complete")}
                       </button>
                     ) : selectedReservation.status === 'completed' && canRevertReservation && (
                       <button
@@ -1494,7 +1505,7 @@ export default function ReservationManagement() {
                         className="flex-1 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
                       >
                         <XCircle className="w-4 h-4" />
-                        Remettre en Attente
+                        {t("reservationHistory.revertButton")}
                       </button>
                     )}
                   </>
@@ -1506,7 +1517,7 @@ export default function ReservationManagement() {
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Supprimer
+                    {t("reservationHistory.deleteButton")}
                   </button>
                 )}
 
@@ -1514,7 +1525,7 @@ export default function ReservationManagement() {
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>
@@ -1528,10 +1539,11 @@ export default function ReservationManagement() {
           <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Modifier la Réservation - {editingReservation.saleId}
+                {t("reservationHistory.editTitle", { id: editingReservation.saleId })}
               </h3>
               <button
                 onClick={closeEditModal}
+                aria-label={t("common.close")}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1550,12 +1562,12 @@ export default function ReservationManagement() {
               {/* Customer Information */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Informations du Client
+                  {t("reservationHistory.customerInfo")}
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label htmlFor="reservation-edit-nom" className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom
+                      {t("reservationHistory.name")}
                     </label>
                     <input
                       id="reservation-edit-nom"
@@ -1573,7 +1585,7 @@ export default function ReservationManagement() {
                   </div>
                   <div>
                     <label htmlFor="reservation-edit-telephone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Téléphone
+                      {t("reservationHistory.phone")}
                     </label>
                     <input
                       id="reservation-edit-telephone"
@@ -1591,7 +1603,7 @@ export default function ReservationManagement() {
                   </div>
                   <div>
                     <label htmlFor="reservation-edit-email" className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
+                      {t("reservationHistory.email")}
                     </label>
                     <input
                       id="reservation-edit-email"
@@ -1613,7 +1625,7 @@ export default function ReservationManagement() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label htmlFor="reservation-edit-date-de-reservation" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date de Réservation
+                    {t("reservationHistory.reservationDate")}
                   </label>
                   <input
                     id="reservation-edit-date-de-reservation"
@@ -1630,7 +1642,7 @@ export default function ReservationManagement() {
                 </div>
                 <div>
                   <label htmlFor="reservation-edit-heure-de-reservation" className="block text-sm font-medium text-gray-700 mb-1">
-                    Heure de Réservation
+                    {t("reservationHistory.reservationTime")}
                   </label>
                   <input
                     id="reservation-edit-heure-de-reservation"
@@ -1647,7 +1659,7 @@ export default function ReservationManagement() {
                 </div>
                 <div>
                   <label htmlFor="reservation-edit-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de Paiement
+                    {t("reservationHistory.paymentMethodEdit")}
                   </label>
                   <select
                     id="reservation-edit-methode-de-paiement"
@@ -1660,10 +1672,10 @@ export default function ReservationManagement() {
                     }
                     className="w-full p-2 border rounded"
                   >
-                    <option value="cash">Espèces</option>
-                    <option value="card">Carte</option>
-                    <option value="transfer">Virement</option>
-                    <option value="other">Autre</option>
+                    <option value="cash">{paymentMethodLabel("cash")}</option>
+                    <option value="card">{paymentMethodLabel("card")}</option>
+                    <option value="transfer">{paymentMethodLabel("transfer")}</option>
+                    <option value="other">{paymentMethodLabel("other")}</option>
                   </select>
                 </div>
               </div>
@@ -1671,7 +1683,7 @@ export default function ReservationManagement() {
               {/* Notes */}
               <div>
                 <label htmlFor="reservation-edit-notes" className="block text-sm font-medium text-gray-700 mb-1">
-                  Notes
+                  {t("reservationHistory.notes")}
                 </label>
                 <textarea
                   id="reservation-edit-notes"
@@ -1679,7 +1691,7 @@ export default function ReservationManagement() {
                   onChange={(e) =>
                     setEditForm((prev) => ({ ...prev, notes: e.target.value }))
                   }
-                  placeholder="Notes supplémentaires..."
+                  placeholder={t("reservationHistory.notesPlaceholder")}
                   className="w-full p-2 border rounded h-20"
                 />
               </div>
@@ -1688,7 +1700,7 @@ export default function ReservationManagement() {
               <div>
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-md font-medium text-gray-900">
-                    Articles
+                    {t("reservationHistory.items")}
                   </h4>
                   <div className="flex gap-2">
                     <button
@@ -1701,14 +1713,14 @@ export default function ReservationManagement() {
                           loadingProducts ? "animate-spin" : ""
                         }`}
                       />{" "}
-                      Actualiser Produits
+                      {t("reservationHistory.refreshProducts")}
                     </button>
                     <button
                       onClick={addNewItem}
                       disabled={products.length === 0}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
-                      <Plus className="w-3 h-3" /> Ajouter un article
+                      <Plus className="w-3 h-3" /> {t("reservationHistory.addItem")}
                     </button>
                   </div>
                 </div>
@@ -1716,8 +1728,7 @@ export default function ReservationManagement() {
                 {products.length === 0 && !loadingProducts && (
                   <div className="p-3 bg-yellow-100 text-yellow-700 rounded-lg mb-4">
                     <p className="text-sm">
-                      Aucun article disponible. Veuillez vérifier si des
-                      articles existent dans votre base de données.
+                      {t("reservationHistory.noItemsAvailable")}
                     </p>
                   </div>
                 )}
@@ -1731,11 +1742,11 @@ export default function ReservationManagement() {
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
                           <label htmlFor={`reservation-edit-item-${index}-article`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Article
+                            {t("reservationHistory.item")}
                           </label>
                           {loadingProducts ? (
                             <div className="p-2 border rounded bg-gray-200 text-gray-600 text-sm">
-                              Chargement des produits...
+                              {t("reservationHistory.loadingProducts")}
                             </div>
                           ) : products.length === 0 ? (
                             <input
@@ -1750,7 +1761,7 @@ export default function ReservationManagement() {
                                   items: updatedItems,
                                 }));
                               }}
-                              placeholder="Nom du produit"
+                              placeholder={t("reservationHistory.productName")}
                               className="w-full p-2 border rounded"
                             />
                           ) : (
@@ -1764,9 +1775,7 @@ export default function ReservationManagement() {
                             >
                               {products.map((product) => (
                                 <option key={product._id} value={product._id}>
-                                  {product.name} -{" "}
-                                  {formatUSD(product.price)} (Stock:{" "}
-                                  {product.stock})
+                                  {t("reservationHistory.productOption", { name: product.name, price: formatUSD(product.price), stock: product.stock })}
                                 </option>
                               ))}
                             </select>
@@ -1775,7 +1784,7 @@ export default function ReservationManagement() {
 
                         <div className="md:col-span-2">
                           <label htmlFor={`reservation-edit-item-${index}-price`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Prix
+                            {t("reservationHistory.price")}
                           </label>
                           <input
                             id={`reservation-edit-item-${index}-price`}
@@ -1795,7 +1804,7 @@ export default function ReservationManagement() {
 
                         <div className="md:col-span-2">
                           <label htmlFor={`reservation-edit-item-${index}-quantity`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Quantité
+                            {t("reservationHistory.quantity")}
                           </label>
                           <div className="flex items-center border rounded">
                             <button
@@ -1805,6 +1814,7 @@ export default function ReservationManagement() {
                               }
                               className="p-2 hover:bg-gray-200"
                               disabled={item.quantity <= 1}
+                              aria-label={t("reservationHistory.decrease")}
                             >
                               <Minus className="w-3 h-3" />
                             </button>
@@ -1826,6 +1836,7 @@ export default function ReservationManagement() {
                               onClick={() =>
                                 updateItemQuantity(index, item.quantity + 1)
                               }
+                              aria-label={t("reservationHistory.increase")}
                               className="p-2 hover:bg-gray-200"
                             >
                               <Plus className="w-3 h-3" />
@@ -1835,7 +1846,7 @@ export default function ReservationManagement() {
 
                         <div className="md:col-span-2">
                           <span className="block text-sm font-medium text-gray-700 mb-1">
-                            Total
+                            {t("reservationHistory.total")}
                           </span>
                           <div className="p-2 bg-white border rounded font-medium">
                             {formatUSD(item.total)}
@@ -1848,7 +1859,7 @@ export default function ReservationManagement() {
                             onClick={() => removeItem(index)}
                             className="w-full p-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-1"
                           >
-                            <Trash2 className="w-3 h-3" /> Supprimer
+                            <Trash2 className="w-3 h-3" /> {t("reservationHistory.remove")}
                           </button>
                         </div>
                       </div>
@@ -1860,13 +1871,13 @@ export default function ReservationManagement() {
               {/* Totals */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">Sous-total:</span>
+                  <span className="text-sm text-gray-600">{t("reservationHistory.subtotal")}</span>
                   <span className="text-sm text-gray-900">
                     {formatUSD(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span className="text-gray-900">Total:</span>
+                  <span className="text-gray-900">{t("reservationHistory.totalLabel")}</span>
                   <span className="text-gray-900">{formatUSD(total)}</span>
                 </div>
               </div>
@@ -1874,14 +1885,15 @@ export default function ReservationManagement() {
               {/* Edit Reason */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Raison de la modification
+                  {t("reservationHistory.editReason")}
                 </h4>
                 <textarea
                   value={editForm.reason}
                   onChange={(e) =>
                     setEditForm((prev) => ({ ...prev, reason: e.target.value }))
                   }
-                  placeholder="Veuillez indiquer une raison pour la modification de cette réservation..."
+                  placeholder={t("reservationHistory.editReasonPlaceholder")}
+                  aria-label={t("reservationHistory.editReason")}
                   className="w-full p-2 border rounded h-20"
                   required
                 />
@@ -1896,11 +1908,11 @@ export default function ReservationManagement() {
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Mise à jour...
+                      <RefreshCw className="w-4 h-4 animate-spin" /> {t("reservationHistory.updating")}
                     </>
                   ) : (
                     <>
-                      <Edit className="w-4 h-4" /> Mettre à jour la réservation
+                      <Edit className="w-4 h-4" /> {t("reservationHistory.update")}
                     </>
                   )}
                 </button>
@@ -1908,7 +1920,7 @@ export default function ReservationManagement() {
                   onClick={closeEditModal}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>

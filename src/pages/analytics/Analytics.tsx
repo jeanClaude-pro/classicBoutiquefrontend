@@ -2,6 +2,8 @@
 "use client";
 
 import React, { useCallback, useState, useEffect } from "react";
+import { Trans, useTranslation } from "react-i18next";
+import { currentLocale, t as translate } from "../../i18n";
 import {
   BarChart3,
   TrendingUp,
@@ -25,7 +27,7 @@ import { generateCompanyReport, type ReportSections } from "./reportGenerator";
 import { categoryPresentation, type AccountingCategory, type AccountingMetric, type CategoryAccountingDTO } from "./accountingPresentation";
 import { serverUrl } from "../../utils/constants";
 import { formatFC, formatUSD } from "../../utils/salePricing";
-import { apiErrorFromResponse, toApiError } from "../../lib/apiError";
+import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
 import { MODULES } from "../../config/modules";
 
 interface AnalyticsData {
@@ -95,10 +97,17 @@ interface AnalyticsData {
 }
 
 interface TimeframeData {
-  description: string;
+  // What was loaded; the label is written at render time in the current language.
+  period: "day" | "week" | "month" | "year";
+  date: string;
+  year: number;
   start: string;
   end: string;
 }
+
+// Chart dates are kept as ISO values and formatted when displayed.
+const chartDate = (iso: string, options: Intl.DateTimeFormatOptions) =>
+  new Date(iso).toLocaleDateString(currentLocale(), { timeZone: "Africa/Lubumbashi", ...options });
 
 const METRIC_TONE_CLASS: Record<AccountingMetric["tone"], string> = {
   neutral: "text-gray-900",
@@ -127,8 +136,9 @@ function MetricCell({ metric }: { metric: AccountingMetric }) {
 }
 
 function TrendIndicator({ value }: { value: number | null }) {
+  const { t } = useTranslation();
   if (value === null) {
-    return <span className="mt-1 text-xs text-gray-500">Pas assez de données</span>;
+    return <span className="mt-1 text-xs text-gray-500">{t("reports.notEnoughData")}</span>;
   }
 
   const positive = value >= 0;
@@ -253,7 +263,7 @@ const describeTimeframe = (
   selectedYear: number
 ) => {
   if (timeframe === "day") {
-    return new Date(selectedDate).toLocaleDateString("fr-FR", {
+    return new Date(selectedDate).toLocaleDateString(currentLocale(), {
       timeZone: "Africa/Lubumbashi",
       weekday: "long",
       year: "numeric",
@@ -261,12 +271,13 @@ const describeTimeframe = (
       day: "numeric",
     });
   }
-  if (timeframe === "week") return "Cette Semaine";
-  if (timeframe === "month") return "Ce Mois";
-  return `Année ${selectedYear}`;
+  if (timeframe === "week") return translate("reports.thisWeek");
+  if (timeframe === "month") return translate("reports.thisMonth");
+  return translate("reports.year", { year: selectedYear });
 };
 
 export default function Analytics() {
+  const { t } = useTranslation();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -371,19 +382,21 @@ export default function Analytics() {
       if (!response.ok) throw await apiErrorFromResponse(response);
       const payload = await response.json();
       if (payload.source !== "mongodb-aggregation" || payload.paginated !== false) {
-        throw new Error("Réponse de rapport inattendue. Actualisez la page.");
+        throw userError(translate("reports.unexpectedResponse"));
       }
       const raw = payload.data;
       const chartRows = (raw.chartData || []).map((row: any, index: number) => {
         const date = new Date(row.date);
         return {
-          date: date.toLocaleDateString("fr-FR", { timeZone: "Africa/Lubumbashi", day: "numeric", month: "short" }),
-          dayName: date.toLocaleDateString("fr-FR", { timeZone: "Africa/Lubumbashi", weekday: "long" }),
-          week: `Semaine ${index + 1}`,
-          startDate: date.toLocaleDateString("fr-FR", { timeZone: "Africa/Lubumbashi", day: "numeric", month: "short" }),
+          iso: row.date,
+          weekIndex: index + 1,
+          date: chartDate(row.date, { day: "numeric", month: "short" }),
+          dayName: chartDate(row.date, { weekday: "long" }),
+          week: translate("reports.weekN", { n: index + 1 }),
+          startDate: chartDate(row.date, { day: "numeric", month: "short" }),
           endDate: "",
           month: String(date.getUTCMonth()),
-          monthName: date.toLocaleDateString("fr-FR", { timeZone: "Africa/Lubumbashi", month: "long" }),
+          monthName: chartDate(row.date, { month: "long" }),
           sales: row.sales,
           revenue: row.revenue,
         };
@@ -399,11 +412,9 @@ export default function Analytics() {
       };
       setAnalytics(normalized);
       setTimeframeData({
-        description: describeTimeframe(
-          effectiveTimeframe,
-          effectiveDate,
-          selectedYear
-        ),
+        period: effectiveTimeframe,
+        date: effectiveDate,
+        year: selectedYear,
         start: payload.timeframe.start,
         end: payload.timeframe.end,
       });
@@ -449,15 +460,15 @@ export default function Analytics() {
   };
 
   const getTimeframeLabel = () => {
-    if (timeframeData?.description) {
-      return timeframeData.description;
+    if (timeframeData) {
+      return describeTimeframe(timeframeData.period, timeframeData.date, timeframeData.year);
     }
     
     switch (timeframe) {
       case "day": {
         if (selectedDate) {
           const date = new Date(selectedDate);
-          return date.toLocaleDateString("fr-FR", {
+          return date.toLocaleDateString(currentLocale(), {
             timeZone: "Africa/Lubumbashi",
             weekday: "long",
             year: "numeric",
@@ -465,16 +476,16 @@ export default function Analytics() {
             day: "numeric",
           });
         }
-        return "Aujourd'hui";
+        return t("reports.today");
       }
       case "week":
-        return "Cette Semaine";
+        return t("reports.thisWeek");
       case "month":
-        return "Ce Mois";
+        return t("reports.thisMonth");
       case "year":
-        return `Année ${selectedYear}`;
+        return t("reports.year", { year: selectedYear });
       default:
-        return "Cette Semaine";
+        return t("reports.thisWeek");
     }
   };
 
@@ -525,7 +536,7 @@ export default function Analytics() {
       if (ok) {
         setAccessVerified(true);
       } else {
-        setAccessError("Mot de passe incorrect. Accès refusé.");
+        setAccessError(t("reports.wrongPasswordAccess"));
         setAccessPassword("");
       }
     } finally {
@@ -544,7 +555,7 @@ export default function Analytics() {
         setPrintPassword("");
         await doGenerateReport();
       } else {
-        setPrintPasswordError("Mot de passe incorrect. Impression refusée.");
+        setPrintPasswordError(t("reports.wrongPasswordPrint"));
         setPrintPassword("");
       }
     } finally {
@@ -591,9 +602,9 @@ export default function Analytics() {
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Shield className="w-8 h-8 text-red-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Accès Refusé</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">{t("reports.accessDenied")}</h2>
           <p className="text-gray-500 text-sm">
-            Cette section est réservée aux administrateurs uniquement.
+            {t("reports.adminOnly")}
           </p>
         </div>
       </div>
@@ -609,15 +620,15 @@ export default function Analytics() {
             <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Shield className="w-7 h-7 text-blue-600" />
             </div>
-            <h2 className="text-xl font-bold text-gray-900">Vérification Requise</h2>
+            <h2 className="text-xl font-bold text-gray-900">{t("reports.verificationRequired")}</h2>
             <p className="text-gray-500 text-sm mt-1">
-              Entrez votre mot de passe pour accéder aux Analytiques
+              {t("reports.enterPassword")}
             </p>
           </div>
           <form onSubmit={handleAccessVerify} className="space-y-4">
             <div>
               <label htmlFor="analytics-mot-de-passe" className="block text-sm font-medium text-gray-700 mb-1.5">
-                Mot de passe administrateur
+                {t("reports.adminPassword")}
               </label>
               <input
                 id="analytics-mot-de-passe"
@@ -625,7 +636,7 @@ export default function Analytics() {
                 value={accessPassword}
                 onChange={(e) => setAccessPassword(e.target.value)}
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                placeholder="Votre mot de passe"
+                placeholder={t("reports.passwordPlaceholder")}
                 autoFocus
                 required
               />
@@ -640,7 +651,7 @@ export default function Analytics() {
               disabled={accessLoading}
               className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
             >
-              {accessLoading ? "Vérification..." : "Accéder"}
+              {accessLoading ? t("reports.verifying") : t("reports.access")}
             </button>
           </form>
         </div>
@@ -663,7 +674,7 @@ export default function Analytics() {
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
             <p className="text-gray-500 mt-2 text-sm sm:text-base">
-              Chargement des analytiques...
+              {t("reports.loading")}
             </p>
           </div>
         </div>
@@ -687,12 +698,12 @@ export default function Analytics() {
             <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
             {loadError ? (
               <div role="alert">
-                <p className="text-sm sm:text-base font-semibold text-red-700">Impossible de charger les rapports</p>
+                <p className="text-sm sm:text-base font-semibold text-red-700">{t("reports.loadFailed")}</p>
                 <p className="mt-1 text-sm text-red-700">{loadError}</p>
-                <button type="button" onClick={fetchAnalytics} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Réessayer</button>
+                <button type="button" onClick={fetchAnalytics} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">{t("common.retry")}</button>
               </div>
             ) : (
-              <p className="text-sm sm:text-base">Aucune donnée disponible pour cette période</p>
+              <p className="text-sm sm:text-base">{t("reports.noData")}</p>
             )}
           </div>
         </div>
@@ -746,7 +757,7 @@ export default function Analytics() {
                 className="px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-                <span className="text-sm">Actualiser</span>
+                <span className="text-sm">{t("common.refresh")}</span>
               </button>
             </div>
           </div>
@@ -757,7 +768,7 @@ export default function Analytics() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
-              Période d'analyse: {getTimeframeLabel()}
+              {t("reports.period", { period: getTimeframeLabel() })}
             </h3>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               {/* Date Picker for Day View */}
@@ -768,7 +779,7 @@ export default function Analytics() {
                     htmlFor="date-picker"
                     className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap"
                   >
-                    Date:
+                    {t("reports.dateLabel")}
                   </label>
                   <input
                     id="date-picker"
@@ -785,6 +796,7 @@ export default function Analytics() {
                 <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 shadow-sm w-full sm:w-auto">
                   <button
                     onClick={() => navigateYear("prev")}
+                    aria-label={t("reports.previousYear")}
                     disabled={availableYears.indexOf(selectedYear) === availableYears.length - 1}
                     className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
@@ -795,6 +807,7 @@ export default function Analytics() {
                   </span>
                   <button
                     onClick={() => navigateYear("next")}
+                    aria-label={t("reports.nextYear")}
                     disabled={availableYears.indexOf(selectedYear) === 0}
                     className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
@@ -817,10 +830,7 @@ export default function Analytics() {
                     }`}
                     disabled={shouldSeeOnlyTodayData() && period !== "day"}
                   >
-                    {period === "day" && "Jour"}
-                    {period === "week" && "Semaine"}
-                    {period === "month" && "Mois"}
-                    {period === "year" && "Année"}
+                    {t(`reports.periods.${period}`)}
                   </button>
                 ))}
               </div>
@@ -834,7 +844,7 @@ export default function Analytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
-                  Ventes Totales
+                  {t("reports.totalSales")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {analytics.totalSales}
@@ -850,11 +860,11 @@ export default function Analytics() {
           <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Encaissements ventes</p>
+                <p className="text-xs sm:text-sm text-gray-600">{t("reports.salesReceipts")}</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.totalRevenue)}
                 </p>
-                <p className="text-[11px] text-gray-500">Ventes + acomptes de réservations</p>
+                <p className="text-[11px] text-gray-500">{t("reports.salesReceiptsHint")}</p>
                 <TrendIndicator value={analytics.recentTrends.revenueGrowth} />
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
@@ -867,40 +877,40 @@ export default function Analytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
-                  Entrées d'Argent
+                  {t("reports.cashEntries")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.totalEntries)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Total reçu</p>
+                <p className="text-xs text-gray-500 mt-1">{t("reports.totalReceived")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <FileText className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600" />
               </div>
             </div>
           </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-amber-200">
-            <p className="text-xs sm:text-sm text-gray-600">Catégorie assignée</p>
-            <p className="mt-2 text-xl font-bold text-gray-900">{analytics.assignedCategory === "SHOES" ? "Chaussures" : "Vêtements"}</p>
-            <p className="mt-1 text-xs text-gray-500">Données limitées à votre périmètre</p>
+            <p className="text-xs sm:text-sm text-gray-600">{t("reports.assignedCategory")}</p>
+            <p className="mt-2 text-xl font-bold text-gray-900">{t(`accounting.categoryTitles.${analytics.assignedCategory === "SHOES" ? "SHOES" : "CLOTHES"}`)}</p>
+            <p className="mt-1 text-xs text-gray-500">{t("reports.scopeLimited")}</p>
           </div>}
 
           {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
-                  Dépenses Validées
+                  {t("reports.validatedExpenses")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.totalValidatedExpenses)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Total validé</p>
+                <p className="text-xs text-gray-500 mt-1">{t("reports.totalValidated")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <Receipt className="w-4 h-4 sm:w-6 sm:h-6 text-red-600" />
               </div>
             </div>
           </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-emerald-200">
-            <p className="text-xs sm:text-sm text-gray-600">Part actionnaire</p>
+            <p className="text-xs sm:text-sm text-gray-600">{t("reports.shareholderShare")}</p>
             <p className="mt-2 text-xl font-bold text-emerald-800">{formatFC(analytics.shareholderEntitlementFC || 0)}</p>
             <p className="mt-1 text-xs text-gray-500">≈ {formatUSD(analytics.shareholderEntitlement || 0)}</p>
           </div>}
@@ -908,36 +918,36 @@ export default function Analytics() {
 
         <section className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Rentabilité boutique</h2>
-            <p className="text-xs text-gray-500 mt-1">Calculée depuis les coûts figés au moment de chaque vente finalisée. Montants FC aux taux historiques de chaque transaction.</p>
+            <h2 className="text-lg font-semibold text-gray-900">{t("reports.profitability")}</h2>
+            <p className="text-xs text-gray-500 mt-1">{t("reports.profitabilityHint")}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl bg-stone-50 border border-stone-200 p-4">
-              <p className="text-xs text-gray-600">Coût des marchandises</p>
+              <p className="text-xs text-gray-600">{t("reports.cogs")}</p>
               <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.costOfGoodsSoldFC || 0)}</p>
               <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.costOfGoodsSold || 0)}</p>
             </div>
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
-              <p className="text-xs text-gray-600">Bénéfice brut</p>
+              <p className="text-xs text-gray-600">{t("reports.grossProfit")}</p>
               <p className="text-xl font-bold text-amber-800 mt-1">{formatFC(analytics.grossProfitFC || 0)}</p>
               <p className="text-xs text-amber-700/70 mt-0.5">≈ {formatUSD(analytics.grossProfit || 0)}</p>
             </div>
             {isAdmin() ? (
               <>
                 <div className="rounded-xl bg-purple-50 border border-purple-200 p-4">
-                  <p className="text-xs text-gray-600">Actionnaire vêtements · 100%</p>
+                  <p className="text-xs text-gray-600">{t("reports.clothesShareholder")}</p>
                   <p className="text-xl font-bold text-purple-800 mt-1">{formatFC(analytics.clothesShareholderProfitFC || 0)}</p>
                   <p className="text-xs text-purple-700/70 mt-0.5">≈ {formatUSD(analytics.clothesShareholderProfit || 0)}</p>
                 </div>
                 <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
-                  <p className="text-xs text-gray-600">Chaque actionnaire chaussures · 50%</p>
+                  <p className="text-xs text-gray-600">{t("reports.shoesShareholder")}</p>
                   <p className="text-xl font-bold text-rose-800 mt-1">{formatFC(analytics.shoeShareholder1ProfitFC || 0)}</p>
                   <p className="text-xs text-rose-700/70 mt-0.5">≈ {formatUSD(analytics.shoeShareholder1Profit || 0)}</p>
                 </div>
               </>
             ) : (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 sm:col-span-2">
-                <p className="text-xs text-gray-600">Ma part / Part actionnaire</p>
+                <p className="text-xs text-gray-600">{t("reports.myShare")}</p>
                 <p className="text-xl font-bold text-emerald-800 mt-1">{formatFC(analytics.shareholderEntitlementFC || 0)}</p>
                 <p className="text-xs text-emerald-700/70 mt-0.5">≈ {formatUSD(analytics.shareholderEntitlement || 0)}</p>
               </div>
@@ -946,7 +956,7 @@ export default function Analytics() {
 
           {isAdmin() && analytics.categoryBreakdown && (
             <div className="mt-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Répartition par catégorie</h3>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">{t("reports.byCategory")}</h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {(["CLOTHES", "SHOES"] as const).map((key) => {
                   const cat = analytics.categoryBreakdown?.[key];
@@ -955,13 +965,13 @@ export default function Analytics() {
                   return (
                     <div key={key} className="rounded-xl bg-gradient-to-br from-white to-slate-50 border border-gray-200 p-4 shadow-sm">
                       <p className="text-sm font-semibold text-gray-800">{view.title}</p>
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-3 mb-2">Performance de la période</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-3 mb-2">{t("reports.periodPerformance")}</p>
                       <div className="grid grid-cols-2 gap-3 text-sm">
                         {view.period.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
                       </div>
                       {view.balance.length > 0 && (
                         <>
-                          <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-4 mb-2">Situation actuelle (cumul)</p>
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-4 mb-2">{t("reports.currentPosition")}</p>
                           <div className="grid grid-cols-2 gap-3 text-sm">
                             {view.balance.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
                           </div>
@@ -978,11 +988,11 @@ export default function Analytics() {
 
         {analytics.reimbursement && (
           <section className="bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
-            <h2 className="font-bold text-lg mb-4">Dettes et remboursements</h2>
+            <h2 className="font-bold text-lg mb-4">{t("reports.debts")}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="rounded-lg bg-blue-50 p-4"><p className="text-sm text-gray-600">Emprunté sur la période</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.borrowedDuringPeriod)}</p></div>
-              <div className="rounded-lg bg-emerald-50 p-4"><p className="text-sm text-gray-600">Remboursé sur la période</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.repaidDuringPeriod)}</p><p className="text-xs text-gray-500">{analytics.reimbursement.repaymentCount} remboursement(s)</p></div>
-              <div className="rounded-lg bg-orange-50 p-4"><p className="text-sm text-gray-600">Dette actuelle</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.currentOutstanding)}</p></div>
+              <div className="rounded-lg bg-blue-50 p-4"><p className="text-sm text-gray-600">{t("reports.borrowedPeriod")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.borrowedDuringPeriod)}</p></div>
+              <div className="rounded-lg bg-emerald-50 p-4"><p className="text-sm text-gray-600">{t("reports.repaidPeriod")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.repaidDuringPeriod)}</p><p className="text-xs text-gray-500">{t("reports.repaymentCount", { count: analytics.reimbursement.repaymentCount })}</p></div>
+              <div className="rounded-lg bg-orange-50 p-4"><p className="text-sm text-gray-600">{t("reports.currentDebt")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.currentOutstanding)}</p></div>
             </div>
           </section>
         )}
@@ -992,11 +1002,11 @@ export default function Analytics() {
           <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Trésorerie Nette</p>
+                <p className="text-xs sm:text-sm text-gray-600">{t("reports.netCash")}</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.netRevenue)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">(Ventes + Entrées) - Dépenses</p>
+                <p className="text-xs text-gray-500 mt-1">{t("reports.netCashHint")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <Calculator className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600" />
@@ -1008,7 +1018,7 @@ export default function Analytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
-                  Clients Totaux
+                  {t("reports.totalCustomers")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {analytics.totalCustomers}
@@ -1025,12 +1035,12 @@ export default function Analytics() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
-                  Produits Totaux
+                  {t("reports.totalProducts")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {analytics.totalProducts}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">Produits actifs</p>
+                <p className="text-xs text-gray-500 mt-1">{t("reports.activeProducts")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <Package className="w-4 h-4 sm:w-6 sm:h-6 text-indigo-600" />
@@ -1044,7 +1054,7 @@ export default function Analytics() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
-              Tendances des Ventes ({getTimeframeLabel()})
+              {t("reports.salesTrends", { period: getTimeframeLabel() })}
             </h3>
           </div>
 
@@ -1054,7 +1064,7 @@ export default function Analytics() {
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  Année {selectedYear}
+                  {t("reports.year", { year: selectedYear })}
                 </h4>
                 <div className="space-y-4 ml-0 sm:ml-4 min-w-[300px]">
                   {chartData.map((month: any, index: number) => (
@@ -1063,12 +1073,12 @@ export default function Analytics() {
                       className="flex items-center gap-3 sm:gap-4"
                     >
                       <div className="w-28 sm:w-40 text-xs sm:text-sm text-gray-600 font-medium capitalize">
-                        {month.monthName}
+                        {month.iso ? chartDate(month.iso, { month: "long" }) : month.monthName}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs sm:text-sm text-gray-700 truncate">
-                            {month.sales} ventes
+                            {t("reports.salesCount", { count: month.sales })}
                           </span>
                           <span className="text-xs sm:text-sm font-medium text-gray-900 whitespace-nowrap ml-2">
                             {formatUSD(month.revenue)}
@@ -1098,33 +1108,33 @@ export default function Analytics() {
                     {timeframe === "day" ? (
                       <div>
                         <div className="capitalize">
-                          {item.dayName}
+                          {item.iso ? chartDate(item.iso, { weekday: "long" }) : item.dayName}
                         </div>
                         <div className="text-xs text-gray-500">
-                          {item.date}
+                          {item.iso ? chartDate(item.iso, { day: "numeric", month: "short" }) : item.date}
                         </div>
                       </div>
                     ) : timeframe === "week" ? (
                       <div>
                         <div className="text-xs sm:text-sm">
-                          {item.week}
+                          {item.weekIndex ? t("reports.weekN", { n: item.weekIndex }) : item.week}
                         </div>
                         <div className="text-xs text-gray-500">
-                          Du {item.startDate} au {item.endDate}
+                          {t("reports.weekRange", { from: item.iso ? chartDate(item.iso, { day: "numeric", month: "short" }) : item.startDate, to: item.endDate })}
                         </div>
                       </div>
                     ) : timeframe === "month" ? (
                       <div className="capitalize">
-                        {item.monthName}
+                        {item.iso ? chartDate(item.iso, { month: "long" }) : item.monthName}
                       </div>
                     ) : (
-                      item.monthName
+                      item.iso ? chartDate(item.iso, { month: "long" }) : item.monthName
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-xs sm:text-sm text-gray-700">
-                        {item.sales} ventes
+                        {t("reports.salesCount", { count: item.sales })}
                       </span>
                       <span className="text-xs sm:text-sm font-medium text-gray-900 whitespace-nowrap ml-2">
                         {formatUSD(item.revenue)}
@@ -1150,7 +1160,7 @@ export default function Analytics() {
           <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Package className="w-4 h-4 sm:w-5 sm:h-5" />
-              Articles Vendus ({getTimeframeLabel()})
+              {t("reports.itemsSold", { period: getTimeframeLabel() })}
             </h3>
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {analytics.topProducts.length > 0 ? (
@@ -1164,7 +1174,7 @@ export default function Analytics() {
                         {index + 1}. {product.name}
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600">
-                        {product.quantity} unités vendues
+                        {t("reports.unitsSold", { count: product.quantity })}
                       </p>
                     </div>
                     <div className="text-right ml-2">
@@ -1178,9 +1188,9 @@ export default function Analytics() {
                 <div className="text-center py-8 text-gray-500">
                   <Package className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-3 opacity-50" />
                   <p className="font-medium text-sm sm:text-base">
-                    Aucun produit vendu
+                    {t("reports.noProductSold")}
                   </p>
-                  <p className="text-xs sm:text-sm">dans cette période</p>
+                  <p className="text-xs sm:text-sm">{t("reports.inThisPeriod")}</p>
                 </div>
               )}
             </div>
@@ -1190,7 +1200,7 @@ export default function Analytics() {
           {analytics.topCustomers && <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 sm:w-5 sm:h-5" />
-              Meilleurs Clients ({getTimeframeLabel()})
+              {t("reports.topCustomers", { period: getTimeframeLabel() })}
             </h3>
             <div className="space-y-3">
               {analytics.topCustomers.length > 0 ? (
@@ -1210,7 +1220,7 @@ export default function Analytics() {
                           {customer.name}
                         </p>
                         <p className="text-xs sm:text-sm text-gray-600">
-                          {customer.purchases} achats
+                          {t("reports.purchases", { count: customer.purchases })}
                         </p>
                       </div>
                     </div>
@@ -1225,9 +1235,9 @@ export default function Analytics() {
                 <div className="text-center py-8 text-gray-500">
                   <Users className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-3 opacity-50" />
                   <p className="font-medium text-sm sm:text-base">
-                    Aucun client
+                    {t("reports.noCustomer")}
                   </p>
-                  <p className="text-xs sm:text-sm">dans cette période</p>
+                  <p className="text-xs sm:text-sm">{t("reports.inThisPeriod")}</p>
                 </div>
               )}
             </div>
@@ -1242,15 +1252,15 @@ export default function Analytics() {
                 <div>
                   <h3 className="text-lg font-bold text-white flex items-center gap-2">
                     <FileDown className="w-5 h-5" />
-                    Génération de Rapport Officiel
+                    {t("reports.officialReport")}
                   </h3>
                   <p className="text-sm text-blue-200 mt-0.5">
-                    Générez et téléchargez des rapports professionnels au format PDF
+                    {t("reports.officialReportHint")}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 self-start sm:self-auto">
                   <Shield className="w-4 h-4 text-blue-200" />
-                  <span className="text-sm text-white font-medium">Accès Administrateur</span>
+                  <span className="text-sm text-white font-medium">{t("reports.adminAccess")}</span>
                 </div>
               </div>
             </div>
@@ -1262,7 +1272,7 @@ export default function Analytics() {
                 <div className="lg:col-span-2 space-y-4">
                   <div className="flex items-center justify-between">
                     <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Sections à inclure
+                      {t("reports.sectionsToInclude")}
                     </h4>
                     <div className="flex items-center gap-3">
                       <button
@@ -1275,7 +1285,7 @@ export default function Analytics() {
                         }
                         className="text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors"
                       >
-                        Tout sélectionner
+                        {t("reports.selectAll")}
                       </button>
                       <span className="text-gray-300 text-xs">|</span>
                       <button
@@ -1288,19 +1298,19 @@ export default function Analytics() {
                         }
                         className="text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
                       >
-                        Tout désélectionner
+                        {t("reports.deselectAll")}
                       </button>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {([
-                      { key: "financial", label: "Résumé Financier",     desc: "Ventes, revenus, dépenses, net" },
-                      { key: "sales",     label: "Rapport de Ventes",    desc: "Tendances et statistiques" },
-                      { key: "products",  label: "Rapport des Produits", desc: "Articles vendus et revenus" },
-                      { key: "clients",   label: "Rapport Clients",      desc: "Statistiques clients" },
-                      { key: "expenses",  label: "Rapport des Dépenses", desc: "Dépenses validées" },
-                      { key: "entries",   label: "Rapport d'Entrées",    desc: "Entrées de caisse" },
+                      { key: "financial", label: t("reports.sections.financial"), desc: t("reports.sections.financialHint") },
+                      { key: "sales",     label: t("reports.sections.sales"),     desc: t("reports.sections.salesHint") },
+                      { key: "products",  label: t("reports.sections.products"),  desc: t("reports.sections.productsHint") },
+                      { key: "clients",   label: t("reports.sections.clients"),   desc: t("reports.sections.clientsHint") },
+                      { key: "expenses",  label: t("reports.sections.expenses"),  desc: t("reports.sections.expensesHint") },
+                      { key: "entries",   label: t("reports.sections.entries"),   desc: t("reports.sections.entriesHint") },
                     ] as const).map(({ key, label, desc }) => {
                       const checked = reportSections[key];
                       return (
@@ -1331,9 +1341,9 @@ export default function Analytics() {
 
                   {/* Selected count badge */}
                   <p className="text-xs text-gray-500">
-                    {Object.values(reportSections).filter(Boolean).length} section(s) sélectionnée(s)
+                    {t("reports.sectionsSelected", { count: Object.values(reportSections).filter(Boolean).length })}
                     {Object.values(reportSections).every(Boolean) && (
-                      <span className="ml-2 text-blue-600 font-medium">— Rapport complet</span>
+                      <span className="ml-2 text-blue-600 font-medium">{t("reports.fullReport")}</span>
                     )}
                   </p>
                 </div>
@@ -1341,26 +1351,26 @@ export default function Analytics() {
                 {/* ── Right: Certification & download ─────────────── */}
                 <div className="space-y-4">
                   <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Certification
+                    {t("reports.certification")}
                   </h4>
 
                   {/* Admin info (read-only) */}
                   <div className="bg-gray-50 rounded-lg border border-gray-200 p-3">
-                    <p className="text-xs text-gray-500 mb-0.5">Administrateur</p>
+                    <p className="text-xs text-gray-500 mb-0.5">{t("reports.administrator")}</p>
                     <p className="text-sm font-semibold text-gray-900">{getAdminUsername()}</p>
                   </div>
 
                   {/* Signature text input */}
                   <div>
                     <label htmlFor="analytics-titre-poste" className="block text-xs font-medium text-gray-700 mb-1">
-                      Titre / Poste (optionnel)
+                      {t("reports.titleOptional")}
                     </label>
                     <input
                       id="analytics-titre-poste"
                       type="text"
                       value={adminSignatureText}
                       onChange={(e) => setAdminSignatureText(e.target.value)}
-                      placeholder="ex: Directeur Général"
+                      placeholder={t("reports.titlePlaceholder")}
                       className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                     />
                   </div>
@@ -1379,8 +1389,8 @@ export default function Analytics() {
                         className="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 cursor-pointer"
                       />
                       <div>
-                        <div className="text-sm font-medium text-gray-800">Signature officielle</div>
-                        <div className="text-xs text-gray-500">Certifier avec signature admin</div>
+                        <div className="text-sm font-medium text-gray-800">{t("reports.officialSignature")}</div>
+                        <div className="text-xs text-gray-500">{t("reports.officialSignatureHint")}</div>
                       </div>
                     </label>
                     <label
@@ -1395,8 +1405,8 @@ export default function Analytics() {
                         className="mt-0.5 w-4 h-4 text-green-600 rounded border-gray-300 cursor-pointer"
                       />
                       <div>
-                        <div className="text-sm font-medium text-gray-800">Cachet officiel</div>
-                        <div className="text-xs text-gray-500">Inclure le cachet de l'entreprise</div>
+                        <div className="text-sm font-medium text-gray-800">{t("reports.officialStamp")}</div>
+                        <div className="text-xs text-gray-500">{t("reports.officialStampHint")}</div>
                       </div>
                     </label>
                   </div>
@@ -1406,15 +1416,14 @@ export default function Analytics() {
                     <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
                       <Shield className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
                       <p className="text-xs text-green-700">
-                        Le rapport sera émis en tant que <strong>Document Officiel</strong>.
+                        <Trans i18nKey="reports.willBeOfficial" components={{ strong: <strong />, em: <em /> }} />
                       </p>
                     </div>
                   ) : (
                     <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
                       <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                       <p className="text-xs text-amber-700">
-                        Sans signature <em>et</em> cachet, le rapport sera marqué{" "}
-                        <strong>Document Non Officiel</strong>.
+                        <Trans i18nKey="reports.willBeUnofficial" components={{ strong: <strong />, em: <em /> }} />
                       </p>
                     </div>
                   )}
@@ -1432,19 +1441,19 @@ export default function Analytics() {
                     {generatingReport ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        Génération en cours…
+                        {t("reports.generating")}
                       </>
                     ) : (
                       <>
                         <FileDown className="w-4 h-4" />
-                        Générer &amp; Télécharger PDF
+                        {t("reports.generate")}
                       </>
                     )}
                   </button>
 
                   {!Object.values(reportSections).some(Boolean) && (
                     <p className="text-xs text-center text-gray-400">
-                      Sélectionnez au moins une section.
+                      {t("reports.selectOneSection")}
                     </p>
                   )}
                 </div>
@@ -1464,9 +1473,9 @@ export default function Analytics() {
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Shield className="w-6 h-6 text-blue-600" />
             </div>
-            <h3 className="text-lg font-bold text-gray-900">Confirmation Requise</h3>
+            <h3 className="text-lg font-bold text-gray-900">{t("reports.confirmationRequired")}</h3>
             <p className="text-gray-500 text-sm mt-1">
-              Confirmez votre mot de passe pour générer le rapport
+              {t("reports.confirmPassword")}
             </p>
           </div>
           <form onSubmit={handlePrintPasswordVerify} className="space-y-4">
@@ -1475,7 +1484,8 @@ export default function Analytics() {
               value={printPassword}
               onChange={(e) => setPrintPassword(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-              placeholder="Mot de passe"
+              placeholder={t("reports.password")}
+              aria-label={t("reports.password")}
               autoFocus
               required
             />
@@ -1490,14 +1500,14 @@ export default function Analytics() {
                 onClick={() => { setShowPrintPasswordModal(false); setPrintPassword(""); setPrintPasswordError(""); }}
                 className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               >
-                Annuler
+                {t("common.cancel")}
               </button>
               <button
                 type="submit"
                 disabled={printPasswordLoading}
                 className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm font-semibold"
               >
-                {printPasswordLoading ? "Vérification..." : "Confirmer"}
+                {printPasswordLoading ? t("reports.verifying") : t("common.confirm")}
               </button>
             </div>
           </form>

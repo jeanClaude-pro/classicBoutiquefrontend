@@ -1,6 +1,8 @@
 // Confirmation texts for important actions. Each text describes what the
 // server actually does for that action (see the referenced route) — no
 // invented consequences. Pure functions: covered by unit tests.
+// Texts are read from the dictionaries in the current language when called.
+import { currentLocale, t } from "../i18n/index.ts";
 
 export interface CopyDetail { label: string; value: string }
 
@@ -17,12 +19,15 @@ export interface ConfirmationCopy {
   blockedReason?: string;
 }
 
-const CATEGORY_LABEL: Record<string, string> = { CLOTHES: "VÊTEMENTS", SHOES: "CHAUSSURES" };
+const CATEGORY_LABEL: Record<string, string> = Object.defineProperties({} as Record<string, string>, {
+  CLOTHES: { enumerable: true, get: () => t("confirm.categories.CLOTHES") },
+  SHOES: { enumerable: true, get: () => t("confirm.categories.SHOES") },
+});
 
 export function formatMoneyUSD(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
-  return `${new Intl.NumberFormat("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
+  return `${new Intl.NumberFormat(currentLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
 }
 
 // ---------------------------------------------------------------- décaissements
@@ -39,94 +44,99 @@ export interface ExpenseLike {
   creditorSnapshot?: { name?: string };
 }
 
-export const EXPENSE_TYPE_LABEL: Record<string, string> = {
-  COMPANY_EXPENSE: "Dépense de l'entreprise",
-  GOODS_PURCHASE: "Achat de marchandises",
-  REPAYMENT: "Remboursement de dette",
-  repayment: "Remboursement de dette",
-  LEGACY_UNCLASSIFIED: "Sortie historique non classée",
-  normal: "Sortie historique non classée",
+// Stored expense type → dictionary entry (the stored value never changes).
+const EXPENSE_TYPE_KEY: Record<string, string> = {
+  COMPANY_EXPENSE: "companyExpense",
+  GOODS_PURCHASE: "goodsPurchase",
+  REPAYMENT: "repayment",
+  repayment: "repayment",
+  LEGACY_UNCLASSIFIED: "legacy",
+  normal: "legacy",
 };
 
+export const EXPENSE_TYPE_LABEL: Record<string, string> = Object.defineProperties({} as Record<string, string>, Object.fromEntries(
+  Object.entries(EXPENSE_TYPE_KEY).map(([type, key]) => [type, { enumerable: true, get: () => t(`enums.expenseType.${key}`) }]),
+));
+
 export function expenseTypeLabel(type?: string): string {
-  return EXPENSE_TYPE_LABEL[type || ""] ?? "Sortie historique non classée";
+  return EXPENSE_TYPE_LABEL[type || ""] ?? t("enums.expenseType.legacy");
 }
 
 function expenseDetails(expense: ExpenseLike): CopyDetail[] {
   const details: CopyDetail[] = [
-    { label: "Opération", value: expenseTypeLabel(expense.expenseType) },
-    { label: "Montant", value: formatMoneyUSD(expense.amountUSD ?? expense.amount) },
+    { label: t("confirm.details.operation"), value: expenseTypeLabel(expense.expenseType) },
+    { label: t("confirm.details.amount"), value: formatMoneyUSD(expense.amountUSD ?? expense.amount) },
   ];
-  if (expense.category) details.push({ label: "Catégorie", value: CATEGORY_LABEL[expense.category] ?? expense.category });
-  if (expense.reason) details.push({ label: "Motif", value: expense.reason });
-  if (expense.recipientName) details.push({ label: "Bénéficiaire", value: expense.recipientName });
+  if (expense.category) details.push({ label: t("confirm.details.category"), value: CATEGORY_LABEL[expense.category] ?? expense.category });
+  if (expense.reason) details.push({ label: t("confirm.details.reason"), value: expense.reason });
+  if (expense.recipientName) details.push({ label: t("confirm.details.beneficiary"), value: expense.recipientName });
   return details;
 }
 
 /** PATCH /expenses/:id/validate */
 export function expenseValidationCopy(expense: ExpenseLike): ConfirmationCopy {
   const category = CATEGORY_LABEL[expense.category || ""] ?? "";
-  const base = { details: expenseDetails(expense), pendingLabel: "Validation…", variant: "primary" as const };
+  const base = { details: expenseDetails(expense), pendingLabel: t("confirm.pending.validating"), variant: "primary" as const };
   if (expense.expenseType === "COMPANY_EXPENSE") {
     return {
       ...base,
-      title: "Valider cette dépense ?",
+      title: t("confirm.expense.companyTitle"),
       message: expense.category === "SHOES"
-        ? `Cette dépense sera enregistrée comme dépense de l'entreprise et affectera le résultat de la catégorie ${category}. Elle est déduite avant le partage du bénéfice entre les deux actionnaires.`
-        : `Cette dépense sera enregistrée comme dépense de l'entreprise et affectera le résultat de la catégorie ${category}.`,
-      consequences: ["Une fois validée, elle ne peut plus être modifiée ni supprimée : seule une contre-passation l'annule."],
-      confirmLabel: "Valider la dépense",
-      successMessage: "Dépense validée avec succès.",
+        ? t("confirm.expense.companyMessageShoes", { category })
+        : t("confirm.expense.companyMessage", { category }),
+      consequences: [t("confirm.expense.companyConsequence")],
+      confirmLabel: t("confirm.expense.companyConfirm"),
+      successMessage: t("confirm.expense.companySuccess"),
     };
   }
   if (expense.expenseType === "GOODS_PURCHASE") {
     return {
       ...base,
-      title: "Valider cet achat de marchandises ?",
+      title: t("confirm.expense.purchaseTitle"),
       message: expense.category === "SHOES"
-        ? `Le montant sera prélevé sur les fonds de réapprovisionnement ${category} disponibles. Le bénéfice des actionnaires ne sera pas utilisé.`
-        : `Le montant sera prélevé sur les fonds de réapprovisionnement ${category} : d'abord sur le capital récupéré, puis, si nécessaire, sur le bénéfice disponible.`,
+        ? t("confirm.expense.purchaseMessageShoes", { category })
+        : t("confirm.expense.purchaseMessage", { category }),
       consequences: [
-        "Si les fonds disponibles sont insuffisants, la validation est refusée et rien n'est enregistré.",
-        "Le stock n'est pas modifié : les articles reçus s'ajoutent dans « Articles & stock ».",
-        "Une fois validé, l'achat ne peut plus être modifié ni supprimé : seule une contre-passation l'annule.",
+        t("confirm.expense.purchaseInsufficient"),
+        t("confirm.expense.purchaseStock"),
+        t("confirm.expense.purchaseImmutable"),
       ],
-      confirmLabel: "Valider l'achat",
-      successMessage: "Achat de marchandises validé avec succès.",
+      confirmLabel: t("confirm.expense.purchaseConfirm"),
+      successMessage: t("confirm.expense.purchaseSuccess"),
     };
   }
   if (expense.expenseType === "REPAYMENT" || expense.expenseType === "repayment") {
-    const creditor = expense.creditorSnapshot?.name || expense.recipientName || "le créancier";
+    const creditor = expense.creditorSnapshot?.name || expense.recipientName || t("confirm.expense.theCreditor");
     return {
       ...base,
-      title: "Valider ce remboursement ?",
-      message: `La dette envers ${creditor} sera réduite de ${formatMoneyUSD(expense.amountUSD ?? expense.amount)}.`,
-      consequences: ["Si le montant dépasse la dette restante, la validation est refusée."],
-      confirmLabel: "Valider le remboursement",
-      successMessage: "Remboursement validé avec succès.",
+      title: t("confirm.expense.repaymentTitle"),
+      message: t("confirm.expense.repaymentMessage", { creditor, amount: formatMoneyUSD(expense.amountUSD ?? expense.amount) }),
+      consequences: [t("confirm.expense.repaymentConsequence")],
+      confirmLabel: t("confirm.expense.repaymentConfirm"),
+      successMessage: t("confirm.expense.repaymentSuccess"),
     };
   }
   return {
     ...base,
-    title: "Validation impossible",
-    message: "Cette sortie historique n'est pas classée (dépense de l'entreprise ou achat de marchandises). Elle ne peut pas être validée.",
-    consequences: ["Rejetez-la, puis enregistrez un nouveau décaissement avec le bon type et la bonne catégorie."],
-    confirmLabel: "Valider",
+    title: t("confirm.expense.blockedTitle"),
+    message: t("confirm.expense.blockedMessage"),
+    consequences: [t("confirm.expense.blockedConsequence")],
+    confirmLabel: t("confirm.expense.blockedConfirm"),
     successMessage: "",
-    blockedReason: "Sortie historique non classée : rejetez-la puis enregistrez un nouveau décaissement.",
+    blockedReason: t("confirm.expense.blockedReason"),
   };
 }
 
 /** PATCH /expenses/:id/reject — the record stays in history as "rejected". */
 export function expenseRejectionCopy(expense: ExpenseLike): ConfirmationCopy {
   return {
-    title: "Rejeter ce décaissement ?",
-    message: "Le décaissement restera visible dans l'historique avec le statut « Rejeté ». Il n'aura aucun effet sur la caisse, la comptabilité ni les dettes.",
-    consequences: ["Un décaissement rejeté ne peut plus être validé."],
+    title: t("confirm.expense.rejectTitle"),
+    message: t("confirm.expense.rejectMessage"),
+    consequences: [t("confirm.expense.rejectConsequence")],
     details: expenseDetails(expense),
-    confirmLabel: "Rejeter",
-    pendingLabel: "Rejet…",
-    successMessage: "Décaissement rejeté.",
+    confirmLabel: t("confirm.expense.rejectConfirm"),
+    pendingLabel: t("confirm.pending.rejecting"),
+    successMessage: t("confirm.expense.rejectSuccess"),
     variant: "danger",
   };
 }
@@ -134,19 +144,19 @@ export function expenseRejectionCopy(expense: ExpenseLike): ConfirmationCopy {
 /** DELETE /expenses/:id(/admin) — only non-validated records; permanent. */
 export function expenseDeletionCopy(expense: ExpenseLike): ConfirmationCopy {
   const copy: ConfirmationCopy = {
-    title: "Supprimer définitivement ce décaissement ?",
+    title: t("confirm.expense.deleteTitle"),
     message: expense.status === "rejected"
-      ? "Ce décaissement rejeté sera effacé de l'historique."
-      : "Ce décaissement en attente sera effacé de l'historique avant toute validation.",
-    consequences: ["Cette action est irréversible."],
+      ? t("confirm.expense.deleteRejected")
+      : t("confirm.expense.deletePending"),
+    consequences: [t("confirm.irreversible")],
     details: expenseDetails(expense),
-    confirmLabel: "Supprimer définitivement",
-    pendingLabel: "Suppression…",
-    successMessage: "Décaissement supprimé.",
+    confirmLabel: t("confirm.deletePermanently"),
+    pendingLabel: t("confirm.pending.deleting"),
+    successMessage: t("confirm.expense.deleteSuccess"),
     variant: "danger",
   };
   if (expense.status === "validated") {
-    copy.blockedReason = "Un décaissement validé ne peut pas être supprimé. Utilisez une contre-passation pour l'annuler.";
+    copy.blockedReason = t("confirm.expense.deleteBlocked");
   }
   return copy;
 }
@@ -155,15 +165,15 @@ export function expenseDeletionCopy(expense: ExpenseLike): ConfirmationCopy {
 export function expenseReversalCopy(expense: ExpenseLike): ConfirmationCopy {
   const category = CATEGORY_LABEL[expense.category || ""] ?? "";
   return {
-    title: "Contre-passer cette opération ?",
+    title: t("confirm.expense.reverseTitle"),
     message: expense.expenseType === "GOODS_PURCHASE"
-      ? `Une opération inverse sera enregistrée : les ${formatMoneyUSD(expense.amountUSD ?? expense.amount)} reviennent dans les fonds de réapprovisionnement ${category}, selon la même répartition capital / bénéfice que l'achat initial.`
-      : `Une opération inverse sera enregistrée : la dépense de ${formatMoneyUSD(expense.amountUSD ?? expense.amount)} ne réduira plus le résultat de la catégorie ${category}.`,
-    consequences: ["L'opération initiale et sa contre-passation restent toutes deux visibles dans l'historique.", "Une opération ne peut être contre-passée qu'une seule fois."],
+      ? t("confirm.expense.reversePurchase", { amount: formatMoneyUSD(expense.amountUSD ?? expense.amount), category })
+      : t("confirm.expense.reverseCompany", { amount: formatMoneyUSD(expense.amountUSD ?? expense.amount), category }),
+    consequences: [t("confirm.expense.reverseVisible"), t("confirm.expense.reverseOnce")],
     details: expenseDetails(expense),
-    confirmLabel: "Contre-passer",
-    pendingLabel: "Contre-passation…",
-    successMessage: "Contre-passation enregistrée.",
+    confirmLabel: t("confirm.expense.reverseConfirm"),
+    pendingLabel: t("confirm.pending.reversing"),
+    successMessage: t("confirm.expense.reverseSuccess"),
     variant: "warning",
   };
 }
@@ -172,16 +182,16 @@ export function expenseReversalCopy(expense: ExpenseLike): ConfirmationCopy {
 export function expenseCreationCopy(expense: ExpenseLike & { autoValidate: boolean }): ConfirmationCopy {
   const validation = expense.expenseType ? expenseValidationCopy(expense) : null;
   const message = expense.autoValidate
-    ? `Votre compte valide directement ce décaissement. ${validation?.message ?? ""}`.trim()
-    : "Le décaissement sera soumis pour validation. Il n'aura aucun effet tant qu'un responsable ne l'a pas validé.";
+    ? t("confirm.expense.createAutoMessage", { validation: validation?.message ?? "" }).trim()
+    : t("confirm.expense.createPendingMessage");
   return {
-    title: expense.autoValidate ? "Enregistrer et valider ce décaissement ?" : "Soumettre ce décaissement ?",
+    title: expense.autoValidate ? t("confirm.expense.createAutoTitle") : t("confirm.expense.createPendingTitle"),
     message,
     consequences: expense.autoValidate ? (validation?.consequences ?? []) : [],
     details: expenseDetails(expense),
-    confirmLabel: expense.autoValidate ? "Enregistrer et valider" : "Soumettre",
-    pendingLabel: "Enregistrement…",
-    successMessage: expense.autoValidate ? "Décaissement enregistré et validé." : "Décaissement soumis avec succès.",
+    confirmLabel: expense.autoValidate ? t("confirm.expense.createAutoConfirm") : t("confirm.expense.createPendingConfirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: expense.autoValidate ? t("confirm.expense.createAutoSuccess") : t("confirm.expense.createPendingSuccess"),
     variant: "primary",
   };
 }
@@ -201,11 +211,11 @@ const units = (sale: SaleLike) => (sale.items || []).reduce((sum, item) => sum +
 
 function saleDetails(sale: SaleLike): CopyDetail[] {
   const details: CopyDetail[] = [];
-  if (sale.saleId) details.push({ label: "Référence", value: sale.saleId });
-  if (sale.customer?.name) details.push({ label: "Client", value: sale.customer.name });
-  details.push({ label: "Montant", value: formatMoneyUSD(sale.total) });
+  if (sale.saleId) details.push({ label: t("confirm.details.reference"), value: sale.saleId });
+  if (sale.customer?.name) details.push({ label: t("confirm.details.customer"), value: sale.customer.name });
+  details.push({ label: t("confirm.details.amount"), value: formatMoneyUSD(sale.total) });
   const count = units(sale);
-  if (count > 0) details.push({ label: "Articles", value: `${count} pièce${count > 1 ? "s" : ""}` });
+  if (count > 0) details.push({ label: t("confirm.details.items"), value: t("confirm.pieces", { count }) });
   return details;
 }
 
@@ -214,17 +224,17 @@ export function voidSaleCopy(sale: SaleLike): ConfirmationCopy {
   const isReservation = sale.type === "reservation";
   const recognized = sale.status === "completed";
   const consequences: string[] = [];
-  if (units(sale) > 0) consequences.push(`Les ${units(sale)} pièce(s) seront remises en stock.`);
-  if (recognized) consequences.push("Elle ne comptera plus dans le chiffre d'affaires, le coût des articles vendus ni le bénéfice.");
-  consequences.push("Les statistiques du client seront recalculées.", "L'annulation est définitive : elle ne peut pas être défaite.");
+  if (units(sale) > 0) consequences.push(t("confirm.sale.unitsBackInStock", { units: units(sale) }));
+  if (recognized) consequences.push(t("confirm.sale.voidRevenue"));
+  consequences.push(t("confirm.sale.voidStats"), t("confirm.sale.voidFinal"));
   return {
-    title: isReservation ? "Annuler cette réservation ?" : "Annuler cette vente ?",
-    message: `${isReservation ? "La réservation" : "La vente"} restera dans l'historique avec le statut « Annulée ».`,
+    title: isReservation ? t("confirm.sale.voidReservationTitle") : t("confirm.sale.voidSaleTitle"),
+    message: isReservation ? t("confirm.sale.voidReservationMessage") : t("confirm.sale.voidSaleMessage"),
     consequences,
     details: saleDetails(sale),
-    confirmLabel: isReservation ? "Annuler la réservation" : "Annuler la vente",
-    pendingLabel: "Annulation…",
-    successMessage: isReservation ? "Réservation annulée." : "Vente annulée.",
+    confirmLabel: isReservation ? t("confirm.sale.voidReservationConfirm") : t("confirm.sale.voidSaleConfirm"),
+    pendingLabel: t("confirm.pending.voiding"),
+    successMessage: isReservation ? t("confirm.sale.voidReservationSuccess") : t("confirm.sale.voidSaleSuccess"),
     variant: "danger",
   };
 }
@@ -232,17 +242,17 @@ export function voidSaleCopy(sale: SaleLike): ConfirmationCopy {
 /** PATCH /sales/:id/complete — stock was already reserved at creation. */
 export function completeReservationCopy(sale: SaleLike): ConfirmationCopy {
   return {
-    title: "Terminer cette réservation ?",
-    message: "La réservation devient une vente terminée : le client reçoit ses articles.",
+    title: t("confirm.sale.completeTitle"),
+    message: t("confirm.sale.completeMessage"),
     consequences: [
-      "La vente sera comptabilisée aujourd'hui dans le chiffre d'affaires et le bénéfice.",
-      "Le stock ne change pas : les articles ont été réservés à la création.",
-      "Un reçu de remise sera imprimé.",
+      t("confirm.sale.completeRevenue"),
+      t("confirm.sale.completeStock"),
+      t("confirm.sale.completeReceipt"),
     ],
     details: saleDetails(sale),
-    confirmLabel: "Terminer la réservation",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Réservation terminée avec succès.",
+    confirmLabel: t("confirm.sale.completeConfirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.sale.completeSuccess"),
     variant: "primary",
   };
 }
@@ -250,17 +260,17 @@ export function completeReservationCopy(sale: SaleLike): ConfirmationCopy {
 /** PATCH /sales/:id/pending — superadmin only; reversible by completing again. */
 export function revertReservationCopy(sale: SaleLike): ConfirmationCopy {
   return {
-    title: "Remettre cette réservation en attente ?",
-    message: "La vente redevient une réservation en attente.",
+    title: t("confirm.sale.revertTitle"),
+    message: t("confirm.sale.revertMessage"),
     consequences: [
-      "Elle ne comptera plus dans le chiffre d'affaires ni dans le bénéfice jusqu'à ce qu'elle soit de nouveau terminée.",
-      "Le stock reste réservé.",
-      "Si son capital a déjà servi à un achat de marchandises, un « capital à reconstituer » apparaîtra dans les rapports.",
+      t("confirm.sale.revertRevenue"),
+      t("confirm.sale.revertStock"),
+      t("confirm.sale.revertCapital"),
     ],
     details: saleDetails(sale),
-    confirmLabel: "Remettre en attente",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Réservation remise en attente.",
+    confirmLabel: t("confirm.sale.revertConfirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.sale.revertSuccess"),
     variant: "warning",
   };
 }
@@ -268,20 +278,19 @@ export function revertReservationCopy(sale: SaleLike): ConfirmationCopy {
 /** DELETE /sales/:id — superadmin only; refused for completed records. */
 export function deleteSaleCopy(sale: SaleLike): ConfirmationCopy {
   const isReservation = sale.type === "reservation";
-  const noun = isReservation ? "cette réservation" : "cette vente";
   const consequences: string[] = [];
-  if (sale.status !== "voided" && units(sale) > 0) consequences.push(`Les ${units(sale)} pièce(s) seront remises en stock.`);
-  consequences.push("Elle disparaîtra définitivement de l'historique. Cette action est irréversible.");
+  if (sale.status !== "voided" && units(sale) > 0) consequences.push(t("confirm.sale.unitsBackInStock", { units: units(sale) }));
+  consequences.push(t("confirm.sale.deleteGone"));
   return {
-    title: `Supprimer définitivement ${noun} ?`,
-    message: isReservation && sale.status === "pending" ? "Cette réservation en attente n'a jamais été comptabilisée." : `${isReservation ? "Cette réservation" : "Cette vente"} n'est plus comptabilisée.`,
+    title: isReservation ? t("confirm.sale.deleteReservationTitle") : t("confirm.sale.deleteSaleTitle"),
+    message: isReservation && sale.status === "pending" ? t("confirm.sale.deletePendingReservation") : isReservation ? t("confirm.sale.deleteReservationMessage") : t("confirm.sale.deleteSaleMessage"),
     consequences,
     details: saleDetails(sale),
-    confirmLabel: "Supprimer définitivement",
-    pendingLabel: "Suppression…",
-    successMessage: isReservation ? "Réservation supprimée." : "Vente supprimée.",
+    confirmLabel: t("confirm.deletePermanently"),
+    pendingLabel: t("confirm.pending.deleting"),
+    successMessage: isReservation ? t("confirm.sale.deleteReservationSuccess") : t("confirm.sale.deleteSaleSuccess"),
     variant: "danger",
-    ...(sale.status === "completed" ? { blockedReason: `Une ${isReservation ? "réservation terminée" : "vente terminée"} est comptabilisée : elle ne peut pas être supprimée. Annulez-la d'abord.` } : {}),
+    ...(sale.status === "completed" ? { blockedReason: isReservation ? t("confirm.sale.deleteReservationBlocked") : t("confirm.sale.deleteSaleBlocked") } : {}),
   };
 }
 
@@ -290,17 +299,17 @@ export function deleteSaleCopy(sale: SaleLike): ConfirmationCopy {
 /** DELETE /entries/:id — superadmin only; soft delete (status "deleted"). */
 export function deleteEntryCopy(entry: { entryId?: string; amount?: number; amountUSD?: number; source?: string }): ConfirmationCopy {
   return {
-    title: "Supprimer cette entrée de caisse ?",
-    message: "L'entrée sera marquée comme supprimée et ne sera plus comptée dans les entrées de caisse. L'enregistrement est conservé pour le contrôle.",
+    title: t("confirm.entry.deleteTitle"),
+    message: t("confirm.entry.deleteMessage"),
     consequences: [],
     details: [
-      ...(entry.entryId ? [{ label: "Référence", value: entry.entryId }] : []),
-      { label: "Montant", value: formatMoneyUSD(entry.amountUSD ?? entry.amount) },
-      ...(entry.source ? [{ label: "Source", value: entry.source }] : []),
+      ...(entry.entryId ? [{ label: t("confirm.details.reference"), value: entry.entryId }] : []),
+      { label: t("confirm.details.amount"), value: formatMoneyUSD(entry.amountUSD ?? entry.amount) },
+      ...(entry.source ? [{ label: t("confirm.details.source"), value: entry.source }] : []),
     ],
-    confirmLabel: "Supprimer l'entrée",
-    pendingLabel: "Suppression…",
-    successMessage: "Entrée de caisse supprimée.",
+    confirmLabel: t("confirm.entry.deleteConfirm"),
+    pendingLabel: t("confirm.pending.deleting"),
+    successMessage: t("confirm.entry.deleteSuccess"),
     variant: "danger",
   };
 }
@@ -308,13 +317,13 @@ export function deleteEntryCopy(entry: { entryId?: string; amount?: number; amou
 /** DELETE /products/:id — permanent; past sales keep their own snapshots. */
 export function deleteProductCopy(product: { name?: string; stock?: number }): ConfirmationCopy {
   return {
-    title: "Supprimer définitivement cet article ?",
-    message: `« ${product.name || "Article"} » sera retiré du catalogue${Number(product.stock) > 0 ? ` avec son stock de ${product.stock} pièce(s)` : ""}.`,
-    consequences: ["Les ventes passées conservent leur nom, prix et coût enregistrés.", "Cette action est irréversible."],
+    title: t("confirm.product.deleteTitle"),
+    message: Number(product.stock) > 0 ? t("confirm.product.deleteMessageWithStock", { name: product.name || t("confirm.product.fallbackName"), stock: product.stock }) : t("confirm.product.deleteMessage", { name: product.name || t("confirm.product.fallbackName") }),
+    consequences: [t("confirm.product.pastSales"), t("confirm.irreversible")],
     details: [],
-    confirmLabel: "Supprimer définitivement",
-    pendingLabel: "Suppression…",
-    successMessage: "Article supprimé.",
+    confirmLabel: t("confirm.deletePermanently"),
+    pendingLabel: t("confirm.pending.deleting"),
+    successMessage: t("confirm.product.deleteSuccess"),
     variant: "danger",
   };
 }
@@ -322,13 +331,13 @@ export function deleteProductCopy(product: { name?: string; stock?: number }): C
 /** DELETE /users/:id — permanent; history keeps the author's name. */
 export function deleteUserCopy(user: { username?: string; email?: string }): ConfirmationCopy {
   return {
-    title: "Supprimer définitivement ce compte ?",
-    message: `Le compte « ${user.username || user.email || "utilisateur"} » ne pourra plus se connecter.`,
-    consequences: ["Les opérations déjà enregistrées par cet utilisateur restent dans l'historique.", "Cette action est irréversible. Pour une suspension temporaire, désactivez plutôt le compte."],
-    details: user.email ? [{ label: "Email", value: user.email }] : [],
-    confirmLabel: "Supprimer le compte",
-    pendingLabel: "Suppression…",
-    successMessage: "Utilisateur supprimé.",
+    title: t("confirm.user.deleteTitle"),
+    message: t("confirm.user.deleteMessage", { name: user.username || user.email || t("confirm.user.fallbackName") }),
+    consequences: [t("confirm.user.deleteHistory"), t("confirm.user.deleteIrreversible")],
+    details: user.email ? [{ label: t("confirm.details.email"), value: user.email }] : [],
+    confirmLabel: t("confirm.user.deleteConfirm"),
+    pendingLabel: t("confirm.pending.deleting"),
+    successMessage: t("confirm.user.deleteSuccess"),
     variant: "danger",
   };
 }
@@ -337,30 +346,30 @@ export function deleteUserCopy(user: { username?: string; email?: string }): Con
 export function toggleUserStatusCopy(user: { username?: string; isActive?: boolean }): ConfirmationCopy {
   const deactivate = user.isActive !== false;
   return {
-    title: deactivate ? "Désactiver ce compte ?" : "Réactiver ce compte ?",
+    title: deactivate ? t("confirm.user.deactivateTitle") : t("confirm.user.reactivateTitle"),
     message: deactivate
-      ? `« ${user.username || "Utilisateur"} » sera bloqué dès sa prochaine action et ne pourra plus se connecter tant que le compte n'est pas réactivé.`
-      : `« ${user.username || "Utilisateur"} » pourra de nouveau se connecter avec ses droits actuels.`,
+      ? t("confirm.user.deactivateMessage", { name: user.username || t("confirm.user.fallbackNameCapital") })
+      : t("confirm.user.reactivateMessage", { name: user.username || t("confirm.user.fallbackNameCapital") }),
     consequences: [],
     details: [],
-    confirmLabel: deactivate ? "Désactiver" : "Réactiver",
-    pendingLabel: "Enregistrement…",
-    successMessage: deactivate ? "Compte désactivé." : "Compte réactivé.",
+    confirmLabel: deactivate ? t("confirm.user.deactivateConfirm") : t("confirm.user.reactivateConfirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: deactivate ? t("confirm.user.deactivateSuccess") : t("confirm.user.reactivateSuccess"),
     variant: deactivate ? "danger" : "primary",
   };
 }
 
 /** POST /exchange-rates — new operations only; history keeps its own rate. */
 export function exchangeRateCopy(rate: number, current?: number): ConfirmationCopy {
-  const format = (value: number) => new Intl.NumberFormat("fr-FR").format(value);
+  const format = (value: number) => new Intl.NumberFormat(currentLocale()).format(value);
   return {
-    title: "Appliquer ce nouveau taux ?",
-    message: `1 USD = ${format(rate)} FC sera utilisé pour les nouvelles ventes, réservations, entrées et décaissements.`,
-    consequences: ["Les opérations déjà enregistrées gardent le taux en vigueur au moment de leur saisie."],
-    details: current ? [{ label: "Taux actuel", value: `1 USD = ${format(current)} FC` }, { label: "Nouveau taux", value: `1 USD = ${format(rate)} FC` }] : [],
-    confirmLabel: "Appliquer le taux",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Taux de change mis à jour avec succès.",
+    title: t("confirm.rate.title"),
+    message: t("confirm.rate.message", { rate: format(rate) }),
+    consequences: [t("confirm.rate.history")],
+    details: current ? [{ label: t("confirm.details.currentRate"), value: `1 USD = ${format(current)} FC` }, { label: t("confirm.details.newRate"), value: `1 USD = ${format(rate)} FC` }] : [],
+    confirmLabel: t("confirm.rate.confirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.rate.success"),
     variant: "primary",
   };
 }
@@ -368,13 +377,13 @@ export function exchangeRateCopy(rate: number, current?: number): ConfirmationCo
 /** POST /creditors/:id/loans — increases the outstanding debt; no delete route. */
 export function loanCopy(creditorName: string, amountLabel: string): ConfirmationCopy {
   return {
-    title: "Enregistrer cet emprunt ?",
-    message: `La dette envers ${creditorName} augmentera de ${amountLabel}.`,
-    consequences: ["Un emprunt enregistré ne peut pas être supprimé. Vérifiez le montant et la devise."],
+    title: t("confirm.loan.title"),
+    message: t("confirm.loan.message", { creditor: creditorName, amount: amountLabel }),
+    consequences: [t("confirm.loan.consequence")],
     details: [],
-    confirmLabel: "Enregistrer l'emprunt",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Emprunt enregistré avec succès.",
+    confirmLabel: t("confirm.loan.confirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.loan.success"),
     variant: "primary",
   };
 }
@@ -385,28 +394,28 @@ export function roleChangeCopy(
   next: { role: string; assignedCategory?: string },
   roleName: (role?: string) => string,
 ): ConfirmationCopy {
-  const name = user.username || "Utilisateur";
+  const name = user.username || t("confirm.user.fallbackNameCapital");
   const toShareholder = next.role === "admin";
   const target = toShareholder ? `${roleName("admin")} · ${CATEGORY_LABEL[next.assignedCategory || "CLOTHES"]}` : roleName(next.role);
-  const consequences = ["Le changement s'applique dès sa prochaine action ; il n'a pas besoin de se reconnecter."];
+  const consequences = [t("confirm.role.immediate")];
   if (toShareholder) {
     consequences.push(
-      `Il ne verra que les données de la catégorie ${CATEGORY_LABEL[next.assignedCategory || "CLOTHES"]}, en lecture seule.`,
-      "Ses accès aux pages sont limités à ceux autorisés aux actionnaires et ses permissions d'actions sont retirées.",
+      t("confirm.role.shareholderScope", { category: CATEGORY_LABEL[next.assignedCategory || "CLOTHES"] }),
+      t("confirm.role.shareholderAccess"),
     );
   } else if (next.role === "superadmin") {
-    consequences.push("Il aura un accès complet, y compris l'administration des comptes.");
+    consequences.push(t("confirm.role.superadmin"));
   } else {
-    consequences.push("Ses permissions personnalisées éventuelles sont conservées.");
+    consequences.push(t("confirm.role.keepPermissions"));
   }
   return {
-    title: "Changer le rôle de ce compte ?",
-    message: `« ${name} » passera de « ${roleName(user.role)} » à « ${target} ».`,
+    title: t("confirm.role.title"),
+    message: t("confirm.role.message", { name, from: roleName(user.role), to: target }),
     consequences,
     details: [],
-    confirmLabel: "Changer le rôle",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Rôle mis à jour.",
+    confirmLabel: t("confirm.role.confirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.role.success"),
     variant: next.role === "superadmin" ? "warning" : "primary",
   };
 }
@@ -414,13 +423,13 @@ export function roleChangeCopy(
 /** PUT /users/:id/role with role "admin" — changes which category a shareholder sees. */
 export function shareholderCategoryCopy(user: { username?: string; assignedCategory?: string }, category: string): ConfirmationCopy {
   return {
-    title: "Changer la catégorie de cet actionnaire ?",
-    message: `« ${user.username || "Actionnaire"} » verra désormais les données de la catégorie ${CATEGORY_LABEL[category] ?? category} au lieu de ${CATEGORY_LABEL[user.assignedCategory || "CLOTHES"] ?? "—"}.`,
-    consequences: ["Le changement s'applique dès sa prochaine action."],
+    title: t("confirm.shareholder.title"),
+    message: t("confirm.shareholder.message", { name: user.username || t("confirm.shareholder.fallbackName"), category: CATEGORY_LABEL[category] ?? category, previous: CATEGORY_LABEL[user.assignedCategory || "CLOTHES"] ?? "—" }),
+    consequences: [t("confirm.shareholder.immediate")],
     details: [],
-    confirmLabel: "Changer la catégorie",
-    pendingLabel: "Enregistrement…",
-    successMessage: "Catégorie de l'actionnaire mise à jour.",
+    confirmLabel: t("confirm.shareholder.confirm"),
+    pendingLabel: t("confirm.pending.saving"),
+    successMessage: t("confirm.shareholder.success"),
     variant: "primary",
   };
 }
