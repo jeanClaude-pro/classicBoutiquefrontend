@@ -239,42 +239,6 @@ export function voidSaleCopy(sale: SaleLike): ConfirmationCopy {
   };
 }
 
-/** PATCH /sales/:id/complete — stock was already reserved at creation. */
-export function completeReservationCopy(sale: SaleLike): ConfirmationCopy {
-  return {
-    title: t("confirm.sale.completeTitle"),
-    message: t("confirm.sale.completeMessage"),
-    consequences: [
-      t("confirm.sale.completeRevenue"),
-      t("confirm.sale.completeStock"),
-      t("confirm.sale.completeReceipt"),
-    ],
-    details: saleDetails(sale),
-    confirmLabel: t("confirm.sale.completeConfirm"),
-    pendingLabel: t("confirm.pending.saving"),
-    successMessage: t("confirm.sale.completeSuccess"),
-    variant: "primary",
-  };
-}
-
-/** PATCH /sales/:id/pending — superadmin only; reversible by completing again. */
-export function revertReservationCopy(sale: SaleLike): ConfirmationCopy {
-  return {
-    title: t("confirm.sale.revertTitle"),
-    message: t("confirm.sale.revertMessage"),
-    consequences: [
-      t("confirm.sale.revertRevenue"),
-      t("confirm.sale.revertStock"),
-      t("confirm.sale.revertCapital"),
-    ],
-    details: saleDetails(sale),
-    confirmLabel: t("confirm.sale.revertConfirm"),
-    pendingLabel: t("confirm.pending.saving"),
-    successMessage: t("confirm.sale.revertSuccess"),
-    variant: "warning",
-  };
-}
-
 /** DELETE /sales/:id — superadmin only; refused for completed records. */
 export function deleteSaleCopy(sale: SaleLike): ConfirmationCopy {
   const isReservation = sale.type === "reservation";

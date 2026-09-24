@@ -30,7 +30,11 @@ import { notifySuccess } from "../../lib/notify";
 import { voidSaleCopy } from "../../lib/confirmationCopy";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
 import { MODULES } from "../../config/modules";
+import { t as translate } from "../../i18n";
+import UnitPriceInput from "../../components/UnitPriceInput";
 import {
+  DISCOUNT_QUANTITY_THRESHOLD,
+  createPriceSnapshot,
   formatFC,
   formatUSD,
   getItemOriginalCurrency,
@@ -41,8 +45,20 @@ import {
   getSaleFcTotal,
   getItemUsdTotal,
   getItemUsdUnitPrice,
+  isDiscountedPrice,
+  productPriceAuthority,
+  totalCartQuantity,
+  type PriceSnapshot,
+  type ProductPricing,
+  type ReferencePrice,
   type SaleCurrency,
 } from "../../utils/salePricing";
+import {
+  correctionLineReference,
+  productCorrectionLine,
+  restoreCorrectionDiscounts,
+  withCorrectionPrice,
+} from "../../utils/saleCorrection";
 
 interface SaleItem {
   productId: string;
@@ -56,14 +72,21 @@ interface SaleItem {
   priceUSD?: number;
   priceFC?: number;
   exchangeRate?: number;
+  unitSellingPrice?: number;
+  referenceUnitSellingPrice?: number;
+  referenceUnitSellingPriceFC?: number;
+  discountApplied?: boolean;
+  discountPerUnit?: number;
 }
 
 // Shapes returned by GET /api/sales (see server/routes/sales.js).
 interface SalesSummary {
   totalRecords: number;
   revenue: number;
+  revenueFC?: number;
   expenses: number;
   net: number;
+  netFC?: number;
   salesCount: number;
   expensesCount: number;
   [key: string]: unknown;
@@ -111,7 +134,7 @@ interface Sale {
   exchangeRate?: number;
 }
 
-interface Product {
+interface Product extends ProductPricing {
   _id: string;
   name: string;
   stock: number;
@@ -161,8 +184,10 @@ interface SalesResponse {
   summary: {
     totalRecords: number;
     revenue: number;
+    revenueFC?: number;
     expenses: number;
     net: number;
+    netFC?: number;
     salesCount: number;
     expensesCount: number;
   };
@@ -232,6 +257,9 @@ export default function SalesHistory() {
   });
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Correction modal: refusals per line (_id -> message) and discount notices.
+  const [editLineErrors, setEditLineErrors] = useState<Record<string, string>>({});
+  const [editNotice, setEditNotice] = useState<string | null>(null);
   const [loadingProducts, setLoadingProducts] = useState(false);
 
   // User state for role checking
@@ -277,23 +305,14 @@ export default function SalesHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<SalesResponse["pagination"] | null>(null);
 
-  // Current exchange rate — used only to approximate FC for period-aggregate
-  // summary cards below. Never used to redisplay a specific sale's own amount.
-  const [currentExchangeRate, setCurrentExchangeRate] = useState<number | null>(null);
+  // Historical FC totals are never reconstructed with the current rate.
+  // Period FC summaries come from saved transaction snapshots.
 
   // Fetch current user on component mount
   useEffect(() => {
     fetchCurrentUser();
     fetchSales();
     fetchProducts();
-    fetch(`${serverUrl}/exchange-rates/current`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (data?.rate) setCurrentExchangeRate(data.rate);
-      })
-      .catch(() => {});
     fetch(`${serverUrl}/settings/receipt`, {
       headers: { Authorization: `Bearer ${getToken()}` },
     })
@@ -624,6 +643,11 @@ export default function SalesHistory() {
 
   const formatCurrency = formatUSD;
   const formatFc = formatFC;
+  // Catalogue price in the currency it was defined in (never a sale snapshot).
+  const formatProductPrice = (product: ProductPricing) => {
+    const { currency, amount } = productPriceAuthority(product);
+    return currency === "FC" ? formatFc(amount) : formatCurrency(amount);
+  };
 
   const compactDualUnit = (item: SaleItem, saleRate?: number) => {
     const fc = getItemFcUnitPrice(item, saleRate);
@@ -1217,6 +1241,8 @@ export default function SalesHistory() {
       reason: "",
       isWalkIn: Boolean(sale.isWalkIn),
     });
+    setEditLineErrors({});
+    setEditNotice(null);
     setShowEditModal(true);
     setError(null);
 
@@ -1236,6 +1262,8 @@ export default function SalesHistory() {
       reason: "",
       isWalkIn: false,
     });
+    setEditLineErrors({});
+    setEditNotice(null);
     setError(null);
   };
 
@@ -1249,21 +1277,40 @@ export default function SalesHistory() {
     }));
   };
 
+  // Normal price of a correction line, mirroring the server.
+  const lineReference = (item: SaleItem): ReferencePrice | null =>
+    correctionLineReference(item, editingSale?.items, editingSale?.exchangeRate);
+
+  // A corrected cart under 5 pieces cannot keep a discount: every discounted
+  // line returns to its normal price in its own currency, and the user is told.
+  const withEligibleDiscounts = (items: SaleItem[]): SaleItem[] => {
+    const { lines, restored } = restoreCorrectionDiscounts(items, editingSale?.items, editingSale?.exchangeRate);
+    setEditNotice(restored ? translate("pos.discountsRestored") : null);
+    return lines;
+  };
+
+  const clearEditLineError = (itemId: string) =>
+    setEditLineErrors((current) => {
+      if (!(itemId in current)) return current;
+      const next = { ...current };
+      delete next[itemId];
+      return next;
+    });
+
   const updateItemQuantity = (index: number, newQuantity: number) => {
     if (newQuantity < 1) return;
 
-    const updatedItems = [...editForm.items];
-    const product = products.find(
-      (p) => p._id === updatedItems[index].productId
-    );
+    const current = editForm.items[index];
+    const product = products.find((p) => p._id === current.productId);
 
-    if (product && newQuantity > product.stock + updatedItems[index].quantity) {
+    if (product && newQuantity > product.stock + current.quantity) {
       setError(`Stock insuffisant (disponible : ${product.stock}).`);
       return;
     }
 
-    updatedItems[index].quantity = newQuantity;
-    updatedItems[index].total = newQuantity * updatedItems[index].price;
+    const updatedItems = withEligibleDiscounts(editForm.items.map((item, i) =>
+      i === index ? { ...item, quantity: newQuantity, total: newQuantity * (item.priceUSD ?? item.price) } : item
+    ));
 
     setEditForm((prev) => ({
       ...prev,
@@ -1272,36 +1319,42 @@ export default function SalesHistory() {
     setError(null);
   };
 
+  // Commits the unit price of ONE line in the currency it was entered in, so
+  // an FC line stays an exact FC amount.
   const updateItemPrice = (index: number, newPrice: number) => {
-    if (newPrice < 0) return;
-
-    const updatedItems = [...editForm.items];
-    const itemRate =
-      updatedItems[index].exchangeRate ?? editingSale?.exchangeRate;
-    updatedItems[index] = {
-      ...updatedItems[index],
-      price: newPrice,
-      total: newPrice * updatedItems[index].quantity,
-      enteredPrice: newPrice,
-      enteredCurrency: "USD",
-      priceUSD: newPrice,
-      priceFC: itemRate ? Math.round(newPrice * itemRate) : undefined,
-      exchangeRate: itemRate,
-    };
-
+    const current = editForm.items[index];
+    const itemRate = current.exchangeRate ?? editingSale?.exchangeRate;
+    let snapshot: PriceSnapshot;
+    try {
+      snapshot = createPriceSnapshot(newPrice, getItemOriginalCurrency(current), itemRate);
+    } catch {
+      setEditLineErrors((errors) => ({ ...errors, [current._id]: translate("pos.pricePositive") }));
+      return;
+    }
+    const reference = lineReference(current);
+    if (reference && isDiscountedPrice(snapshot, reference) && totalCartQuantity(editForm.items) < DISCOUNT_QUANTITY_THRESHOLD) {
+      setEditLineErrors((errors) => ({ ...errors, [current._id]: translate("pos.discountQuantityRequired") }));
+      return;
+    }
+    clearEditLineError(current._id);
     setEditForm((prev) => ({
       ...prev,
-      items: updatedItems,
+      items: prev.items.map((item, i) => (i === index ? withCorrectionPrice(item, snapshot, reference) : item)),
     }));
   };
 
   const removeItem = (index: number) => {
-    const updatedItems = editForm.items.filter((_, i) => i !== index);
+    const removed = editForm.items[index];
+    const updatedItems = withEligibleDiscounts(editForm.items.filter((_, i) => i !== index));
+    if (removed) clearEditLineError(removed._id);
     setEditForm((prev) => ({
       ...prev,
       items: updatedItems,
     }));
   };
+
+  const productLine = (product: Product, base: Pick<SaleItem, "_id" | "quantity">): SaleItem | null =>
+    productCorrectionLine(product, base, editingSale?.exchangeRate);
 
   const addNewItem = () => {
     if (products.length === 0) {
@@ -1309,22 +1362,11 @@ export default function SalesHistory() {
       return;
     }
 
-    const defaultProduct = products[0];
-    const newItem: SaleItem = {
-      productId: defaultProduct._id,
-      name: defaultProduct.name,
+    const newItem = productLine(products[0], {
+      _id: `temp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       quantity: 1,
-      price: defaultProduct.price,
-      total: defaultProduct.price,
-      enteredPrice: defaultProduct.price,
-      enteredCurrency: "USD",
-      priceUSD: defaultProduct.price,
-      priceFC: editingSale?.exchangeRate
-        ? Math.round(defaultProduct.price * editingSale.exchangeRate)
-        : undefined,
-      exchangeRate: editingSale?.exchangeRate,
-      _id: `temp-${Date.now()}`,
-    };
+    });
+    if (!newItem) return;
 
     setEditForm((prev) => ({
       ...prev,
@@ -1339,25 +1381,13 @@ export default function SalesHistory() {
       return;
     }
 
-    const updatedItems = [...editForm.items];
-    const itemRate =
-      updatedItems[index].exchangeRate ?? editingSale?.exchangeRate;
-    updatedItems[index] = {
-      ...updatedItems[index],
-      productId,
-      name: product.name,
-      price: product.price,
-      total: product.price * updatedItems[index].quantity,
-      enteredPrice: product.price,
-      enteredCurrency: "USD",
-      priceUSD: product.price,
-      priceFC: itemRate ? Math.round(product.price * itemRate) : undefined,
-      exchangeRate: itemRate,
-    };
-
+    const current = editForm.items[index];
+    const replacement = productLine(product, { _id: current._id, quantity: current.quantity });
+    if (!replacement) return;
+    clearEditLineError(current._id);
     setEditForm((prev) => ({
       ...prev,
-      items: updatedItems,
+      items: prev.items.map((item, i) => (i === index ? replacement : item)),
     }));
     setError(null);
   };
@@ -1413,6 +1443,7 @@ export default function SalesHistory() {
           : editForm.customer,
         isWalkIn: editForm.isWalkIn,
         items: editForm.items.map((item) => ({
+          _id: item._id,
           productId: item.productId,
           name: item.name,
           quantity: item.quantity,
@@ -1463,6 +1494,9 @@ export default function SalesHistory() {
       } else {
         const failure = await apiErrorFromResponse(response);
         setError(failure.message);
+        const itemIndex = failure.details?.itemIndex;
+        const refused = typeof itemIndex === "number" ? editForm.items[itemIndex] : undefined;
+        if (refused) setEditLineErrors({ [refused._id]: failure.message });
         if (failure.isConflict) await fetchSales();
       }
     } catch (error) {
@@ -1543,8 +1577,10 @@ export default function SalesHistory() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Chiffre d'affaires</p>
-                  <p className="text-2xl font-bold text-green-600">{formatFc(summaryStats.revenue * (currentExchangeRate || 0))}</p>
-                  <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.revenue)}</p>
+                  <p className="text-2xl font-bold text-green-600">
+                    {summaryStats.revenueFC !== undefined ? formatFc(summaryStats.revenueFC) : "—"}
+                  </p>
+                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.revenue)}</p>
                 </div>
                 <Download className="w-8 h-8 text-green-500" />
               </div>
@@ -1555,8 +1591,8 @@ export default function SalesHistory() {
                 <div>
                   <p className="text-sm text-gray-600">Sorties historiques</p>
                   <p className="text-[11px] text-gray-500">Anciennes sorties enregistrées avec les ventes</p>
-                  <p className="text-2xl font-bold text-red-600">{formatFc(summaryStats.expenses * (currentExchangeRate || 0))}</p>
-                  <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.expenses)}</p>
+                  <p className="text-2xl font-bold text-red-600">—</p>
+                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.expenses)}</p>
                 </div>
                 <Minus className="w-8 h-8 text-red-500" />
               </div>
@@ -1566,8 +1602,10 @@ export default function SalesHistory() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">Chiffre d'affaires − sorties historiques</p>
-                  <p className="text-2xl font-bold text-blue-600">{formatFc(summaryStats.net * (currentExchangeRate || 0))}</p>
-                  <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.net)}</p>
+                  <p className="text-2xl font-bold text-blue-600">
+                    {summaryStats.netFC !== undefined ? formatFc(summaryStats.netFC) : "—"}
+                  </p>
+                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.net)}</p>
                 </div>
                 <Package className="w-8 h-8 text-blue-500" />
               </div>
@@ -2249,7 +2287,7 @@ export default function SalesHistory() {
                 </h4>
                 <div className="space-y-3">
                   {selectedSale.items.map((item, index) => (
-                    <div key={index} className="bg-gray-50 rounded-lg p-4">
+                    <div key={item._id ?? index} className="bg-gray-50 rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
                           <h5 className="font-medium text-gray-900">
@@ -2546,6 +2584,11 @@ export default function SalesHistory() {
                   {error}
                 </div>
               )}
+              {editNotice && (
+                <div role="status" className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg">
+                  {editNotice}
+                </div>
+              )}
 
               {/* Customer Information */}
               <div>
@@ -2706,11 +2749,10 @@ export default function SalesHistory() {
                               type="text"
                               value={item.name}
                               onChange={(e) => {
-                                const updatedItems = [...editForm.items];
-                                updatedItems[index].name = e.target.value;
+                                const name = e.target.value;
                                 setEditForm((prev) => ({
                                   ...prev,
-                                  items: updatedItems,
+                                  items: prev.items.map((line, i) => (i === index ? { ...line, name } : line)),
                                 }));
                               }}
                               placeholder="Nom de l'article"
@@ -2728,7 +2770,7 @@ export default function SalesHistory() {
                               {products.map((product) => (
                                 <option key={product._id} value={product._id}>
                                   {product.name} -{" "}
-                                  {formatCurrency(product.price)} (Stock:{" "}
+                                  {formatProductPrice(product)} (Stock:{" "}
                                   {product.stock})
                                 </option>
                               ))}
@@ -2738,22 +2780,30 @@ export default function SalesHistory() {
 
                         <div className="md:col-span-2">
                           <label htmlFor={`sales-edit-item-${index}-price`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Prix
+                            {translate("pos.unitPriceIn", { currency: getItemOriginalCurrency(item) })}
                           </label>
-                          <input
+                          <UnitPriceInput
                             id={`sales-edit-item-${index}-price`}
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.price}
-                            onChange={(e) =>
-                              updateItemPrice(
-                                index,
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="w-full p-2 border rounded"
+                            value={getItemOriginalUnitPrice(item)}
+                            currency={getItemOriginalCurrency(item)}
+                            ariaLabel={translate("pos.editUnitPriceNamed", { name: item.name })}
+                            error={editLineErrors[item._id]}
+                            className="w-full"
+                            onCommit={(amount) => updateItemPrice(index, amount)}
                           />
+                          {item.discountApplied && (() => {
+                            const reference = lineReference(item);
+                            if (!reference) return null;
+                            return (
+                              <p className="mt-1 text-xs text-emerald-700">
+                                {translate("pos.normalPrice", {
+                                  price: getItemOriginalCurrency(item) === "FC" && reference.priceFC !== undefined
+                                    ? formatFc(reference.priceFC)
+                                    : formatCurrency(reference.priceUSD),
+                                })}
+                              </p>
+                            );
+                          })()}
                         </div>
 
                         <div className="md:col-span-2">
@@ -2801,7 +2851,10 @@ export default function SalesHistory() {
                             Total
                           </span>
                           <div className="p-2 bg-white border rounded font-medium">
-                            {formatCurrency(item.total)}
+                            {formatOriginalItemTotal(item)}
+                            {getItemOriginalCurrency(item) === "FC" && (
+                              <span className="block text-xs font-normal text-gray-500">≈ {formatCurrency(item.total)}</span>
+                            )}
                           </div>
                         </div>
 

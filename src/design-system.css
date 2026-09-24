@@ -213,6 +213,7 @@ button:disabled { cursor: not-allowed; }
 .pos-catalog-panel, .pos-checkout-panel { margin-bottom: 0 !important; }
 .pos-checkout-panel { position: sticky; top: 52px; }
 .pos-page tfoot td { background: #f8fafc; font-size: 15px !important; }
+.pos-cell-label { display: none; }
 .pos-checkout-panel > button[type="submit"] { width: 100% !important; min-height: 54px; margin-top: 4px; font-size: 16px !important; box-shadow: 0 8px 20px rgba(22,163,74,.18) !important; }
 
 /* Mobile application shell */
@@ -260,6 +261,8 @@ button:disabled { cursor: not-allowed; }
   .pos-catalog-panel table tbody td:nth-child(3), .pos-catalog-panel table tbody td:nth-child(4) { text-align: right !important; }
   .pos-catalog-panel table tbody td:last-child { grid-column: 1 / -1; text-align: right !important; }
   .pos-catalog-panel table tfoot { display: table-footer-group; }
+  .pos-catalog-panel .pos-cell-label { display: block; margin-bottom: 2px; font-size: 11px; color: var(--color-text-muted); }
+  .pos-catalog-panel .unit-price-input .flex { justify-content: flex-end; }
 }
 @media (max-width: 480px) {
   .network-status { top: 8px; font-size: 11px; }

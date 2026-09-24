@@ -56,6 +56,10 @@ const CODE_MESSAGES: Record<string, string> = {
   DUPLICATE_EXPENSE_ID: "apiErrors.codes.duplicateExpenseId",
   IDEMPOTENCY_CONFLICT: "apiErrors.codes.idempotencyConflict",
   DUPLICATE_KEY: "apiErrors.codes.duplicateKey",
+  PRICE_TOO_LOW: "pos.priceTooLow",
+  DISCOUNT_QUANTITY_REQUIRED: "pos.discountQuantityRequired",
+  DISCOUNT_ATTEMPTS_LIMITED: "pos.discountAttemptsLimited",
+  EXCHANGE_RATE_CHANGED: "pos.exchangeRateChanged",
 };
 
 // Known server messages (English, or French written by the server), each
@@ -179,10 +183,15 @@ export function apiErrorFromPayload(status: number, payload: unknown): ApiError 
   const translated = translateServerMessage(body.error) ?? translateServerMessage(body.message)
     ?? (code && CODE_MESSAGES[code] ? t(CODE_MESSAGES[code]) : null);
   const isConflictStatus = status === 409 && (!translated || translated === MESSAGES.conflict);
+  // Which sale line was refused (never why in numbers), and the server's rate.
+  const details: Record<string, unknown> = {};
+  if (Number.isInteger(body.itemIndex)) details.itemIndex = body.itemIndex;
+  if (typeof body.exchangeRate === "number") details.exchangeRate = body.exchangeRate;
   return new ApiError({
     status, code,
     title: isConflictStatus ? t("apiErrors.titles.dataChanged") : title(status) ?? t(status >= 500 ? "apiErrors.titles.server" : "apiErrors.titles.impossible"),
     message: status >= 500 && status !== 503 ? fallbackMessage(status) : translated ?? fallbackMessage(status),
+    details: Object.keys(details).length ? details : undefined,
   });
 }
 

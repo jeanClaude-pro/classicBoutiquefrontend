@@ -28,8 +28,6 @@ const SalesHistory = lazy(() => import("./pages/history/SalesHistory"));
 const Analytics = lazy(() => import("./pages/analytics/Analytics"));
 const Customers = lazy(() => import("./pages/customers/Customers"));
 const NewSale = lazy(() => import("./pages/NewSale"));
-const Reservation = lazy(() => import("./pages/Reservation"));
-const ReservationHistory = lazy(() => import("./pages/ReservationHistory"));
 const Sortie = lazy(() => import("./pages/Sortie"));
 const SortieHistory = lazy(() => import("./pages/SortieHistory"));
 const Rate = lazy(() => import("./pages/Rate"));
@@ -127,22 +125,6 @@ export default function App() {
                   element={
                     <RequireAuth>
                       <Sortie />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/reservation"
-                  element={
-                    <RequireAuth>
-                      <Reservation />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/reservationhistory"
-                  element={
-                    <RequireAuth>
-                      <ReservationHistory />
                     </RequireAuth>
                   }
                 />

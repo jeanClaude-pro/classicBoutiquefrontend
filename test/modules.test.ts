@@ -54,7 +54,6 @@ test("page headers read their title from the registry", () => {
     "pages/Sortie.tsx": "MODULES.sortie.label",
     "pages/SortieHistory.tsx": "MODULES.historicsortie.label",
     "pages/history/SalesHistory.tsx": "MODULES.sales.label",
-    "pages/ReservationHistory.tsx": "MODULES.reservationhistory.label",
     "pages/EntryHistory.tsx": "MODULES.entryhistory.label",
     "pages/products/products.tsx": "MODULES.products.label",
     "pages/customers/Customers.tsx": "MODULES.customers.label",
@@ -62,7 +61,6 @@ test("page headers read their title from the registry", () => {
     "pages/Remboursements.tsx": "MODULES.remboursements.label",
     "pages/analytics/Analytics.tsx": "MODULES.reports.label",
     "pages/NewSale.tsx": "MODULES.pos.label",
-    "pages/Reservation.tsx": "MODULES.reservation.label",
     "pages/Entry.tsx": "MODULES.entry.label",
   };
   for (const [file, reference] of Object.entries(expectations)) assert.ok(read(file).includes(reference), file);
@@ -88,5 +86,5 @@ test("routed pages use the application dialog, never blocking browser dialogs", 
     checked += 1;
     assert.doesNotMatch(readFileSync(file, "utf8"), /(window\.)?\b(confirm|alert)\(/, file);
   }
-  assert.ok(checked >= 14, `only ${checked} routed pages were checked`);
+  assert.ok(checked >= 12, `only ${checked} routed pages were checked`);
 });

@@ -13,7 +13,7 @@ import { notifyError, notifySuccess } from "../../lib/notify";
 import { deleteProductCopy } from "../../lib/confirmationCopy";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
 import { MODULES } from "../../config/modules";
-import { createPriceSnapshot, formatFC, formatUSD } from "../../utils/salePricing";
+import { createPriceSnapshot, formatFC, formatUSD, productReferencePrice } from "../../utils/salePricing";
 
 interface ExchangeRateInfo {
   rate: number;
@@ -63,6 +63,13 @@ export default function Products() {
   const [unitCostFCInput, setUnitCostFCInput] = useState<string>("");
   const [exchangeRate, setExchangeRate] = useState<ExchangeRateInfo | null>(null);
   const [loadingRate, setLoadingRate] = useState(true);
+  // Edit form: the selling price's authoritative currency when it was opened,
+  // and whether the price / unit cost were actually changed. An edit that
+  // leaves them alone must not resubmit them (and so cannot re-derive them at
+  // today's rate or silently switch their currency).
+  const editPriceMode = useRef<"usd" | "fc">("fc");
+  const priceEdited = useRef(false);
+  const unitCostEdited = useRef(false);
 
   // Load the current exchange rate, the same way NewSale.tsx does.
   useEffect(() => {
@@ -87,12 +94,19 @@ export default function Products() {
     loadExchangeRate();
   }, []);
 
+  // Switching the currency is an explicit choice of the price's
+  // authoritative currency; a USD price is kept to whole cents.
   const toggleCurrencyMode = () => {
-    setCurrencyMode((prev) => (prev === "usd" ? "fc" : "usd"));
+    const next = currencyMode === "usd" ? "fc" : "usd";
+    setCurrencyMode(next);
+    if (next === "usd") {
+      setFormData((prev) => (prev.price ? { ...prev, price: Math.round(prev.price * 100) / 100 } : prev));
+    }
   };
 
   // Price must be > 0 (createPriceSnapshot enforces this). unitCost may be 0.
   const handlePriceUsdChange = (value: string) => {
+    priceEdited.current = true;
     const usd = Number.parseFloat(value) || 0;
     setFormData((prev) => ({ ...prev, price: usd }));
     setPriceFCInput(
@@ -101,6 +115,7 @@ export default function Products() {
   };
 
   const handlePriceFcChange = (value: string) => {
+    priceEdited.current = true;
     setPriceFCInput(value);
     const fc = Number.parseFloat(value) || 0;
     if (fc > 0 && exchangeRate) {
@@ -116,6 +131,7 @@ export default function Products() {
   };
 
   const handleUnitCostUsdChange = (value: string) => {
+    unitCostEdited.current = true;
     const usd = Number.parseFloat(value) || 0;
     setFormData((prev) => ({ ...prev, unitCost: usd }));
     setUnitCostFCInput(
@@ -124,6 +140,7 @@ export default function Products() {
   };
 
   const handleUnitCostFcChange = (value: string) => {
+    unitCostEdited.current = true;
     setUnitCostFCInput(value);
     const fc = Number.parseFloat(value) || 0;
     if (fc > 0 && exchangeRate) {
@@ -208,14 +225,14 @@ export default function Products() {
   // Build the priceEnteredAmount/enteredCurrency/exchangeRate (and unitCost
   // equivalent) fields the server expects, from whichever currency is
   // currently primary in the form.
-  const buildSubmitPayload = (): Partial<Product> => {
+  const buildSubmitPayload = (editing: boolean): Partial<Product> => {
     const rate = exchangeRate?.rate;
     const priceEnteredAmount =
       currencyMode === "fc" ? Number.parseFloat(priceFCInput) || 0 : formData.price || 0;
     const unitCostEnteredAmount =
       currencyMode === "fc" ? Number.parseFloat(unitCostFCInput) || 0 : formData.unitCost || 0;
 
-    return {
+    const payload: Partial<Product> = {
       ...formData,
       priceEnteredAmount,
       priceEnteredCurrency: currencyMode === "fc" ? "FC" : "USD",
@@ -224,6 +241,16 @@ export default function Products() {
       unitCostEnteredCurrency: currencyMode === "fc" ? "FC" : "USD",
       unitCostExchangeRate: rate,
     };
+    if (!editing) return payload;
+    // The server keeps whatever is not sent: an untouched price keeps its
+    // authoritative currency and amount, an untouched cost its snapshot.
+    if (!priceEdited.current && currencyMode === editPriceMode.current) {
+      for (const key of ["price", "priceEnteredAmount", "priceEnteredCurrency", "priceFC", "priceExchangeRate"] as const) delete payload[key];
+    }
+    if (!unitCostEdited.current) {
+      for (const key of ["unitCost", "unitCostEnteredAmount", "unitCostEnteredCurrency", "unitCostFC", "unitCostExchangeRate", "totalAcquisitionCost", "totalAcquisitionCostFC"] as const) delete payload[key];
+    }
+    return payload;
   };
 
   const saveProduct = async (id: string | null, productData: Partial<Product>) => {
@@ -258,22 +285,25 @@ export default function Products() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = buildSubmitPayload();
-    void saveProduct(showEditModal && selectedProduct ? selectedProduct._id : null, payload);
+    const editing = Boolean(showEditModal && selectedProduct);
+    const payload = buildSubmitPayload(editing);
+    void saveProduct(editing && selectedProduct ? selectedProduct._id : null, payload);
   };
 
+  // The form opens in the currency the selling price was defined in, showing
+  // that exact amount: 20,000 FC shows 20,000 FC (not its old USD value
+  // converted at today's rate); $20 shows $20.
   const openEditModal = (product: Product) => {
-    setSelectedProduct(product);
-    setFormData(product);
-    setCurrencyMode("fc");
     const rate = exchangeRate?.rate;
-    setPriceFCInput(
-      product.priceFC !== undefined
-        ? product.priceFC.toString()
-        : rate
-        ? Math.round(product.price * rate).toString()
-        : ""
-    );
+    const normal = productReferencePrice(product, rate);
+    const mode = normal.currency === "FC" ? "fc" : "usd";
+    editPriceMode.current = mode;
+    priceEdited.current = false;
+    unitCostEdited.current = false;
+    setSelectedProduct(product);
+    setFormData({ ...product, price: normal.priceUSD });
+    setCurrencyMode(mode);
+    setPriceFCInput(normal.priceFC !== undefined ? normal.priceFC.toString() : "");
     setUnitCostFCInput(
       product.unitCostFC !== undefined
         ? product.unitCostFC.toString()
@@ -704,7 +734,7 @@ export default function Products() {
                         id="product-prix-de-vente"
                         type="number"
                         min="0.01"
-                        step="0.01"
+                        step="any"
                         required
                         value={formData.price}
                         onChange={(e) => handlePriceUsdChange(e.target.value)}
@@ -765,7 +795,7 @@ export default function Products() {
                           id="product-cout-d-acquisition"
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="any"
                           required
                           value={formData.unitCost}
                           onChange={(e) => handleUnitCostUsdChange(e.target.value)}
@@ -927,13 +957,24 @@ export default function Products() {
                   <div className="mt-4 flex items-center gap-4">
                     {typeof selectedProduct.price === "number" && (
                       <span className="text-2xl font-bold text-green-600">
-                        {formatFC(
-                          selectedProduct.priceFC ??
-                            (exchangeRate ? selectedProduct.price * exchangeRate.rate : 0)
-                        )}
-                        <span className="block text-sm font-normal text-gray-500">
-                          ≈ {formatUSD(selectedProduct.price)}
-                        </span>
+                        {(() => {
+                          // Catalogue price: its authoritative amount, the
+                          // other currency at today's rate.
+                          const normal = productReferencePrice(selectedProduct, exchangeRate?.rate);
+                          return normal.currency === "FC" ? (
+                            <>
+                              {formatFC(normal.priceFC)}
+                              <span className="block text-sm font-normal text-gray-500">≈ {formatUSD(normal.priceUSD)}</span>
+                            </>
+                          ) : (
+                            <>
+                              {formatUSD(normal.priceUSD)}
+                              {normal.priceFC !== undefined && (
+                                <span className="block text-sm font-normal text-gray-500">≈ {formatFC(normal.priceFC)}</span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </span>
                     )}
                     <span

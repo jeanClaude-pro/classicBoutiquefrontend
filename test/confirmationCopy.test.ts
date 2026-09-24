@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  completeReservationCopy, deleteEntryCopy, deleteProductCopy, deleteSaleCopy, deleteUserCopy,
+  deleteEntryCopy, deleteProductCopy, deleteSaleCopy, deleteUserCopy,
   exchangeRateCopy, expenseCreationCopy, expenseDeletionCopy, expenseRejectionCopy, expenseReversalCopy,
-  expenseValidationCopy, revertReservationCopy, toggleUserStatusCopy, voidSaleCopy,
+  expenseValidationCopy, toggleUserStatusCopy, voidSaleCopy,
 } from "../src/lib/confirmationCopy.ts";
 
 const all = (copy: { title: string; message: string; consequences: string[] }) => [copy.title, copy.message, ...copy.consequences].join(" ");
@@ -70,13 +70,7 @@ test("voiding explains stock and revenue effects only when they apply", () => {
   assert.equal(pendingReservation.title, "Annuler cette réservation ?");
 });
 
-test("reservation transitions describe accounting and stock accurately", () => {
-  const complete = completeReservationCopy({ saleId: "R-1", items: [{ quantity: 1 }] });
-  assert.match(all(complete), /comptabilisée aujourd'hui/);
-  assert.match(all(complete), /Le stock ne change pas/);
-  const revert = revertReservationCopy({ saleId: "R-1" });
-  assert.doesNotMatch(all(revert), /irréversible|ne pourra pas être annulée/, "reverting can be undone by completing again");
-  assert.match(all(revert), /Le stock reste réservé/);
+test("historical reservation records describe deletion accurately", () => {
   assert.ok(deleteSaleCopy({ type: "reservation", status: "completed" }).blockedReason);
   assert.match(all(deleteSaleCopy({ type: "reservation", status: "pending", items: [{ quantity: 2 }] })), /Les 2 pièce\(s\) seront remises en stock/);
   assert.doesNotMatch(all(deleteSaleCopy({ type: "sale", status: "voided", items: [{ quantity: 2 }] })), /remises en stock/, "voided stock was already returned");
@@ -94,7 +88,7 @@ test("other modules: soft-deleted entries, permanent products and users, rate sc
 test("no confirmation relies on a generic question", () => {
   const copies = [
     expenseValidationCopy({ expenseType: "COMPANY_EXPENSE", category: "CLOTHES" }), expenseRejectionCopy({}), expenseDeletionCopy({}),
-    voidSaleCopy({}), completeReservationCopy({}), revertReservationCopy({}), deleteSaleCopy({}), deleteEntryCopy({}),
+    voidSaleCopy({}), deleteSaleCopy({}), deleteEntryCopy({}),
     deleteProductCopy({}), deleteUserCopy({}), toggleUserStatusCopy({}), exchangeRateCopy(1),
   ];
   for (const copy of copies) {

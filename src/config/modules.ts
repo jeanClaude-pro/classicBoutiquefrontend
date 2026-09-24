@@ -34,9 +34,7 @@ function defineModule(id: string, path: string, hasShortLabel: boolean): ModuleD
 
 export const MODULES = {
   pos: defineModule("pos", "/", true),
-  reservation: defineModule("reservation", "/reservation", true),
   sales: defineModule("sales", "/sales", true),
-  reservationhistory: defineModule("reservationhistory", "/reservationhistory", true),
   products: defineModule("products", "/products", true),
   entry: defineModule("entry", "/entry", true),
   sortie: defineModule("sortie", "/sortie", true),
@@ -53,7 +51,7 @@ export type ModuleId = keyof typeof MODULES;
 
 /** Modules whose access can be granted per user in the permission editor. */
 export const PERMISSION_MODULE_IDS: ModuleId[] = [
-  "pos", "reservation", "sales", "reservationhistory", "products", "entry", "sortie",
+  "pos", "sales", "products", "entry", "sortie",
   "entryhistory", "historicsortie", "rate", "reports", "customers",
 ];
 

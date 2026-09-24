@@ -95,7 +95,7 @@ test("Administration: a role change is confirmed first; cancelling changes nothi
   renderPage(<AdminPanel />, "/admin");
   // The same role names as the navigation (config/roles.ts).
   await user.click(await screen.findByRole("button", { name: /^Responsable/ }));
-  await user.selectOptions(screen.getByRole("combobox", { name: "" }), "inventory_manager");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Changer le rôle" }), "inventory_manager");
   let dialog = screen.getByRole("alertdialog", { name: "Changer le rôle de ce compte ?" });
   expect(dialog).toHaveTextContent("« awa » passera de « Responsable » à « Gestionnaire de stock ».");
   await user.click(within(dialog).getByRole("button", { name: "Annuler" }));
@@ -103,7 +103,7 @@ test("Administration: a role change is confirmed first; cancelling changes nothi
   expect(screen.getByRole("button", { name: /^Responsable/ })).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: /^Responsable/ }));
-  await user.selectOptions(screen.getByRole("combobox", { name: "" }), "inventory_manager");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Changer le rôle" }), "inventory_manager");
   dialog = screen.getByRole("alertdialog", { name: "Changer le rôle de ce compte ?" });
   await user.click(within(dialog).getByRole("button", { name: "Changer le rôle" }));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());

@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { BarChart3, CalendarClock, CircleDollarSign, Landmark, Package, Shield, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
+import { BarChart3, CircleDollarSign, Landmark, Package, Shield, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
 import type { User } from "../types/auth";
 import { t } from "../i18n/index.ts";
 import { MODULES, type ModuleDefinition, type ModuleId } from "./modules.ts";
@@ -38,9 +38,7 @@ const OPERATORS = ["superadmin", "manager", "cashier_supervisor", "inventory_man
 export const navigationSections: NavigationSection[] = [
   section("navigation.sections.operations", [
     item("pos", ShoppingCart, OPERATORS, true),
-    item("reservation", CalendarClock, OPERATORS),
     item("sales", TrendingUp, ["superadmin", "admin", ...OPERATORS.slice(1)], true),
-    item("reservationhistory", CalendarClock, OPERATORS),
   ]),
   section("navigation.sections.inventory", [
     item("products", Package, ["superadmin", "admin", "manager", "inventory_manager"], true),

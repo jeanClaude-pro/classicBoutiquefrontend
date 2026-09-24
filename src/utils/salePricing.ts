@@ -28,6 +28,7 @@ export interface StoredSaleItemPrice {
   priceUSD?: number;
   priceFC?: number;
   exchangeRate?: number;
+  unitSellingPrice?: number;
 }
 
 export function createPriceSnapshot(
@@ -83,7 +84,7 @@ export function createAmountSnapshot(
 }
 
 export function getItemUsdUnitPrice(item: StoredSaleItemPrice): number {
-  return item.priceUSD ?? item.price ?? item.unitPrice ?? 0;
+  return item.unitSellingPrice ?? item.priceUSD ?? item.price ?? item.unitPrice ?? 0;
 }
 
 export function getItemUsdTotal(item: StoredSaleItemPrice): number {
@@ -138,6 +139,101 @@ export function formatUSD(amount: number | undefined | null): string {
     style: "currency",
     currency: "USD",
   }).format(value);
+}
+
+// Discount eligibility is the physical quantity of the whole cart, never the
+// number of distinct products. The server applies the same rule and is the
+// authority; the protected price floor is only ever known server-side.
+export const DISCOUNT_QUANTITY_THRESHOLD = 5;
+
+export function totalCartQuantity(items: Array<{ quantity: number }>): number {
+  return items.reduce((sum, item) => sum + item.quantity, 0);
+}
+
+/** Selling-price fields of a Product as returned by GET /api/products. */
+export interface ProductPricing {
+  price?: number;
+  priceFC?: number;
+  priceEnteredAmount?: number;
+  priceEnteredCurrency?: SaleCurrency;
+  priceExchangeRate?: number;
+}
+
+export interface ReferencePrice {
+  priceUSD: number;
+  priceFC?: number;
+  /** Currency in which a catalogue normal price is authoritative. */
+  currency?: SaleCurrency;
+}
+
+/**
+ * The amount and currency in which the Product's normal selling price was
+ * defined. A product saved before priceEnteredCurrency existed only ever had
+ * the USD price, so it is USD-authoritative. Mirrors productPriceAuthority in
+ * server/utils/salePricing.js.
+ */
+export function productPriceAuthority(product: ProductPricing): { currency: SaleCurrency; amount: number } {
+  if (product.priceEnteredCurrency === "FC") {
+    const fc = product.priceEnteredAmount ?? product.priceFC;
+    if (typeof fc === "number" && Number.isFinite(fc) && fc > 0) return { currency: "FC", amount: fc };
+  }
+  const usd = product.priceEnteredCurrency === "USD" ? product.priceEnteredAmount ?? product.price : product.price;
+  return { currency: "USD", amount: usd ?? 0 };
+}
+
+// The product's normal unit price for a NEW transaction at `rate`. The
+// authoritative amount is kept exactly and only the other currency follows
+// the rate: 20,000 FC stays 20,000 FC at any rate (USD = 20,000 / rate) and
+// $20 stays $20 (FC = 20 x rate). The FC amount is never rebuilt from a USD
+// value saved at an older rate. Mirrors productNormalPrice on the server.
+// Recorded sales never use this: they keep their own snapshots.
+export function productReferencePrice(product: ProductPricing, rate?: number): ReferencePrice {
+  const { currency, amount } = productPriceAuthority(product);
+  const validRate = rate !== undefined && Number.isFinite(rate) && rate > 0 ? rate : undefined;
+  if (currency === "FC") {
+    return { currency, priceUSD: validRate ? amount / validRate : product.price ?? 0, priceFC: amount };
+  }
+  return validRate ? { currency, priceUSD: amount, priceFC: Math.round(amount * validRate) } : { currency, priceUSD: amount };
+}
+
+/** The reference price expressed as an entered-price snapshot in `currency`. */
+export function referencePriceSnapshot(
+  reference: ReferencePrice,
+  currency: SaleCurrency,
+  rate?: number
+): PriceSnapshot | null {
+  const amount = currency === "FC" ? reference.priceFC : reference.priceUSD;
+  if (amount === undefined || !(amount > 0)) return null;
+  try {
+    return createPriceSnapshot(amount, currency, rate);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The product's normal price as an entry in its authoritative currency: the
+ * exact FC amount of an FC-defined price, the exact USD amount otherwise.
+ * An FC price needs a rate to be recorded, so there is none without one.
+ */
+export function normalPriceSnapshot(product: ProductPricing, rate?: number): PriceSnapshot | null {
+  const reference = productReferencePrice(product, rate);
+  return referencePriceSnapshot(reference, reference.currency ?? "USD", rate);
+}
+
+/** True when an entry is exactly the normal price, compared in its own currency. */
+export function isAtReferencePrice(price: PriceSnapshot, reference: ReferencePrice): boolean {
+  if (price.enteredCurrency === "FC") return reference.priceFC !== undefined && price.enteredPrice === reference.priceFC;
+  return Math.round(price.priceUSD * 100) === Math.round(reference.priceUSD * 100);
+}
+
+// Same comparison as the server: an FC entry against the FC reference in
+// whole francs, a USD entry in cents.
+export function isDiscountedPrice(price: PriceSnapshot, reference: ReferencePrice): boolean {
+  if (price.enteredCurrency === "FC" && reference.priceFC !== undefined) {
+    return price.enteredPrice < reference.priceFC;
+  }
+  return Math.round(price.priceUSD * 100) < Math.round(reference.priceUSD * 100);
 }
 
 export function canAddCartQuantity(

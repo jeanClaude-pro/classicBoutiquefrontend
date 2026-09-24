@@ -11,7 +11,6 @@ import SortieHistory from "../src/pages/SortieHistory";
 import SalesHistory from "../src/pages/history/SalesHistory";
 import Rate from "../src/pages/Rate";
 import Sortie from "../src/pages/Sortie";
-import ReservationHistory from "../src/pages/ReservationHistory";
 import AdminPanel from "../src/pages/admin/AdminPanel";
 import Products from "../src/pages/products/products";
 
@@ -27,11 +26,10 @@ afterEach(() => {
 });
 
 const now = new Date().toISOString();
-// Response envelopes captured from the real API (GET /expenses, /sales, /sales/reservations/all).
+// Response envelopes captured from the real API (GET /expenses, /sales).
 const envelope = (data: unknown[], summary: Record<string, unknown>) => ({ success: true, data, pagination: { page: 1, limit: 50, totalRecords: data.length, totalPages: 1, hasNextPage: false, hasPreviousPage: false }, timeframe: { description: "Today (default)", start: now, end: now, query: { from: null, to: null, date: null, year: null, month: null } }, summary, filtersApplied: {} });
 const expenseList = (data: unknown[]) => envelope(data, { totalRecords: data.length, totalAmount: 700, pending: { count: data.length, amount: 700 }, validated: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 }, averageAmount: 700, validationRate: 0 });
 const saleList = (data: unknown[]) => envelope(data, { totalRecords: data.length, revenue: 50, costOfGoodsSold: 24, grossProfit: 26, clothesShareholderProfit: 26, shoeShareholder1Profit: 0, shoeShareholder2Profit: 0, shopProfit: 26, partnerProfit: 0, expenses: 0, net: 50, salesCount: data.length, expensesCount: 0, completedCount: data.length, pendingCount: 0 });
-const reservationList = (data: unknown[]) => ({ success: true, data, pagination: { page: 1, limit: 50, totalRecords: data.length, totalPages: 1, hasNextPage: false, hasPreviousPage: false }, summary: { totalReservations: data.length, pending: data.length, completed: 0, revenue: 55, itemQuantity: 1, timeframe: "All history" } });
 
 test("Rapports: a shareholder account renders its report (previously a white screen)", async () => {
   signIn({ role: "admin", assignedCategory: "SHOES", permissions: ["/sales", "/reports", "/products"] });
@@ -318,26 +316,6 @@ test("Décaissements: an idempotency conflict stays readable and never unmounts 
   expect(screen.getByRole("heading", { name: "Décaissements" })).toBeInTheDocument();
   expect(submit).toBeEnabled();
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-});
-
-test("Suivi des réservations: completing a reservation confirms the real effect and updates the row", async () => {
-  signIn({ role: "manager", username: "tester" });
-  const reservation = { _id: "r1", saleId: "RES-1", customer: { name: "Jean", phone: "099" }, items: [{ productId: "p1", name: "Basket", quantity: 1, price: 55, total: 55 }], total: 55, subtotal: 55, paymentMethod: "cash", status: "pending", type: "reservation", salesPerson: "tester", createdAt: now, updatedAt: now };
-  const api = mockApi([
-    { match: /^\/sales\/reservations\/all/, reply: { body: reservationList([reservation]) } },
-    { match: /^\/products/, reply: { body: [] } },
-    { match: /^\/settings\/receipt/, reply: { body: {} } },
-    { method: "PATCH", match: /^\/sales\/r1\/complete/, reply: { body: { ...reservation, status: "completed" } } },
-  ]);
-  const user = userEvent.setup();
-  renderPage(<ReservationHistory />, "/reservationhistory");
-  await user.click(await screen.findByTitle("Terminer la réservation"));
-  const dialog = screen.getByRole("alertdialog", { name: "Terminer cette réservation ?" });
-  expect(dialog).toHaveTextContent("Le stock ne change pas");
-  await user.click(within(dialog).getByRole("button", { name: "Terminer la réservation" }));
-  await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-  expect(api.calls.find((call) => call.method === "PATCH")?.body).toEqual({});
-  expect(screen.queryByTitle("Terminer la réservation")).not.toBeInTheDocument();
 });
 
 test("Administration: another account can be deactivated and reactivated without blanking the page", async () => {

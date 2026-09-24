@@ -9,7 +9,9 @@ import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, Calculator, Search } from "lucide-react";
 import { serverUrl } from "../utils/constants";
+import UnitPriceInput from "../components/UnitPriceInput";
 import {
+  DISCOUNT_QUANTITY_THRESHOLD,
   canAddCartQuantity,
   createPriceSnapshot,
   formatFC,
@@ -17,42 +19,56 @@ import {
   getItemFcTotal,
   getItemFcUnitPrice,
   getSaleFcTotal,
+  getItemUsdUnitPrice,
+  isDiscountedPrice,
+  productReferencePrice,
+  totalCartQuantity,
   type PriceSnapshot,
+  type ProductPricing,
   type SaleCurrency,
 } from "../utils/salePricing";
+import {
+  addCartLine,
+  cartEnteredTotals,
+  cartSaleItems,
+  isLineDiscounted,
+  rebaseCartToRate,
+  removeCartLine,
+  repriceCartLine,
+  type SaleCartLine,
+} from "../utils/saleCart";
+
+// One key per checkout: a retry after a lost response replays the recorded
+// sale instead of creating a second one (see POST /api/sales requestKey).
+const newRequestKey = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const compactFc = (value: number) => `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(value)}FC`;
 // Payment line of the browser receipt; the raw value still goes to the print API.
 const receiptPayment = (method: string) => translate(`saleReceipt.payments.${method}`, { defaultValue: method.toUpperCase() });
 const compactDualUnit = (item: CartItem, rate?: number) => {
   const fc = getItemFcUnitPrice(item, rate);
-  return `${item.priceUSD.toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
+  return `${getItemUsdUnitPrice(item).toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
 };
 const compactDualTotal = (item: CartItem, rate?: number) => {
   const fc = getItemFcTotal(item, rate);
-  return `${(item.priceUSD * item.quantity).toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
+  return `${(getItemUsdUnitPrice(item) * item.quantity).toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
 };
 const compactDualSaleTotal = (total: number, items: CartItem[], rate?: number) => {
   const fc = getSaleFcTotal(total, items, rate);
   return `${total.toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
 };
 
-interface Product {
+interface Product extends ProductPricing {
   _id: string;
   name: string;
   sku?: string;
   stock: number;
-  price?: number;
 }
 
-interface CartItem extends PriceSnapshot {
-  productId: string;
-  name: string;
-  quantity: number;
-  // USD remains the receipt/API compatibility currency.
-  unitPrice: number;
-  total: number;
-}
+type CartItem = SaleCartLine;
 
 interface ExchangeRate {
   rate: number;
@@ -141,7 +157,12 @@ export default function NewSale() {
   const [submitting, setSubmitting] = useState(false);
   // Synchronous guard: a second click can arrive before `submitting` re-renders.
   const submitLock = useRef(false);
+  const requestKey = useRef(newRequestKey());
+  const nextCartLineId = useRef(0);
   const [cart, setCart] = useState<CartItem[]>([]);
+  // Server refusals attached to a cart line (lineId -> message).
+  const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [loadingRate, setLoadingRate] = useState(true);
@@ -324,13 +345,13 @@ export default function NewSale() {
     }
   }, [enteredPrice, exchangeRate?.rate, form.priceSource]);
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const cartOriginalTotals = cart.reduce(
-    (totals, item) => {
-      totals[item.enteredCurrency] += item.enteredPrice * item.quantity;
-      return totals;
-    },
-    { USD: 0, FC: 0 }
-  );
+  const cartQuantity = totalCartQuantity(cart);
+  const prospectiveCartQuantity = cartQuantity + quantity;
+  const discountEligible = cartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
+  const canEditSelectedPrice = canEditPrice || prospectiveCartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
+  const cartOriginalTotals = cartEnteredTotals(cart);
+  // Cart unit prices are edited in the currency the cashier works in.
+  const editCurrency: SaleCurrency = form.currencyMode === "fc" && exchangeRate ? "FC" : "USD";
 
   const isFormValid =
     cart.length > 0 &&
@@ -352,17 +373,30 @@ export default function NewSale() {
     }));
   }
 
+  // Normal price fields for a product, entered in its authoritative currency:
+  // a price defined as 20,000 FC is recorded as 20,000 FC at whatever rate is
+  // in force (only its USD value follows the rate); a $20 price stays $20.
+  // Without a rate yet, an FC price leaves the USD field empty; it is filled
+  // from the exact FC amount when the rate arrives.
+  const normalPriceFields = (selected: Product) => {
+    const rate = exchangeRate?.rate;
+    const reference = productReferencePrice(selected, rate);
+    const fcSource = reference.currency === "FC" && reference.priceFC !== undefined;
+    return {
+      unitPrice: fcSource
+        ? rate ? (reference.priceFC! / rate).toString() : ""
+        : reference.priceUSD ? reference.priceUSD.toString() : "",
+      priceInFC: reference.priceFC !== undefined ? reference.priceFC.toString() : "",
+      priceSource: (fcSource ? "FC" : "USD") as SaleCurrency,
+    };
+  };
+
   // Handle product selection from search
   const handleProductSelect = (selectedProduct: Product) => {
     setForm(prev => ({
       ...prev,
       productId: selectedProduct._id,
-      unitPrice: selectedProduct.price ? selectedProduct.price.toString() : "",
-      priceInFC:
-        selectedProduct.price && exchangeRate
-          ? Math.round(selectedProduct.price * exchangeRate.rate).toString()
-          : "",
-      priceSource: "USD",
+      ...normalPriceFields(selectedProduct),
     }));
     setSearchTerm(selectedProduct.name);
     setShowSearchResults(false);
@@ -556,6 +590,12 @@ export default function NewSale() {
       return;
     }
 
+    const reference = productReferencePrice(product, exchangeRate?.rate);
+    if (isDiscountedPrice(currentPrice, reference) && prospectiveCartQuantity < DISCOUNT_QUANTITY_THRESHOLD) {
+      setError(t("pos.discountQuantityRequired"));
+      return;
+    }
+
     // Check if adding this quantity would result in negative stock
     if (!checkStockAfterAdd(product._id, quantity)) {
       setError(t("pos.insufficientStock"));
@@ -564,63 +604,52 @@ export default function NewSale() {
 
     // Clear any previous errors
     setError(null);
+    setNotice(null);
 
-    const unitPrice = currentPrice.priceUSD;
-
-    // Check if product with same ID AND same price already exists in cart
-    const existingItemIndex = cart.findIndex(
-      (item) =>
-        item.productId === product._id &&
-        item.enteredCurrency === currentPrice.enteredCurrency &&
-        item.enteredPrice === currentPrice.enteredPrice &&
-        item.exchangeRate === currentPrice.exchangeRate
-    );
-
-    if (existingItemIndex >= 0) {
-      // Update existing item (same product + same price)
-      const updatedCart = [...cart];
-      updatedCart[existingItemIndex] = {
-        ...updatedCart[existingItemIndex],
-        quantity: updatedCart[existingItemIndex].quantity + quantity,
-        total:
-          (updatedCart[existingItemIndex].quantity + quantity) *
-          updatedCart[existingItemIndex].unitPrice,
-      };
-      setCart(updatedCart);
-    } else {
-      // Add new item (either different product OR same product but different price)
-      setCart([
-        ...cart,
-        {
-          productId: product._id,
-          name: product.name,
-          quantity,
-          unitPrice,
-          total: quantity * unitPrice,
-          ...currentPrice,
-        },
-      ]);
-    }
+    // A line with the same product AND same price is merged; any other price
+    // becomes its own line with its own stable lineId.
+    setCart(addCartLine(cart, {
+      lineId: `cart-${++nextCartLineId.current}`,
+      productId: product._id,
+      name: product.name,
+      quantity,
+      reference,
+      price: currentPrice,
+    }));
 
     // Reset form fields
     setForm((f) => ({
       ...f,
       quantity: "",
-      unitPrice: product.price ? product.price.toString() : "",
-      priceInFC:
-        product.price && exchangeRate
-          ? Math.round(product.price * exchangeRate.rate).toString()
-          : "",
-      priceSource: "USD",
+      ...normalPriceFields(product),
     }));
     setSearchTerm("");
   }
 
-  function removeFromCart(index: number) {
-    const newCart = [...cart];
-    newCart.splice(index, 1);
-    setCart(newCart);
+  const clearLineError = (lineId: string) =>
+    setLineErrors((current) => {
+      if (!(lineId in current)) return current;
+      const next = { ...current };
+      delete next[lineId];
+      return next;
+    });
 
+  function removeFromCart(lineId: string) {
+    const { cart: next, restored } = removeCartLine(cart, lineId);
+    setCart(next);
+    clearLineError(lineId);
+    setNotice(restored ? t("pos.discountsRestored") : null);
+  }
+
+  // Sets the unit price of ONE line; its total is quantity x that unit price.
+  function updateCartUnitPrice(lineId: string, amount: number) {
+    try {
+      setCart(repriceCartLine(cart, lineId, amount, editCurrency, exchangeRate?.rate));
+      clearLineError(lineId);
+      setError(null);
+    } catch {
+      setLineErrors((current) => ({ ...current, [lineId]: t("pos.pricePositive") }));
+    }
   }
 
   function authHeader(): Record<string, string> {
@@ -1438,6 +1467,10 @@ export default function NewSale() {
     setSubmitting(true);
     setMessage(null);
     setError(null);
+    setNotice(null);
+    setLineErrors({});
+    // The server reports a refused line by its index in this exact cart.
+    const submittedCart = cart;
 
     try {
       const body = {
@@ -1449,22 +1482,14 @@ export default function NewSale() {
               email: "",
             },
         isWalkIn: form.isWalkIn,
-        items: cart.map((item) => ({
-          productId: item.productId,
-          name: item.name,
-          quantity: item.quantity,
-          price: item.unitPrice,
-          enteredPrice: item.enteredPrice,
-          enteredCurrency: item.enteredCurrency,
-          priceUSD: item.priceUSD,
-          priceFC: item.priceFC,
-          exchangeRate: item.exchangeRate,
-        })),
+        items: cartSaleItems(submittedCart),
         subtotal: cartTotal,
         total: cartTotal,
         paymentMethod: uiToModelPayment(form.paymentMethod),
         salesPerson: currentUser?.username || "unknown",
-        exchangeRate: cart[0]?.exchangeRate ?? exchangeRate?.rate,
+        // The rate the cart was priced at; the server refuses it if stale.
+        exchangeRate: exchangeRate?.rate,
+        requestKey: requestKey.current,
       };
 
       const res = await fetch(`${API_BASE}/sales`, {
@@ -1493,8 +1518,9 @@ export default function NewSale() {
         receiptFooter: shopSettings.receiptFooter,
         customerName: form.isWalkIn ? t("pos.walkIn") : form.customerName,
         customerPhone: form.isWalkIn ? "" : form.customerPhone,
-        items: cart,
-        total: cartTotal,
+        items: Array.isArray(data.items) ? data.items : cart,
+        total: Number(data.total ?? cartTotal),
+        exchangeRate: data.exchangeRate ?? body.exchangeRate,
         paymentMethod: form.paymentMethod,
         salesPerson: currentUser?.username || t("pos.agent"),
         date: formatNowGMT2(),
@@ -1503,6 +1529,7 @@ export default function NewSale() {
       };
 
       setReceiptData(newReceiptData);
+      requestKey.current = newRequestKey();
 
       // Reset form and cart
       setForm({
@@ -1525,7 +1552,27 @@ export default function NewSale() {
       );
       notifySuccess(t("pos.saleRecorded"));
     } catch (e: any) {
-      setError(toApiError(e).message);
+      const failure = toApiError(e);
+      // After a network failure the sale may have been recorded: the retry
+      // keeps the same key so the server replays it instead of duplicating.
+      if (!failure.isNetwork) requestKey.current = newRequestKey();
+      setError(failure.message);
+
+      const itemIndex = failure.details?.itemIndex;
+      const refusedLine = typeof itemIndex === "number" ? submittedCart[itemIndex] : undefined;
+      if (refusedLine) setLineErrors({ [refusedLine.lineId]: failure.message });
+
+      const serverRate = failure.details?.exchangeRate;
+      if (failure.code === "EXCHANGE_RATE_CHANGED" && typeof serverRate === "number") {
+        // Each line keeps the amount typed in its currency; the other currency
+        // and the normal prices are recomputed at the rate now in force.
+        setCart((current) => rebaseCartToRate(current, serverRate, (productId) => {
+          const source = products.find((candidate) => candidate._id === productId);
+          return source ? productReferencePrice(source, serverRate) : undefined;
+        }));
+        setExchangeRate((current) => current ? { ...current, rate: serverRate } : current);
+        void loadExchangeRate();
+      }
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -1583,6 +1630,9 @@ export default function NewSale() {
         )}
         {error && (
           <div className="mb-4 p-3 bg-red-100 text-red-700 rounded">{error}</div>
+        )}
+        {notice && (
+          <div role="status" className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded">{notice}</div>
         )}
 
         <div className="pos-workspace">
@@ -1662,9 +1712,9 @@ export default function NewSale() {
                 </button>
               </div>
               
-              {!canEditPrice && (
+              {!canEditSelectedPrice && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-2">
-                  {t("pos.priceLocked")}
+                  {t("pos.discountLocked")}
                 </p>
               )}
               {form.currencyMode === 'usd' ? (
@@ -1674,10 +1724,10 @@ export default function NewSale() {
                   step="0.01"
                   name="unitPrice"
                   value={form.unitPrice}
-                  onChange={(e) => canEditPrice && handleUsdPriceChange(e.target.value)}
-                  readOnly={!canEditPrice}
+                  onChange={(e) => canEditSelectedPrice && handleUsdPriceChange(e.target.value)}
+                  readOnly={!canEditSelectedPrice}
                   placeholder={product?.price ? t("pos.priceExample", { price: product.price }) : t("pos.priceUsdPlaceholder")}
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditSelectedPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
                   min={0.01}
                 />
               ) : (
@@ -1686,10 +1736,10 @@ export default function NewSale() {
                   type="number"
                   name="priceInFC"
                   value={form.priceInFC}
-                  onChange={(e) => canEditPrice && handleFcPriceChange(e.target.value)}
-                  readOnly={!canEditPrice}
+                  onChange={(e) => canEditSelectedPrice && handleFcPriceChange(e.target.value)}
+                  readOnly={!canEditSelectedPrice}
                   placeholder={t("pos.priceFcPlaceholder")}
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
+                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditSelectedPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
                   min={1}
                 />
               )}
@@ -1727,7 +1777,15 @@ export default function NewSale() {
           {cart.length > 0 && (
             <div className="mt-6">
               <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.cartItems")}</h3>
-              <div className="overflow-hidden rounded-lg border border-gray-200">
+              <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${discountEligible ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
+                <p>
+                  {discountEligible
+                    ? t("pos.discountAvailable")
+                    : t("pos.discountProgress", { count: cartQuantity })}
+                </p>
+                {discountEligible && <p className="mt-1 text-xs">{t("pos.unitPriceHint")}</p>}
+              </div>
+              <div className="overflow-x-auto rounded-lg border border-gray-200">
                 <table className="w-full">
                   <thead className="bg-gray-50">
                     <tr>
@@ -1739,14 +1797,34 @@ export default function NewSale() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {cart.map((item, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
+                    {cart.map((item) => {
+                      const discounted = isLineDiscounted(item);
+                      const lineError = lineErrors[item.lineId];
+                      const fcUnit = getItemFcUnitPrice(item);
+                      const editorCurrency: SaleCurrency = editCurrency === "FC" && fcUnit !== undefined ? "FC" : "USD";
+                      return (
+                      <tr key={item.lineId} className={lineError ? "bg-red-50" : "hover:bg-gray-50"}>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.name}</td>
                         <td className="px-4 py-3 text-sm text-center text-gray-600">{item.quantity}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-900">
-                          {item.enteredCurrency === "FC"
-                            ? formatFC(item.enteredPrice)
-                            : formatUSD(item.enteredPrice)}
+                          <span className="pos-cell-label">{t("pos.unitPriceIn", { currency: discountEligible ? editorCurrency : item.enteredCurrency })}</span>
+                          {discountEligible ? (
+                            <UnitPriceInput
+                              id={`pos-unit-price-${item.lineId}`}
+                              value={editorCurrency === "FC" ? fcUnit ?? item.enteredPrice : item.priceUSD}
+                              currency={editorCurrency}
+                              ariaLabel={t("pos.editUnitPriceNamed", { name: item.name })}
+                              error={lineError}
+                              onCommit={(amount) => updateCartUnitPrice(item.lineId, amount)}
+                            />
+                          ) : (
+                            <>
+                              {item.enteredCurrency === "FC"
+                                ? formatFC(item.enteredPrice)
+                                : formatUSD(item.enteredPrice)}
+                              {lineError && <p role="alert" className="mt-1 text-xs text-red-600">{lineError}</p>}
+                            </>
+                          )}
                           {item.enteredCurrency === "FC" ? (
                             <div className="text-xs text-gray-500">
                               ≈ {formatUSD(item.priceUSD)}
@@ -1756,8 +1834,18 @@ export default function NewSale() {
                               ≈ {formatFC(item.priceFC)}
                             </div>
                           ) : null}
+                          {discounted && (
+                            <div className="text-xs text-emerald-700">
+                              {t("pos.normalPrice", {
+                                price: item.enteredCurrency === "FC" && item.reference.priceFC !== undefined
+                                  ? formatFC(item.reference.priceFC)
+                                  : formatUSD(item.reference.priceUSD),
+                              })}
+                            </div>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-gray-900">
+                          <span className="pos-cell-label">{t("pos.columns.total")}</span>
                           {item.enteredCurrency === "FC"
                             ? formatFC(item.enteredPrice * item.quantity)
                             : formatUSD(item.enteredPrice * item.quantity)}
@@ -1773,7 +1861,7 @@ export default function NewSale() {
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
-                            onClick={() => removeFromCart(index)}
+                            onClick={() => removeFromCart(item.lineId)}
                             className="text-red-600 hover:text-red-800 text-sm font-medium"
                             aria-label={t("pos.removeNamed", { name: item.name })}
                           >
@@ -1781,7 +1869,8 @@ export default function NewSale() {
                           </button>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-gray-50">
                     <tr>

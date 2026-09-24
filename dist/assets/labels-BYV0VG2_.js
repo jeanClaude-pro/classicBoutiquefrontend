@@ -1,0 +1,1 @@
+import{u as a}from"./index-ByhrFalG.js";const s=n=>t=>{if(typeof t!="string"||!t)return"—";for(const o of[t,t.toLowerCase()]){const e=`${n}.${o}`;if(a.exists(e))return a.t(e)}return t},u=s("enums.paymentMethod"),c=s("enums.saleStatus"),p=s("enums.saleType"),m=s("enums.expenseStatus"),b=s("enums.productStatus");export{b as a,p as b,m as e,u as p,c as s};
