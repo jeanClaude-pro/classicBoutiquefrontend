@@ -20,6 +20,7 @@ import { RequireAuth } from "./components/RequireAuth";
 import { AuthProvider } from "./context/AuthProvider";
 import { RequireRole } from "./components/RequireRole";
 import { useAuth } from "./hooks/useAuth";
+import { AppErrorBoundary } from "./components/AppErrorBoundary";
 
 const Products = lazy(() => import("./pages/products/products"));
 const SalesHistory = lazy(() => import("./pages/history/SalesHistory"));
@@ -49,7 +50,11 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       {!isLogin && <Sidebar />}
       <main className="app-main flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {!isLogin && <NetworkStatus />}
-        <div className="app-content min-h-full min-w-0">{children}</div>
+        <div className="app-content min-h-full min-w-0">
+          {/* A page that fails to render (or whose chunk is outdated) shows a
+              fallback here while the navigation stays usable. */}
+          <AppErrorBoundary scope="page" resetKey={location.pathname}>{children}</AppErrorBoundary>
+        </div>
       </main>
       {!isLogin && <MobileNavigation />}
     </div>
@@ -68,6 +73,7 @@ function LoginRoute() {
 
 export default function App() {
   return (
+    <AppErrorBoundary scope="app">
     <AuthProvider>
       <ToastContainer position="top-right" autoClose={3000} newestOnTop />
 
@@ -196,5 +202,6 @@ export default function App() {
         </AppLayout>
       </Router>
     </AuthProvider>
+    </AppErrorBoundary>
   );
 }

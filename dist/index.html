@@ -1,17 +1,25 @@
 <!doctype html>
-<html lang="fr">
+<!--
+  translate="no": the interface is French for French-speaking staff. Browser
+  page translation (Chrome/Edge "Traduire cette page") replaces React's text
+  nodes with <font> elements; React then throws NotFoundError
+  (removeChild/insertBefore) on the next update and the page goes blank.
+-->
+<html lang="fr" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
     <style>html,body,#root{min-height:100%;margin:0;background:#0f172a}</style>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="icon" type="image/png" href="/newlogo.png" />
     <link rel="apple-touch-icon" href="/newlogo.png" />
     <title>ETS DOUBLE M CLASSIC BOUTIQUE</title>
-    <script type="module" crossorigin src="/assets/index-3KF6_627.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-DmyBlq3D.css">
+    <script type="module" crossorigin src="/assets/index-BalGFMsI.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B5D-VNmZ.css">
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body>
     <div id="root"></div>

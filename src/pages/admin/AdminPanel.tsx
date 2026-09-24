@@ -5,6 +5,12 @@ import React, { useState, useEffect } from "react";
 import { toast } from "react-toastify";
 import { useAuth } from "../../hooks/useAuth";
 import { serverUrl } from "../../utils/constants";
+import { apiErrorFromResponse, requestJson } from "../../lib/apiError";
+import { notifyError } from "../../lib/notify";
+import { deleteUserCopy, roleChangeCopy, shareholderCategoryCopy, toggleUserStatusCopy } from "../../lib/confirmationCopy";
+import { ROLE_LABELS as SHARED_ROLE_LABELS, roleLabel } from "../../config/roles";
+import { useConfirmAction } from "../../hooks/useConfirmAction";
+import { MODULES, PERMISSION_MODULE_IDS } from "../../config/modules";
 import {
   Users,
   Shield,
@@ -54,21 +60,8 @@ interface ShopSettings {
   receiptFooter: string;
 }
 
-const ALL_PAGES = [
-  { path: "/dashboard", label: "Tableau de bord" },
-  { path: "/rate", label: "Taux d'échange" },
-  { path: "/", label: "Point de Vente (POS)" },
-  { path: "/reservation", label: "Réservation" },
-  { path: "/entry", label: "Entrée de caisse" },
-  { path: "/sortie", label: "Sortie de caisse" },
-  { path: "/products", label: "Articles / Stock" },
-  { path: "/sales", label: "Historique de Vente" },
-  { path: "/reservationhistory", label: "Historique de Réservation" },
-  { path: "/entryhistory", label: "Historique d'Entrée" },
-  { path: "/sortiehistory", label: "Historique de Sortie" },
-  { path: "/reports", label: "Rapports & Analytiques" },
-  { path: "/customers", label: "Clients" },
-];
+// Same names as the navigation (config/modules.ts). Only real, routed pages.
+const ALL_PAGES = PERMISSION_MODULE_IDS.map((id) => ({ path: MODULES[id].path, label: MODULES[id].label }));
 
 const ALL_ACTIONS = [
   {
@@ -83,14 +76,8 @@ const ALL_ACTIONS = [
   },
 ];
 
-const ROLE_LABELS: Record<AppRole, string> = {
-  superadmin: "Superadministrateur",
-  admin: "Actionnaire",
-  manager: "Gestionnaire",
-  inventory_manager: "Responsable Stock",
-  cashier_supervisor: "Superviseur Caisse",
-  staff: "Personnel",
-};
+// Same role names as the sidebar and the mobile menu (config/roles.ts).
+const ROLE_LABELS = SHARED_ROLE_LABELS as Record<AppRole, string>;
 
 const ROLE_COLORS: Record<AppRole, string> = {
   superadmin: "bg-slate-900 text-white border-slate-700",
@@ -155,7 +142,7 @@ const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }>
     pages: [
       "Point de Vente (POS)",
       "Réservation & historique",
-      "Entrée / Sortie de caisse & historique",
+      "Entrées de caisse, décaissements & historiques",
       "Articles / Stock",
       "Historique de Vente",
       "Clients",
@@ -163,7 +150,7 @@ const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }>
     actions: [
       "Créer des ventes",
       "Gérer les réservations",
-      "Enregistrer entrées / sorties de caisse",
+      "Enregistrer entrées de caisse et décaissements",
       "Gérer le stock (articles)",
       "Consulter l'historique des ventes",
       "Modifier les reçus (si permission accordée)",
@@ -173,14 +160,14 @@ const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }>
     pages: [
       "Point de Vente (POS)",
       "Réservation & historique",
-      "Entrée / Sortie de caisse & historique",
+      "Entrées de caisse, décaissements & historiques",
       "Articles / Stock",
       "Historique de Vente",
     ],
     actions: [
       "Créer des ventes",
       "Gérer les réservations",
-      "Enregistrer entrées / sorties de caisse",
+      "Enregistrer entrées de caisse et décaissements",
       "Gérer le stock (articles)",
       "Consulter l'historique des ventes",
     ],
@@ -189,14 +176,14 @@ const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }>
     pages: [
       "Point de Vente (POS)",
       "Réservation & historique",
-      "Entrée / Sortie de caisse & historique",
+      "Entrées de caisse, décaissements & historiques",
       "Historique de Vente",
       "Clients",
     ],
     actions: [
       "Créer des ventes",
       "Gérer les réservations",
-      "Enregistrer entrées / sorties de caisse",
+      "Enregistrer entrées de caisse et décaissements",
       "Consulter l'historique des ventes",
       "Gérer les clients",
       "Modifier les reçus (si permission accordée)",
@@ -257,6 +244,9 @@ export default function AdminPanel() {
   const [loadingSettings, setLoadingSettings] = useState(false);
 
   const { token, user: currentUser } = useAuth();
+  const confirmAction = useConfirmAction();
+  // The signed-in account cannot deactivate, demote or delete itself.
+  const isSelf = (user: AppUser) => user._id === currentUser?.id;
 
   const authHeaders = () => ({
     "Content-Type": "application/json",
@@ -273,7 +263,7 @@ export default function AdminPanel() {
       const data = await res.json();
       setUsers(data);
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     } finally {
       setLoading(false);
     }
@@ -295,7 +285,7 @@ export default function AdminPanel() {
         receiptFooter: data.receiptFooter || "",
       });
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     } finally {
       setLoadingSettings(false);
     }
@@ -330,8 +320,7 @@ export default function AdminPanel() {
         body: JSON.stringify({ username: editingUsernameValue.trim() }),
       });
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Échec de la mise à jour");
+        throw await apiErrorFromResponse(res);
       }
       const updated = await res.json();
       setUsers((prev) =>
@@ -342,80 +331,50 @@ export default function AdminPanel() {
       cancelEditUsername();
       toast.success("Nom d'utilisateur mis à jour");
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     }
   };
 
   // ─── Status / role / delete ──────────────────────────────────────────────────
 
-  const handleToggleStatus = async (user: AppUser) => {
-    try {
-      const res = await fetch(`${API_BASE}/users/${user._id}/status`, {
-        method: "PUT",
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Échec du changement de statut");
-      }
-      const data = await res.json();
-      setUsers((prev) =>
-        prev.map((u) =>
-          u._id === user._id ? { ...u, isActive: data.user.isActive } : u
-        )
-      );
-      toast.success(data.message);
-    } catch (err: any) {
-      toast.error(err.message);
-    }
+  const handleToggleStatus = (user: AppUser) => {
+    confirmAction.request<{ user?: { isActive?: boolean } }>({
+      ...toggleUserStatusCopy(user),
+      action: () => requestJson(`${API_BASE}/users/${user._id}/status`, { method: "PUT" }),
+      onSuccess: (data) => {
+        const isActive = typeof data?.user?.isActive === "boolean" ? data.user.isActive : !user.isActive;
+        setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, isActive } : u)));
+      },
+    });
   };
 
-  const handleUpdateRole = async (userId: string, role: AppRole, assignedCategory?: "CLOTHES" | "SHOES") => {
-    try {
-      const res = await fetch(`${API_BASE}/users/${userId}/role`, {
-        method: "PUT",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          role,
-          ...(role === "admin" ? { assignedCategory: assignedCategory || "CLOTHES" } : {}),
-        }),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Échec de la mise à jour du rôle");
-      }
-      const updated = await res.json();
-      setUsers((prev) =>
-        prev.map((u) => (u._id === userId ? { ...u, ...updated } : u))
-      );
-      setEditingRoleId(null);
-      toast.success("Rôle mis à jour");
-    } catch (err: any) {
-      toast.error(err.message);
-    }
+  const handleDeleteUser = (user: AppUser) => {
+    confirmAction.request({
+      ...deleteUserCopy(user),
+      action: () => requestJson(`${API_BASE}/users/${user._id}`, { method: "DELETE" }),
+      onSuccess: () => setUsers((prev) => prev.filter((u) => u._id !== user._id)),
+    });
   };
 
-  const handleDeleteUser = async (user: AppUser) => {
-    if (
-      !window.confirm(
-        `Supprimer l'utilisateur "${user.username}" ? Cette action est irréversible.`
-      )
-    )
-      return;
-    try {
-      const res = await fetch(`${API_BASE}/users/${user._id}`, {
-        method: "DELETE",
-        headers: authHeaders(),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Échec de la suppression");
-      }
-      setUsers((prev) => prev.filter((u) => u._id !== user._id));
-      toast.success("Utilisateur supprimé");
-    } catch (err: any) {
-      toast.error(err.message);
-    }
+  const requestRoleChange = (user: AppUser, role: AppRole, assignedCategory?: "CLOTHES" | "SHOES") => {
+    // Close the inline editor: cancelling leaves the current role displayed.
+    setEditingRoleId(null);
+    const category = role === "admin" ? assignedCategory || "CLOTHES" : undefined;
+    if (role === user.role && (role !== "admin" || category === (user.assignedCategory || "CLOTHES"))) return;
+    const copy = user.role === "admin" && role === "admin"
+      ? shareholderCategoryCopy(user, category || "CLOTHES")
+      : roleChangeCopy(user, { role, assignedCategory: category }, roleLabel);
+    confirmAction.request<Partial<AppUser>>({
+      ...copy,
+      action: () => requestJson(`${API_BASE}/users/${user._id}/role`, {
+        method: "PUT",
+        body: { role, ...(category ? { assignedCategory: category } : {}) },
+      }),
+      onSuccess: (updated) => {
+        setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, ...(updated || {}), role } : u)));
+      },
+      onError: async (error) => { if (error.isConflict || error.status === 404) await fetchUsers(); },
+    });
   };
 
   // ─── Permissions ─────────────────────────────────────────────────────────────
@@ -450,9 +409,8 @@ export default function AdminPanel() {
           body: JSON.stringify({ actionPermissions: selectedUserActions }),
         }),
       ]);
-      if (!permRes.ok || !actionRes.ok) {
-        throw new Error("Échec de la sauvegarde des permissions");
-      }
+      if (!permRes.ok) throw await apiErrorFromResponse(permRes);
+      if (!actionRes.ok) throw await apiErrorFromResponse(actionRes);
       setUsers((prev) =>
         prev.map((u) =>
           u._id === selectedUserId
@@ -462,7 +420,7 @@ export default function AdminPanel() {
       );
       toast.success("Permissions mises à jour avec succès");
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     } finally {
       setSavingPerms(false);
     }
@@ -471,11 +429,13 @@ export default function AdminPanel() {
   const handleResetPermissions = async (user: AppUser) => {
     setSavingPerms(true);
     try {
-      await fetch(`${API_BASE}/users/${user._id}/permissions`, {
+      // The success message is shown only when the server accepted the change.
+      const res = await fetch(`${API_BASE}/users/${user._id}/permissions`, {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ permissions: [] }),
       });
+      if (!res.ok) throw await apiErrorFromResponse(res);
       setUsers((prev) =>
         prev.map((u) => (u._id === user._id ? { ...u, permissions: [] } : u))
       );
@@ -483,7 +443,7 @@ export default function AdminPanel() {
       setSelectedUserPerms([...ROLE_DEFAULT_PAGES[user.role]]);
       toast.success("Permissions réinitialisées au rôle par défaut");
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     } finally {
       setSavingPerms(false);
     }
@@ -507,12 +467,11 @@ export default function AdminPanel() {
         body: JSON.stringify(shopSettings),
       });
       if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.message || "Échec de la sauvegarde");
+        throw await apiErrorFromResponse(res);
       }
       toast.success("Réglages du reçu mis à jour avec succès");
     } catch (err: any) {
-      toast.error(err.message);
+      notifyError(err);
     } finally {
       setSavingSettings(false);
     }
@@ -546,9 +505,9 @@ export default function AdminPanel() {
               <Shield className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Administration</h1>
+              <h1 className="text-2xl font-bold text-gray-900">{MODULES.admin.label}</h1>
               <p className="text-sm text-gray-500">
-                Gérez les comptes, rôles, permissions et réglages du système
+                {MODULES.admin.description}
               </p>
             </div>
           </div>
@@ -709,8 +668,8 @@ export default function AdminPanel() {
                                 defaultValue={user.role === "admin" ? `admin:${user.assignedCategory || "CLOTHES"}` : user.role}
                                 onChange={(e) => {
                                   const [nextRole, category] = e.target.value.split(":");
-                                  handleUpdateRole(
-                                    user._id,
+                                  requestRoleChange(
+                                    user,
                                     nextRole as AppRole,
                                     category as "CLOTHES" | "SHOES" | undefined
                                   );
@@ -737,6 +696,8 @@ export default function AdminPanel() {
                             <div className="flex flex-col items-start gap-1.5">
                               <button
                                 onClick={() => setEditingRoleId(user._id)}
+                                disabled={isSelf(user)}
+                                title={isSelf(user) ? "Vous ne pouvez pas modifier le rôle de votre propre compte" : undefined}
                                 className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${ROLE_COLORS[user.role]} hover:opacity-80 transition-opacity`}
                               >
                                 {ROLE_LABELS[user.role]}
@@ -745,7 +706,8 @@ export default function AdminPanel() {
                               {user.role === "admin" && (
                                 <select
                                   value={user.assignedCategory || "CLOTHES"}
-                                  onChange={(event) => handleUpdateRole(user._id, "admin", event.target.value as "CLOTHES" | "SHOES")}
+                                  onChange={(event) => requestRoleChange(user, "admin", event.target.value as "CLOTHES" | "SHOES")}
+                                  disabled={confirmAction.busy}
                                   className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900"
                                   aria-label={`Catégorie de ${user.username}`}
                                 >
@@ -759,8 +721,11 @@ export default function AdminPanel() {
 
                         {/* Status */}
                         <td className="px-5 py-3.5">
-                          <button
+                          {isSelf(user) ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">Actif · votre compte</span>
+                          ) : <button
                             onClick={() => handleToggleStatus(user)}
+                            disabled={confirmAction.busy}
                             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
                               user.isActive
                                 ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
@@ -772,7 +737,7 @@ export default function AdminPanel() {
                             ) : (
                               <><ToggleLeft className="w-3.5 h-3.5" />Désactivé</>
                             )}
-                          </button>
+                          </button>}
                         </td>
 
                         {/* Permissions badge */}
@@ -815,13 +780,15 @@ export default function AdminPanel() {
                             >
                               <Shield className="w-4 h-4" />
                             </button>
-                            <button
+                            {!isSelf(user) && <button
                               onClick={() => handleDeleteUser(user)}
+                              disabled={confirmAction.busy}
                               className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                               title="Supprimer l'utilisateur"
+                              aria-label={`Supprimer ${user.username}`}
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </button>}
                           </div>
                         </td>
                       </tr>
@@ -851,11 +818,12 @@ export default function AdminPanel() {
             <div className="p-6">
               {/* User selector */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="admin-utilisateur" className="block text-sm font-medium text-gray-700 mb-2">
                   Sélectionner un utilisateur
                 </label>
                 <div className="relative max-w-sm">
                   <select
+                    id="admin-utilisateur"
                     value={selectedUserId}
                     onChange={(e) => handleSelectUserForPerms(e.target.value)}
                     className="w-full px-4 py-3 pr-10 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white appearance-none"
@@ -1067,10 +1035,11 @@ export default function AdminPanel() {
               ) : (
                 <form onSubmit={handleSaveSettings} className="p-6 space-y-5">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="admin-nom-etablissement" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Nom de l'établissement
                     </label>
                     <input
+                      id="admin-nom-etablissement"
                       type="text"
                       value={shopSettings.shopName}
                       onChange={(e) =>
@@ -1083,10 +1052,11 @@ export default function AdminPanel() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="admin-adresse" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Adresse
                     </label>
                     <input
+                      id="admin-adresse"
                       type="text"
                       value={shopSettings.shopAddress}
                       onChange={(e) =>
@@ -1098,10 +1068,11 @@ export default function AdminPanel() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="admin-numero-de-telephone" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Numéro(s) de téléphone
                     </label>
                     <input
+                      id="admin-numero-de-telephone"
                       type="text"
                       value={shopSettings.shopNumber}
                       onChange={(e) =>
@@ -1113,10 +1084,11 @@ export default function AdminPanel() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="admin-numero-d-enregistrement" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Numéro d'enregistrement (RCCM)
                     </label>
                     <input
+                      id="admin-numero-d-enregistrement"
                       type="text"
                       value={shopSettings.shopRegistration}
                       onChange={(e) =>
@@ -1128,10 +1100,11 @@ export default function AdminPanel() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    <label htmlFor="admin-pied-de-page" className="block text-sm font-medium text-gray-700 mb-1.5">
                       Pied de page du reçu
                     </label>
                     <textarea
+                      id="admin-pied-de-page"
                       value={shopSettings.receiptFooter}
                       onChange={(e) =>
                         setShopSettings((s) => ({ ...s, receiptFooter: e.target.value }))
@@ -1273,7 +1246,7 @@ export default function AdminPanel() {
                 <li>Les tokens JWT expirent et sont validés à chaque requête.</li>
                 <li>Les comptes désactivés ne peuvent pas se connecter ni accéder aux endpoints.</li>
                 <li>Un compte administrateur protégé est masqué et non modifiable par les autres admins.</li>
-                <li>L'inscription est publique via la page de connexion, mais chaque nouveau compte reçoit automatiquement le rôle "Personnel" ; seuls les administrateurs peuvent ensuite changer les rôles et permissions.</li>
+                <li>L'inscription est publique via la page de connexion, mais chaque nouveau compte reçoit automatiquement le rôle « {roleLabel("staff")} » ; seuls les administrateurs peuvent ensuite changer les rôles et permissions.</li>
               </ul>
             </div>
 
@@ -1312,6 +1285,7 @@ export default function AdminPanel() {
           </div>
         )}
       </div>
+      {confirmAction.dialog}
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { LogOut, MoreHorizontal, User as UserIcon, X } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { canAccessNavigationItem, isNavigationItemActive, navigationSections } from "../config/navigation";
+import { roleLabel } from "../config/roles";
 
 export default function MobileNavigation() {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
@@ -31,7 +32,7 @@ export default function MobileNavigation() {
       <section className="mobile-more-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-menu-title">
         <div className="mobile-sheet-handle" />
         <div className="mobile-sheet-header">
-          <div className="min-w-0"><h2 id="mobile-menu-title">Tous les modules</h2><p className="truncate">{user.username} · {user.role}</p></div>
+          <div className="min-w-0"><h2 id="mobile-menu-title">Tous les modules</h2><p className="truncate">{user.username} · {roleLabel(user.role)}</p></div>
           <button className="mobile-icon-button" onClick={() => setIsMoreOpen(false)} aria-label="Fermer"><X /></button>
         </div>
         <div className="mobile-sheet-content">

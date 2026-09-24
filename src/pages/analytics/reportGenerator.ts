@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import jsPDF from "jspdf";
 import { formatNowGMT2 } from "../../utils/dateUtils";
+import { categoryPresentation, type AccountingCategory, type CategoryAccountingDTO } from "./accountingPresentation";
 
 interface TopProduct {
   name: string;
@@ -16,6 +17,7 @@ interface ReportAnalytics {
   totalValidatedExpenses: number;
   totalEntries: number;
   netRevenue: number;
+  categoryBreakdown?: Partial<Record<AccountingCategory, CategoryAccountingDTO>>;
   topProducts: TopProduct[];
   recentTrends: {
     salesGrowth: number | null;
@@ -70,6 +72,15 @@ const ink = {
   danger: [153, 27, 27],
   warning: [180, 83, 9],
 } as const;
+
+// The report is written in plain ASCII like the rest of this PDF.
+function pdfText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[‘’]/g, "'")
+    .replace(/[–—]/g, "-");
+}
 
 function color(doc: jsPDF, rgb: readonly number[]): void {
   doc.setTextColor(rgb[0], rgb[1], rgb[2]);
@@ -434,7 +445,7 @@ export function generateCompanyReport(config: ReportConfig): void {
       doc,
       [
         { label: "Ventes totales", value: String(analytics.totalSales), note: "Transactions completees" },
-        { label: "Revenu total", value: formatCurrency(analytics.totalRevenue), note: "Revenu des ventes" },
+        { label: "Encaissements ventes", value: formatCurrency(analytics.totalRevenue), note: "Ventes + acomptes reservations" },
         { label: "Entrees caisse", value: formatCurrency(analytics.totalEntries), note: "Montant recu" },
         { label: "Depenses", value: formatCurrency(analytics.totalValidatedExpenses), note: "Montant valide" },
         { label: "Tresorerie nette", value: formatCurrency(analytics.netRevenue), note: "Ventes + entrees - depenses validees" },
@@ -443,6 +454,22 @@ export function generateCompanyReport(config: ReportConfig): void {
       Y,
       3,
     );
+    // Same fields and labels as the Analytics screen (accountingPresentation):
+    // the PDF formats authoritative backend numbers and never recomputes them.
+    for (const key of ["CLOTHES", "SHOES"] as const) {
+      const row = analytics.categoryBreakdown?.[key];
+      if (!row) continue;
+      const view = categoryPresentation(key, row);
+      ensure(70);
+      Y = sectionTitle(doc, `Situation ${pdfText(view.title).toUpperCase()} - periode`, Y);
+      Y = metricGrid(doc, view.period.map((metric) => ({ label: pdfText(metric.label), value: formatCurrency(metric.value) })), Y, 2);
+      if (view.balance.length > 0) {
+        ensure(40);
+        Y = sectionTitle(doc, `${pdfText(view.title)} - situation actuelle (cumul)`, Y);
+        Y = metricGrid(doc, view.balance.map((metric) => ({ label: pdfText(metric.label), value: formatCurrency(metric.value) })), Y, 2);
+        Y = infoPanel(doc, "Regle de reapprovisionnement", pdfText(view.fundsExplanation), Y);
+      }
+    }
   }
 
   if (sections.sales) {
@@ -503,7 +530,7 @@ export function generateCompanyReport(config: ReportConfig): void {
     secNum++;
     ensure(34);
     Y = sectionTitle(doc, `${secNum}. Rapport des depenses`, Y);
-    Y = infoPanel(doc, "Depenses validees", `Total valide: ${formatCurrency(analytics.totalValidatedExpenses)}`, Y);
+    Y = infoPanel(doc, "Sorties validees", `Total caisse: ${formatCurrency(analytics.totalValidatedExpenses)}. Les depenses d'entreprise reduisent le benefice net; les achats de marchandises consomment les fonds de reapprovisionnement sans etre traites comme charge d'exploitation.`, Y);
   }
 
   if (sections.entries) {

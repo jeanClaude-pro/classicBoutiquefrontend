@@ -1,5 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from "react";
+import { requestJson } from "../lib/apiError";
+import { notifyInfo } from "../lib/notify";
+import { completeReservationCopy, deleteSaleCopy, revertReservationCopy } from "../lib/confirmationCopy";
+import { useConfirmAction } from "../hooks/useConfirmAction";
+import { MODULES } from "../config/modules";
+import { paymentMethodLabel } from "../lib/labels";
 import { formatDateGMT2, formatDateTimeGMT2, formatTimeGMT2, formatNowGMT2 } from "../utils/dateUtils";
 import { serverUrl } from "../utils/constants";
 import { formatUSD } from "../utils/salePricing";
@@ -105,8 +111,7 @@ export default function ReservationManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [showCompletionDialog, setShowCompletionDialog] = useState(false);
-  const [reservationToComplete, setReservationToComplete] = useState<Reservation | null>(null);
+  const confirmAction = useConfirmAction();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'completed'>('all');
@@ -267,7 +272,10 @@ export default function ReservationManagement() {
   const displayReservationDate = (reservation: Reservation) => {
     // Priority 1: Use reservationDate if available
     if (reservation.reservationDate) {
-      const datePart = formatDate(reservation.reservationDate);
+      // The reservation form stores an already formatted French date
+      // ("24/09/2026"), which Date cannot parse: show it as recorded.
+      const stored = String(reservation.reservationDate).trim();
+      const datePart = /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(stored) ? stored : formatDate(stored);
       // If time is also available, show both
       if (reservation.reservationTime) {
         return `${datePart} ${reservation.reservationTime}`;
@@ -306,21 +314,49 @@ export default function ReservationManagement() {
     setError(null);
   };
 
-  const openCompletionDialog = (reservation: Reservation) => {
-    setReservationToComplete(reservation);
-    setShowCompletionDialog(true);
+  // A conflict means another device changed the reservation: reload it.
+  const refreshIfStale = async (error: { isConflict: boolean; status: number }) => {
+    if (error.isConflict || error.status === 404 || error.status === 400) await fetchReservations();
   };
 
-  const closeCompletionDialog = () => {
-    setShowCompletionDialog(false);
-    setReservationToComplete(null);
+  const openCompletionDialog = (reservation: Reservation) => {
+    confirmAction.request({
+      ...completeReservationCopy(reservation),
+      action: () => requestJson(`${API_BASE}/sales/${reservation._id}/complete`, { method: "PATCH", body: {} }),
+      onSuccess: () => markCompletedLocally(reservation),
+      onError: refreshIfStale,
+    });
+  };
+
+  const markAsPending = (reservation: Reservation) => {
+    confirmAction.request({
+      ...revertReservationCopy(reservation),
+      action: () => requestJson(`${API_BASE}/sales/${reservation._id}/pending`, { method: "PATCH", body: {} }),
+      onSuccess: () => {
+        setReservations(prev => prev.map(r => r._id === reservation._id ? { ...r, status: "pending", completedBy: undefined, completedAt: undefined } : r));
+        setShowModal(false);
+      },
+      onError: refreshIfStale,
+    });
+  };
+
+  const handleDeleteReservation = (reservation: Reservation) => {
+    const copy = deleteSaleCopy({ ...reservation, type: "reservation" });
+    if (copy.blockedReason) { notifyInfo(copy.blockedReason); return; }
+    confirmAction.request({
+      ...copy,
+      action: () => requestJson(`${API_BASE}/sales/${reservation._id}`, { method: "DELETE" }),
+      onSuccess: async () => { setShowModal(false); await fetchReservations(); },
+      onError: refreshIfStale,
+    });
   };
 
   // Check if user can edit reservations (admin or manager)
   const canEditReservation = userRole === 'superadmin' || userRole === 'manager';
   
-  // Check if user can delete reservations (admin only)
+  // Deletion and "back to pending" are superadmin-only on the server.
   const canDeleteReservation = userRole === 'superadmin';
+  const canRevertReservation = userRole === 'superadmin';
 
   // EDIT FUNCTIONALITY
   const openEditModal = async (reservation: Reservation) => {
@@ -566,49 +602,6 @@ export default function ReservationManagement() {
   };
 
   // DELETE FUNCTIONALITY
-  const handleDeleteReservation = async (reservation: Reservation) => {
-    if (!canDeleteReservation) {
-      setError("Seul l'administrateur peut supprimer une réservation");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Êtes-vous sûr de vouloir supprimer la réservation ${reservation.saleId} ? Cette action est irréversible.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `${API_BASE}/sales/${reservation._id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        setMessage("✅ Réservation supprimée avec succès");
-        await fetchReservations();
-        setShowModal(false);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Échec de la suppression de la réservation");
-      }
-    } catch (error) {
-      setError("Échec de la suppression de la réservation");
-      console.error("Error deleting reservation:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const { subtotal, total } = calculateTotals();
 
   // Print receipt for reservation (pending or completed)
@@ -959,109 +952,13 @@ export default function ReservationManagement() {
     }
   };
 
-  const markAsCompleted = async (reservation: Reservation) => {
-    try {
-      setLoading(true);
-      
-      // Use the sales completion endpoint
-      const response = await fetch(`${API_BASE}/sales/${reservation._id}/complete`, {
-        method: 'PATCH',
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify({
-          completedBy: localStorage.getItem("username") || "Admin"
-        }),
-      });
-
-      if (response.ok) {
-        await response.json();
-        
-        setMessage("✅ Réservation marquée comme complétée avec succès");
-        
-        // Update local state immediately
-        setReservations(prev => prev.map(r => 
-          r._id === reservation._id 
-            ? { 
-                ...r, 
-                status: "completed",
-                completedBy: localStorage.getItem("username") || "Admin",
-                completedAt: new Date().toISOString()
-              }
-            : r
-        ));
-        
-        setShowCompletionDialog(false);
-        
-        // Print completion receipt
-        setTimeout(() => {
-          printReservationReceipt({
-            ...reservation,
-            status: "completed",
-            completedBy: localStorage.getItem("username") || "Admin",
-            completedAt: new Date().toISOString()
-          });
-        }, 500);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Échec de la mise à jour de la réservation");
-      }
-    } catch (error) {
-      setError("Erreur de connexion lors de la mise à jour");
-      console.error("Error completing reservation:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const markAsPending = async (reservation: Reservation) => {
-    const confirmMessage = `Êtes-vous sûr de vouloir remettre la réservation ${reservation.saleId} en attente ?\n\nCette action ne pourra pas être annulée.`;
-    
-    if (!window.confirm(confirmMessage)) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      
-      // Use the sales pending endpoint
-      const response = await fetch(`${API_BASE}/sales/${reservation._id}/pending`, {
-        method: 'PATCH',
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
-
-      if (response.ok) {
-        await response.json();
-        
-        setMessage("✅ Réservation remise en attente avec succès");
-        
-        // Update local state immediately
-        setReservations(prev => prev.map(r => 
-          r._id === reservation._id 
-            ? { 
-                ...r, 
-                status: "pending",
-                completedBy: undefined,
-                completedAt: undefined
-              }
-            : r
-        ));
-        
-        setShowModal(false);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Échec de la mise à jour de la réservation");
-      }
-    } catch (error) {
-      setError("Erreur de connexion lors de la mise à jour");
-      console.error("Error setting reservation to pending:", error);
-    } finally {
-      setLoading(false);
-    }
+  const markCompletedLocally = (reservation: Reservation) => {
+    const completedBy = localStorage.getItem("username") || "Admin";
+    const completedAt = new Date().toISOString();
+    setReservations(prev => prev.map(r => r._id === reservation._id ? { ...r, status: "completed", completedBy, completedAt } : r));
+    setShowModal(false);
+    // Hand-over receipt, as before.
+    setTimeout(() => printReservationReceipt({ ...reservation, status: "completed", completedBy, completedAt }), 500);
   };
 
   return (
@@ -1070,10 +967,10 @@ export default function ReservationManagement() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Gestion des Réservations
+            {MODULES.reservationhistory.label}
           </h1>
           <p className="text-gray-600">
-            Gérez et suivez l'état des réservations des clients
+            {MODULES.reservationhistory.description}
           </p>
         </div>
         <div className="flex gap-3 items-center">
@@ -1304,7 +1201,7 @@ export default function ReservationManagement() {
                         )}
                         
                         {/* Delete Button - Only for admin */}
-                        {canDeleteReservation && (
+                        {canDeleteReservation && reservation.status !== 'completed' && (
                           <button
                             onClick={() => handleDeleteReservation(reservation)}
                             className="text-red-600 hover:text-red-900 p-1 rounded"
@@ -1316,16 +1213,16 @@ export default function ReservationManagement() {
                         
                         {canEditReservation && (
                           <>
-                            {reservation.status !== 'completed' ? (
+                            {reservation.status === 'pending' ? (
                               <button
                                 onClick={() => openCompletionDialog(reservation)}
-                                disabled={loading}
+                                disabled={loading || confirmAction.busy}
                                 className="text-green-600 hover:text-green-900 p-1 rounded disabled:opacity-50"
-                                title="Marquer comme complétée"
+                                title="Terminer la réservation"
                               >
                                 <CheckCircle className="w-4 h-4" />
                               </button>
-                            ) : (
+                            ) : reservation.status === 'completed' && canRevertReservation && (
                               <button
                                 onClick={() => markAsPending(reservation)}
                                 disabled={loading}
@@ -1374,41 +1271,7 @@ export default function ReservationManagement() {
       )}
 
       {/* Completion Confirmation Dialog */}
-      {showCompletionDialog && reservationToComplete && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Confirmer la complétion
-              </h3>
-            </div>
-            
-            <div className="p-6">
-              <p className="text-gray-700 mb-4">
-                Êtes-vous sûr de vouloir marquer la réservation <strong>{reservationToComplete.saleId}</strong> comme complétée ?
-                Un reçu de retrait sera imprimé.
-              </p>
-              
-              <div className="flex gap-3 justify-end">
-                <button
-                  onClick={closeCompletionDialog}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={() => markAsCompleted(reservationToComplete)}
-                  disabled={loading}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {loading ? "Traitement..." : "Confirmer et Imprimer"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmAction.dialog}
 
       {/* Reservation Details Modal */}
       {showModal && selectedReservation && (
@@ -1432,23 +1295,23 @@ export default function ReservationManagement() {
               {/* Reservation Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     ID Réservation
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">{selectedReservation.saleId}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Date de Création
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {formatDateTime(selectedReservation.createdAt)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Date de Réservation
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedReservation.reservationDate 
                       ? `${formatDate(selectedReservation.reservationDate)} à ${selectedReservation.reservationTime || displayReservationTime(selectedReservation)}`
@@ -1457,17 +1320,17 @@ export default function ReservationManagement() {
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de Paiement
-                  </label>
-                  <p className="text-sm text-gray-900 capitalize">
-                    {selectedReservation.paymentMethod}
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Méthode de paiement
+                  </span>
+                  <p className="text-sm text-gray-900">
+                    {paymentMethodLabel(selectedReservation.paymentMethod)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Statut
-                  </label>
+                  </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                       selectedReservation.status === 'completed'
@@ -1479,9 +1342,9 @@ export default function ReservationManagement() {
                   </span>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Vendeur
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedReservation.salesPerson || "Non spécifié"}
                   </p>
@@ -1489,17 +1352,17 @@ export default function ReservationManagement() {
                 {selectedReservation.completedAt && (
                   <>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Complétée le
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {formatDateTime(selectedReservation.completedAt)}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Complétée par
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedReservation.completedBy || "Inconnu"}
                       </p>
@@ -1593,7 +1456,7 @@ export default function ReservationManagement() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={() => printReservationReceipt(selectedReservation)}
                   className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
@@ -1617,15 +1480,15 @@ export default function ReservationManagement() {
                       Modifier la Réservation
                     </button>
 
-                    {selectedReservation.status !== 'completed' ? (
+                    {selectedReservation.status === 'pending' ? (
                       <button
                         onClick={() => openCompletionDialog(selectedReservation)}
                         className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                       >
                         <CheckCircle className="w-4 h-4" />
-                        Marquer comme Complétée
+                        Terminer la réservation
                       </button>
-                    ) : (
+                    ) : selectedReservation.status === 'completed' && canRevertReservation && (
                       <button
                         onClick={() => markAsPending(selectedReservation)}
                         className="flex-1 bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2"
@@ -1637,7 +1500,7 @@ export default function ReservationManagement() {
                   </>
                 )}
 
-                {canDeleteReservation && (
+                {canDeleteReservation && selectedReservation.status !== 'completed' && (
                   <button
                     onClick={() => handleDeleteReservation(selectedReservation)}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
@@ -1691,10 +1554,11 @@ export default function ReservationManagement() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="reservation-edit-nom" className="block text-sm font-medium text-gray-700 mb-1">
                       Nom
                     </label>
                     <input
+                      id="reservation-edit-nom"
                       type="text"
                       value={editForm.customer.name}
                       onChange={(e) =>
@@ -1708,10 +1572,11 @@ export default function ReservationManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="reservation-edit-telephone" className="block text-sm font-medium text-gray-700 mb-1">
                       Téléphone
                     </label>
                     <input
+                      id="reservation-edit-telephone"
                       type="tel"
                       value={editForm.customer.phone}
                       onChange={(e) =>
@@ -1725,10 +1590,11 @@ export default function ReservationManagement() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="reservation-edit-email" className="block text-sm font-medium text-gray-700 mb-1">
                       Email
                     </label>
                     <input
+                      id="reservation-edit-email"
                       type="email"
                       value={editForm.customer.email}
                       onChange={(e) =>
@@ -1746,10 +1612,11 @@ export default function ReservationManagement() {
               {/* Reservation Details */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="reservation-edit-date-de-reservation" className="block text-sm font-medium text-gray-700 mb-1">
                     Date de Réservation
                   </label>
                   <input
+                    id="reservation-edit-date-de-reservation"
                     type="date"
                     value={editForm.reservationDate}
                     onChange={(e) =>
@@ -1762,10 +1629,11 @@ export default function ReservationManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="reservation-edit-heure-de-reservation" className="block text-sm font-medium text-gray-700 mb-1">
                     Heure de Réservation
                   </label>
                   <input
+                    id="reservation-edit-heure-de-reservation"
                     type="time"
                     value={editForm.reservationTime}
                     onChange={(e) =>
@@ -1778,10 +1646,11 @@ export default function ReservationManagement() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="reservation-edit-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
                     Méthode de Paiement
                   </label>
                   <select
+                    id="reservation-edit-methode-de-paiement"
                     value={editForm.paymentMethod}
                     onChange={(e) =>
                       setEditForm((prev) => ({
@@ -1791,7 +1660,7 @@ export default function ReservationManagement() {
                     }
                     className="w-full p-2 border rounded"
                   >
-                    <option value="cash">Cash</option>
+                    <option value="cash">Espèces</option>
                     <option value="card">Carte</option>
                     <option value="transfer">Virement</option>
                     <option value="other">Autre</option>
@@ -1801,10 +1670,11 @@ export default function ReservationManagement() {
 
               {/* Notes */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="reservation-edit-notes" className="block text-sm font-medium text-gray-700 mb-1">
                   Notes
                 </label>
                 <textarea
+                  id="reservation-edit-notes"
                   value={editForm.notes}
                   onChange={(e) =>
                     setEditForm((prev) => ({ ...prev, notes: e.target.value }))
@@ -1860,7 +1730,7 @@ export default function ReservationManagement() {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`reservation-edit-item-${index}-article`} className="block text-sm font-medium text-gray-700 mb-1">
                             Article
                           </label>
                           {loadingProducts ? (
@@ -1869,6 +1739,7 @@ export default function ReservationManagement() {
                             </div>
                           ) : products.length === 0 ? (
                             <input
+                              id={`reservation-edit-item-${index}-article`}
                               type="text"
                               value={item.name}
                               onChange={(e) => {
@@ -1884,6 +1755,7 @@ export default function ReservationManagement() {
                             />
                           ) : (
                             <select
+                              id={`reservation-edit-item-${index}-article`}
                               value={item.productId}
                               onChange={(e) =>
                                 updateItemProduct(index, e.target.value)
@@ -1902,10 +1774,11 @@ export default function ReservationManagement() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`reservation-edit-item-${index}-price`} className="block text-sm font-medium text-gray-700 mb-1">
                             Prix
                           </label>
                           <input
+                            id={`reservation-edit-item-${index}-price`}
                             type="number"
                             min="0"
                             step="0.01"
@@ -1921,7 +1794,7 @@ export default function ReservationManagement() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`reservation-edit-item-${index}-quantity`} className="block text-sm font-medium text-gray-700 mb-1">
                             Quantité
                           </label>
                           <div className="flex items-center border rounded">
@@ -1936,6 +1809,7 @@ export default function ReservationManagement() {
                               <Minus className="w-3 h-3" />
                             </button>
                             <input
+                              id={`reservation-edit-item-${index}-quantity`}
                               type="number"
                               min="1"
                               value={item.quantity}
@@ -1960,9 +1834,9 @@ export default function ReservationManagement() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <span className="block text-sm font-medium text-gray-700 mb-1">
                             Total
-                          </label>
+                          </span>
                           <div className="p-2 bg-white border rounded font-medium">
                             {formatUSD(item.total)}
                           </div>
@@ -2014,7 +1888,7 @@ export default function ReservationManagement() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={handleEditReservation}
                   disabled={loading || editForm.items.length === 0}

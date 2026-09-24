@@ -1,0 +1,115 @@
+{
+ "success": true,
+ "source": "mongodb-aggregation",
+ "paginated": false,
+ "timeframe": {
+  "type": "day",
+  "start": "2026-09-22T22:00:00.000Z",
+  "end": "2026-09-23T21:59:59.999Z",
+  "previousStart": "2026-09-21T22:00:00.000Z",
+  "previousEnd": "2026-09-22T21:59:59.999Z"
+ },
+ "data": {
+  "totalSales": 1,
+  "totalRevenue": 55,
+  "totalRevenueFC": 0,
+  "realizedRevenue": 0,
+  "costOfGoodsSold": 0,
+  "costOfGoodsSoldFC": 0,
+  "grossProfit": 0,
+  "grossProfitFC": 0,
+  "shareholderEntitlement": 0,
+  "shareholderEntitlementFC": 0,
+  "assignedCategory": "SHOES",
+  "entitlementRate": 0.5,
+  "categoryBreakdown": {
+   "SHOES": {
+    "category": "SHOES",
+    "basis": "PERIOD",
+    "revenue": 0,
+    "costOfGoodsSold": 0,
+    "grossProfit": 0,
+    "companyExpenses": 0,
+    "netProfit": 0,
+    "goodsPurchases": 0,
+    "recoveredCapital": 0,
+    "lossCoveredByCapital": 0,
+    "capitalUsedForPurchases": 0,
+    "profitUsedForPurchases": 0,
+    "distributableProfit": 0,
+    "shareholder1": 0,
+    "shareholder2": 0,
+    "generatedPurchaseFunds": 0,
+    "remainingRecoveredCapital": 0,
+    "availableNetProfit": null,
+    "availablePurchaseFunds": 0,
+    "fundingShortfall": 0,
+    "revenueFC": 0,
+    "costOfGoodsSoldFC": 0,
+    "grossProfitFC": 0,
+    "companyExpensesFC": 0,
+    "netProfitFC": 0,
+    "goodsPurchasesFC": 0,
+    "profitUsedForPurchasesFC": 0,
+    "distributableProfitFC": 0,
+    "shareholder1FC": 0,
+    "shareholder2FC": 0,
+    "activity": {
+     "saleLines": 0,
+     "unitsSold": 0,
+     "companyExpenseTransactions": 0,
+     "goodsPurchaseTransactions": 0,
+     "reversals": 0
+    },
+    "integrity": {
+     "grossProfitSnapshotMismatches": 0
+    },
+    "range": {
+     "start": "2026-09-22T22:00:00.000Z",
+     "end": "2026-09-23T21:59:59.999Z"
+    },
+    "balance": {
+     "recoveredCapital": 0,
+     "lossCoveredByCapital": 0,
+     "netProfit": 0,
+     "goodsPurchases": 0,
+     "capitalUsedForPurchases": 0,
+     "profitUsedForPurchases": 0,
+     "remainingRecoveredCapital": 0,
+     "availablePurchaseFunds": 0,
+     "fundingShortfall": 0,
+     "generatedPurchaseFunds": 0,
+     "distributableProfit": 0,
+     "shareholder1": 0,
+     "shareholder2": 0,
+     "asOf": "2026-09-23T20:47:58.882Z"
+    }
+   }
+  },
+  "topProducts": [
+   {
+    "name": "Basket Runner",
+    "quantity": 1,
+    "revenue": 55
+   }
+  ],
+  "paymentMethods": [
+   {
+    "_id": "cash",
+    "count": 1,
+    "amount": 55
+   }
+  ],
+  "chartData": [
+   {
+    "date": "2026-09-22T22:00:00.000Z",
+    "sales": 1,
+    "revenue": 55
+   }
+  ],
+  "recentTrends": {
+   "salesGrowth": null,
+   "revenueGrowth": null
+  }
+ }
+}

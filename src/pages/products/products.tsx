@@ -1,13 +1,17 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Package, Plus, Search, Edit, Trash2, Eye, X, Calculator } from "lucide-react";
 import { getProductStatus } from "../../utils/constants";
-import { toast } from "react-toastify";
 import type { Product } from "../../types";
 import { units, serverUrl } from "../../utils/constants";
 import CategoriesDropdown from "../../components/CategoriesDropdown";
+import { requestJson } from "../../lib/apiError";
+import { notifyError, notifySuccess } from "../../lib/notify";
+import { deleteProductCopy } from "../../lib/confirmationCopy";
+import { useConfirmAction } from "../../hooks/useConfirmAction";
+import { MODULES } from "../../config/modules";
 import { createPriceSnapshot, formatFC, formatUSD } from "../../utils/salePricing";
 
 interface ExchangeRateInfo {
@@ -146,6 +150,10 @@ export default function Products() {
   }, []);
 
   const isAdmin = currentUser?.role === "superadmin";
+  const confirmAction = useConfirmAction();
+  // One submission at a time: a double click must not create two articles.
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   // API Functions
   const fetchProducts = async () => {
@@ -166,80 +174,6 @@ export default function Products() {
       console.error("Error fetching products:", error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const createProduct = async (productData: Partial<Product>) => {
-    try {
-      const response = await fetch(`${serverUrl}/products`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify(productData),
-      });
-      if (response.ok) {
-        const newProduct = await response.json();
-        setProducts((prev) => [...prev, newProduct]);
-        setShowAddModal(false);
-        resetForm();
-        toast.success("Article ajouté avec succès!");
-      } else {
-        toast.error("echec de l'ajout de l'Article");
-      }
-    } catch (error) {
-      console.error("erreur d'ajout de l'Article:", error);
-      toast.error("Error creating product");
-    }
-  };
-
-  const updateProduct = async (id: string, productData: Partial<Product>) => {
-    try {
-      const response = await fetch(`${serverUrl}/products/${id}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify(productData),
-      });
-      if (response.ok) {
-        const updatedProduct = await response.json();
-        setProducts((prev) =>
-          prev.map((p) => (p._id === id ? updatedProduct : p))
-        );
-        setShowEditModal(false);
-        resetForm();
-        toast.success("Product updated successfully!");
-      } else {
-        toast.error("Failed to update product");
-      }
-    } catch (error) {
-      console.error("Error updating product:", error);
-      toast.error("Error updating product");
-    }
-  };
-
-  const deleteProduct = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this product?")) return;
-    try {
-      const response = await fetch(`${serverUrl}/products/${id}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
-      if (response.ok) {
-        setProducts((prev) => prev.filter((p) => p._id !== id));
-        toast.success("Product deleted");
-      } else {
-        toast.error("Failed to delete product");
-      }
-    } catch (error) {
-      console.error("Error deleting product:", error);
-      toast.error("Error deleting product");
     }
   };
 
@@ -290,14 +224,40 @@ export default function Products() {
     };
   };
 
+  const saveProduct = async (id: string | null, productData: Partial<Product>) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const saved = await requestJson<Product>(id ? `${serverUrl}/products/${id}` : `${serverUrl}/products`, {
+        method: id ? "PUT" : "POST",
+        body: productData,
+      });
+      setProducts((prev) => (id ? prev.map((p) => (p._id === id ? saved : p)) : [...prev, saved]));
+      if (id) setShowEditModal(false); else setShowAddModal(false);
+      resetForm();
+      notifySuccess(id ? "Modification enregistrée avec succès." : "Article ajouté avec succès.");
+    } catch (error) {
+      // The form stays open with the user's input so it can be corrected.
+      notifyError(error);
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  };
+
+  const deleteProduct = (product: Product) => {
+    confirmAction.request({
+      ...deleteProductCopy(product),
+      action: () => requestJson(`${serverUrl}/products/${product._id}`, { method: "DELETE" }),
+      onSuccess: () => setProducts((prev) => prev.filter((p) => p._id !== product._id)),
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload = buildSubmitPayload();
-    if (showEditModal && selectedProduct) {
-      updateProduct(selectedProduct._id, payload);
-    } else {
-      createProduct(payload);
-    }
+    void saveProduct(showEditModal && selectedProduct ? selectedProduct._id : null, payload);
   };
 
   const openEditModal = (product: Product) => {
@@ -420,8 +380,8 @@ export default function Products() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Articles</h1>
-          <p className="text-gray-600">Gérez votre catalogue des Articles</p>
+          <h1 className="text-3xl font-bold text-gray-900">{MODULES.products.label}</h1>
+          <p className="text-gray-600">{MODULES.products.description}</p>
           {!isAdmin && (
             <p className="text-sm text-blue-600 mt-1">
               Staff
@@ -551,8 +511,10 @@ export default function Products() {
                               <Edit className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => deleteProduct(product._id)}
+                              onClick={() => deleteProduct(product)}
                               className="text-red-600 hover:text-red-900 p-1 rounded"
+                              title="Supprimer l'article"
+                              aria-label={`Supprimer ${product.name}`}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -599,10 +561,11 @@ export default function Products() {
                   </h3>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-nom" className="block text-sm font-medium text-gray-700 mb-1">
                       Nom de l'Article *
                     </label>
                     <input
+                      id="product-nom"
                       type="text"
                       required
                       value={formData.name}
@@ -617,10 +580,11 @@ export default function Products() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-description" className="block text-sm font-medium text-gray-700 mb-1">
                       Description
                     </label>
                     <textarea
+                      id="product-description"
                       rows={3}
                       value={formData.description}
                       onChange={(e) =>
@@ -634,10 +598,11 @@ export default function Products() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-categorie-principale" className="block text-sm font-medium text-gray-700 mb-1">
                       Catégorie principale *
                     </label>
                     <select
+                      id="product-categorie-principale"
                       required
                       value={formData.mainCategory || ""}
                       onChange={(e) => setFormData((prev) => ({
@@ -653,10 +618,11 @@ export default function Products() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-sous-categorie" className="block text-sm font-medium text-gray-700 mb-1">
                       Sous-catégorie (facultative)
                     </label>
                     <CategoriesDropdown
+                      id="product-sous-categorie"
                       selectedCategory={formData.subcategory || ""}
                       setSelectedCategory={(subcategory) => setFormData((prev) => ({
                         ...prev,
@@ -667,10 +633,11 @@ export default function Products() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-marques" className="block text-sm font-medium text-gray-700 mb-1">
                       Marques
                     </label>
                     <input
+                      id="product-marques"
                       type="text"
                       value={formData.brand}
                       onChange={(e) =>
@@ -684,10 +651,11 @@ export default function Products() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="product-statut" className="block text-sm font-medium text-gray-700 mb-1">
                       Statut
                     </label>
                     <select
+                      id="product-statut"
                       value={formData.status}
                       onChange={(e) =>
                         setFormData((prev) => ({
@@ -711,7 +679,7 @@ export default function Products() {
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-sm font-medium text-gray-700">
+                      <label htmlFor="product-prix-de-vente" className="block text-sm font-medium text-gray-700">
                         Prix de vente par pièce *
                       </label>
                       <button
@@ -725,6 +693,7 @@ export default function Products() {
                     </div>
                     {currencyMode === "usd" ? (
                       <input
+                        id="product-prix-de-vente"
                         type="number"
                         min="0.01"
                         step="0.01"
@@ -736,6 +705,7 @@ export default function Products() {
                       />
                     ) : (
                       <input
+                        id="product-prix-de-vente"
                         type="number"
                         min="1"
                         step="1"
@@ -758,10 +728,11 @@ export default function Products() {
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="product-quantite-achetee" className="block text-sm font-medium text-gray-700 mb-1">
                         Quantité achetée (pièces) *
                       </label>
                       <input
+                        id="product-quantite-achetee"
                         type="number"
                         min="1"
                         step="1"
@@ -777,12 +748,13 @@ export default function Products() {
                     </div>
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label htmlFor="product-cout-d-acquisition" className="block text-sm font-medium text-gray-700">
                           Coût d’acquisition par pièce *
                         </label>
                       </div>
                       {currencyMode === "usd" ? (
                         <input
+                          id="product-cout-d-acquisition"
                           type="number"
                           min="0"
                           step="0.01"
@@ -794,6 +766,7 @@ export default function Products() {
                         />
                       ) : (
                         <input
+                          id="product-cout-d-acquisition"
                           type="number"
                           min="0"
                           step="1"
@@ -823,10 +796,11 @@ export default function Products() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="product-stock-actuel" className="block text-sm font-medium text-gray-700 mb-1">
                         Stock actuel
                       </label>
                       <input
+                        id="product-stock-actuel"
                         type="number"
                         min="0"
                         step="1"
@@ -842,10 +816,11 @@ export default function Products() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="product-unite" className="block text-sm font-medium text-gray-700 mb-1">
                         Unité
                       </label>
                       <select
+                        id="product-unite"
                         value={formData.unit}
                         onChange={(e) =>
                           setFormData((prev) => ({
@@ -866,10 +841,11 @@ export default function Products() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label htmlFor="product-stock-minimum" className="block text-sm font-medium text-gray-700 mb-1">
                         Stock minimum
                       </label>
                       <input
+                        id="product-stock-minimum"
                         type="number"
                         value={formData.minStock}
                         onChange={(e) =>
@@ -900,9 +876,10 @@ export default function Products() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {showEditModal ? "Mettre à jour l'Article" : "Ajouter l'Article"}
+                  {saving ? "Enregistrement…" : showEditModal ? "Mettre à jour l'article" : "Ajouter l'article"}
                 </button>
               </div>
             </form>
@@ -1063,6 +1040,7 @@ export default function Products() {
           </div>
         </div>
       )}
+      {confirmAction.dialog}
     </div>
   );
 }

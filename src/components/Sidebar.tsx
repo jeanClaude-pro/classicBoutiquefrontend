@@ -4,15 +4,9 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { formatDayGMT2, formatTimeGMT2 } from "../utils/dateUtils";
 import { canAccessNavigationItem, isNavigationItemActive, navigationSections } from "../config/navigation";
+import { roleLabel } from "../config/roles";
 
-const roleLabels: Record<string, string> = {
-  superadmin: "Superadministrateur",
-  admin: "Actionnaire",
-  manager: "Responsable",
-  inventory_manager: "Gestionnaire de stock",
-  cashier_supervisor: "Superviseur de caisse",
-  staff: "Équipe de vente",
-};
+
 
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1180);
@@ -54,7 +48,7 @@ export default function Sidebar() {
       </nav>
       <div className="sidebar-account">
         <div className="sidebar-avatar"><UserRound aria-hidden="true" /></div>
-        {!collapsed && <div className="sidebar-user"><strong>{user.username}</strong><span>{roleLabels[user.role] || user.role}</span></div>}
+        {!collapsed && <div className="sidebar-user"><strong>{user.username}</strong><span>{roleLabel(user.role)}</span></div>}
         <button type="button" onClick={logout} title="Se déconnecter" aria-label="Se déconnecter"><LogOut /></button>
       </div>
     </aside>

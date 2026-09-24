@@ -3,11 +3,14 @@ import { serverUrl } from "../utils/constants";
 import type { Category } from "../types";
 
 type Props = {
+  /** Lets a visible <label htmlFor> point at the rendered <select>. */
+  id?: string;
   selectedCategory: string;
   setSelectedCategory: (categoryName: string) => void;
 };
 
 const CategoriesDropdown = ({
+  id,
   selectedCategory,
   setSelectedCategory,
 }: Props) => {
@@ -43,9 +46,10 @@ const CategoriesDropdown = ({
   };
 
   return loading ? (
-    <p className="text-sm text-gray-600">Loading categories...</p>
+    <p className="text-sm text-gray-600">Chargement des catégories…</p>
   ) : (
     <select
+      id={id}
       value={selectedCategory}
       onChange={handleChange}
       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"

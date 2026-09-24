@@ -1,3 +1,12 @@
+# A request for a hashed build asset that no longer exists (an outdated tab
+# after a deployment) must fail as a real 404. Without this rule the SPA
+# fallback below answers with index.html, which the browser then tries to run
+# as a JavaScript module. Existing files are always served first.
+[[redirects]]
+from = "/assets/*"
+to = "/404.html"
+status = 404
+
 [[redirects]]
 from = "/*"
 to = "/index.html"

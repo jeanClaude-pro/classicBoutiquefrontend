@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { MODULES } from "../config/modules";
+import { notifySuccess } from "../lib/notify";
 import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, Calculator, Search } from "lucide-react";
@@ -131,6 +134,8 @@ export default function NewSale() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous guard: a second click can arrive before `submitting` re-renders.
+  const submitLock = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
@@ -248,7 +253,7 @@ export default function NewSale() {
           loadShopSettings(),
         ]);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load initial data");
+        if (!cancelled) setError(toApiError(e).message);
       } finally {
         if (!cancelled) setLoadingProducts(false);
       }
@@ -264,11 +269,7 @@ export default function NewSale() {
         });
         const data = await readJsonSafe(res);
         if (!res.ok) {
-          const msg =
-            (data as any)?.error ||
-            (data as any)?.text ||
-            `Products fetch failed: ${res.status}`;
-          throw new Error(msg);
+          throw apiErrorFromPayload(res.status, data);
         }
         const list: Product[] = Array.isArray((data as any)?.products)
           ? (data as any).products
@@ -277,7 +278,7 @@ export default function NewSale() {
           : [];
         if (!cancelled) setProducts(list);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load products");
+        if (!cancelled) setError(toApiError(e).message);
       }
     }
 
@@ -630,7 +631,7 @@ export default function NewSale() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Sale Receipt</title>
+    <title>Reçu de vente</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -1000,7 +1001,7 @@ export default function NewSale() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Sale Stub</title>
+    <title>Souche de vente</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -1426,8 +1427,9 @@ export default function NewSale() {
 
   async function handleSale(e: React.FormEvent) {
     e.preventDefault();
-    if (!isFormValid) return;
+    if (!isFormValid || submitting || submitLock.current) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     setMessage(null);
     setError(null);
@@ -1471,11 +1473,7 @@ export default function NewSale() {
 
       const data = await readJsonSafe(res);
       if (!res.ok) {
-        const msg =
-          (data as any)?.error ||
-          (data as any)?.text ||
-          `Sale failed (${res.status})`;
-        throw new Error(msg);
+        throw apiErrorFromPayload(res.status, data);
       }
 
       // Get the sale ID from the API response
@@ -1520,9 +1518,11 @@ export default function NewSale() {
       setMessage(
         "✅ Vente effectuée avec succès ! Impression du reçu et de la souche..."
       );
+      notifySuccess("Vente enregistrée avec succès.");
     } catch (e: any) {
-      setError(e?.message || "La vente n'a pas pu être effectuée");
+      setError(toApiError(e).message);
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }
@@ -1541,8 +1541,8 @@ export default function NewSale() {
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Nouvelle Vente</h2>
-              <p className="text-gray-600 mt-1">Créez une nouvelle vente avec gestion multi-devises</p>
+              <h2 className="text-2xl font-bold text-gray-900">{MODULES.pos.label}</h2>
+              <p className="text-gray-600 mt-1">{MODULES.pos.description}</p>
             </div>
             
             {/* Exchange Rate Display */}
@@ -1586,10 +1586,11 @@ export default function NewSale() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="relative" ref={searchRef}>
-              <label className="block mb-2 font-medium text-gray-700">Articles</label>
+              <label htmlFor="new-sale-articles" className="block mb-2 font-medium text-gray-700">Articles</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
+                  id="new-sale-articles"
                   type="text"
                   value={searchTerm}
                   onChange={handleSearchChange}
@@ -1630,8 +1631,9 @@ export default function NewSale() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">Nombre de pièces</label>
+              <label htmlFor="new-sale-quantity" className="block mb-2 font-medium text-gray-700">Nombre de pièces</label>
               <input
+                id="new-sale-quantity"
                 type="number"
                 name="quantity"
                 value={form.quantity}
@@ -1644,7 +1646,7 @@ export default function NewSale() {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block font-medium text-gray-700">Prix unitaire</label>
+                <label htmlFor="new-sale-unit-price" className="block font-medium text-gray-700">Prix unitaire</label>
                 <button
                   type="button"
                   onClick={toggleCurrencyMode}
@@ -1662,6 +1664,7 @@ export default function NewSale() {
               )}
               {form.currencyMode === 'usd' ? (
                 <input
+                  id="new-sale-unit-price"
                   type="number"
                   step="0.01"
                   name="unitPrice"
@@ -1674,6 +1677,7 @@ export default function NewSale() {
                 />
               ) : (
                 <input
+                  id="new-sale-unit-price"
                   type="number"
                   name="priceInFC"
                   value={form.priceInFC}
@@ -1817,10 +1821,11 @@ export default function NewSale() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="new-sale-customer-name" className="block mb-2 font-medium text-gray-700">
                 Nom du client {!form.isWalkIn && "*"}
               </label>
               <input
+                id="new-sale-customer-name"
                 type="text"
                 name="customerName"
                 value={form.customerName}
@@ -1833,10 +1838,11 @@ export default function NewSale() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="new-sale-customer-phone" className="block mb-2 font-medium text-gray-700">
                 Numéro de téléphone du client {!form.isWalkIn && "*"}
               </label>
               <input
+                id="new-sale-customer-phone"
                 type="tel"
                 name="customerPhone"
                 value={form.customerPhone}
@@ -1848,17 +1854,18 @@ export default function NewSale() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="new-sale-payment-method" className="block mb-2 font-medium text-gray-700">
                 Méthode de paiement
               </label>
               <select
+                id="new-sale-payment-method"
                 name="paymentMethod"
                 value={form.paymentMethod}
                 onChange={handleChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="cash">Cash</option>
+                <option value="cash">Espèces</option>
                 <option value="mpesa">M-Pesa ou Airtel Money (Transfert)</option>
                 <option value="bank">Transfert Bank</option>
                 <option value="card">Carte Visa</option>

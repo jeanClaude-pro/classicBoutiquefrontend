@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { MODULES } from "../config/modules";
+import { notifySuccess } from "../lib/notify";
 import { formatNowGMT2, formatDateGMT2, formatTimeGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, Calculator, Search } from "lucide-react";
@@ -119,6 +122,8 @@ export default function Reservation() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous guard: a second click can arrive before `submitting` re-renders.
+  const submitLock = useRef(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
@@ -202,7 +207,7 @@ export default function Reservation() {
           loadExchangeRate()
         ]);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load initial data");
+        if (!cancelled) setError(toApiError(e).message);
       } finally {
         if (!cancelled) setLoadingProducts(false);
       }
@@ -218,11 +223,7 @@ export default function Reservation() {
         });
         const data = await readJsonSafe(res);
         if (!res.ok) {
-          const msg =
-            (data as any)?.error ||
-            (data as any)?.text ||
-            `Products fetch failed: ${res.status}`;
-          throw new Error(msg);
+          throw apiErrorFromPayload(res.status, data);
         }
         const list: Product[] = Array.isArray((data as any)?.products)
           ? (data as any).products
@@ -231,7 +232,7 @@ export default function Reservation() {
           : [];
         if (!cancelled) setProducts(list);
       } catch (e: any) {
-        if (!cancelled) setError(e?.message || "Failed to load products");
+        if (!cancelled) setError(toApiError(e).message);
       }
     }
 
@@ -503,7 +504,7 @@ export default function Reservation() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Reservation Receipt</title>
+    <title>Reçu de réservation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -856,7 +857,7 @@ export default function Reservation() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Reservation Stub</title>
+    <title>Souche de réservation</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -1246,8 +1247,9 @@ export default function Reservation() {
 
   async function handleReservation(e: React.FormEvent) {
     e.preventDefault();
-    if (!isFormValid) return;
+    if (!isFormValid || submitting || submitLock.current) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     setMessage(null);
     setError(null);
@@ -1298,11 +1300,7 @@ export default function Reservation() {
 
       const data = await readJsonSafe(res);
       if (!res.ok) {
-        const msg =
-          (data as any)?.error ||
-          (data as any)?.text ||
-          `Reservation failed (${res.status})`;
-        throw new Error(msg);
+        throw apiErrorFromPayload(res.status, data);
       }
 
       // Get the sale ID from the API response
@@ -1384,11 +1382,13 @@ export default function Reservation() {
       setSearchTerm("");
 
       setMessage(
-        "✅ Reservation effectuée avec succès ! Impression du reçu et de la souche..."
+        "✅ Réservation effectuée avec succès ! Impression du reçu et de la souche..."
       );
+      notifySuccess("Réservation enregistrée avec succès.");
     } catch (e: any) {
-      setError(e?.message || "La reservation n'a pas pu être effectuée");
+      setError(toApiError(e).message);
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }
@@ -1400,8 +1400,8 @@ export default function Reservation() {
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Nouvelle Reservation</h2>
-              <p className="text-gray-600 mt-1">Créez une nouvelle réservation avec gestion multi-devises</p>
+              <h2 className="text-2xl font-bold text-gray-900">{MODULES.reservation.label}</h2>
+              <p className="text-gray-600 mt-1">{MODULES.reservation.description}</p>
             </div>
             
             {/* Exchange Rate Display */}
@@ -1444,10 +1444,11 @@ export default function Reservation() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div className="relative" ref={searchRef}>
-              <label className="block mb-2 font-medium text-gray-700">Articles</label>
+              <label htmlFor="reservation-articles" className="block mb-2 font-medium text-gray-700">Articles</label>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
+                  id="reservation-articles"
                   type="text"
                   value={searchTerm}
                   onChange={handleSearchChange}
@@ -1488,8 +1489,9 @@ export default function Reservation() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">Nombre de pièces</label>
+              <label htmlFor="reservation-quantity" className="block mb-2 font-medium text-gray-700">Nombre de pièces</label>
               <input
+                id="reservation-quantity"
                 type="number"
                 name="quantity"
                 value={form.quantity}
@@ -1502,7 +1504,7 @@ export default function Reservation() {
 
             <div>
               <div className="flex items-center justify-between mb-2">
-                <label className="block font-medium text-gray-700">Prix unitaire</label>
+                <label htmlFor="reservation-unit-price" className="block font-medium text-gray-700">Prix unitaire</label>
                 <button
                   type="button"
                   onClick={toggleCurrencyMode}
@@ -1515,6 +1517,7 @@ export default function Reservation() {
               
               {form.currencyMode === 'usd' ? (
                 <input
+                  id="reservation-unit-price"
                   type="number"
                   step="0.01"
                   name="unitPrice"
@@ -1537,6 +1540,7 @@ export default function Reservation() {
                 />
               ) : (
                 <input
+                  id="reservation-unit-price"
                   type="number"
                   name="priceInFC"
                   value={form.priceInFC}
@@ -1660,8 +1664,9 @@ export default function Reservation() {
           <h3 className="text-lg font-semibold mb-4 text-gray-900">Informations du client</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
             <div>
-              <label className="block mb-2 font-medium text-gray-700">Nom du client *</label>
+              <label htmlFor="reservation-customer-name" className="block mb-2 font-medium text-gray-700">Nom du client *</label>
               <input
+                id="reservation-customer-name"
                 type="text"
                 name="customerName"
                 value={form.customerName}
@@ -1673,10 +1678,11 @@ export default function Reservation() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="reservation-customer-phone" className="block mb-2 font-medium text-gray-700">
                 Numéro de téléphone du client *
               </label>
               <input
+                id="reservation-customer-phone"
                 type="tel"
                 name="customerPhone"
                 value={form.customerPhone}
@@ -1688,10 +1694,11 @@ export default function Reservation() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="reservation-customer-email" className="block mb-2 font-medium text-gray-700">
                 Email du client (optionnel)
               </label>
               <input
+                id="reservation-customer-email"
                 type="email"
                 name="customerEmail"
                 value={form.customerEmail}
@@ -1702,17 +1709,18 @@ export default function Reservation() {
             </div>
 
             <div>
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="reservation-payment-method" className="block mb-2 font-medium text-gray-700">
                 Méthode de paiement
               </label>
               <select
+                id="reservation-payment-method"
                 name="paymentMethod"
                 value={form.paymentMethod}
                 onChange={handleChange}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 required
               >
-                <option value="cash">Cash</option>
+                <option value="cash">Espèces</option>
                 <option value="mpesa">M-Pesa ou Airtel Money (Transfert)</option>
                 <option value="bank">Transfert Bank</option>
                 <option value="card">Carte Visa</option>
@@ -1722,10 +1730,11 @@ export default function Reservation() {
           </div>
 
           <div className="mb-6">
-            <label className="block mb-2 font-medium text-gray-700">
+            <label htmlFor="reservation-notes" className="block mb-2 font-medium text-gray-700">
               Notes (optionnel)
             </label>
             <textarea
+              id="reservation-notes"
               name="notes"
               value={form.notes}
               onChange={handleChange}

@@ -22,23 +22,11 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { generateCompanyReport, type ReportSections } from "./reportGenerator";
+import { categoryPresentation, type AccountingCategory, type AccountingMetric, type CategoryAccountingDTO } from "./accountingPresentation";
 import { serverUrl } from "../../utils/constants";
 import { formatFC, formatUSD } from "../../utils/salePricing";
-
-interface CategoryBreakdownEntry {
-  revenue: number;
-  costOfGoodsSold: number;
-  grossProfit: number;
-  clothesShareholderProfit: number;
-  shoeShareholder1Profit: number;
-  shoeShareholder2Profit: number;
-  revenueFC: number;
-  costOfGoodsSoldFC: number;
-  grossProfitFC: number;
-  clothesShareholderProfitFC: number;
-  shoeShareholder1ProfitFC: number;
-  shoeShareholder2ProfitFC: number;
-}
+import { apiErrorFromResponse, toApiError } from "../../lib/apiError";
+import { MODULES } from "../../config/modules";
 
 interface AnalyticsData {
   totalSales: number;
@@ -53,7 +41,7 @@ interface AnalyticsData {
   clothesShareholderProfitFC: number;
   shoeShareholder1ProfitFC: number;
   shoeShareholder2ProfitFC: number;
-  categoryBreakdown?: Partial<Record<"CLOTHES" | "SHOES", CategoryBreakdownEntry>>;
+  categoryBreakdown?: Partial<Record<AccountingCategory, CategoryAccountingDTO>>;
   assignedCategory?: "CLOTHES" | "SHOES";
   shareholderEntitlement?: number;
   shareholderEntitlementFC?: number;
@@ -97,7 +85,8 @@ interface AnalyticsData {
     }[];
   }[];
   topProducts: { name: string; quantity: number; revenue: number }[];
-  topCustomers: { name: string; purchases: number; totalSpent: number }[];
+  /** Superadmin payload only; shareholder accounts never receive customer data. */
+  topCustomers?: { name: string; purchases: number; totalSpent: number }[];
   recentTrends: {
     salesGrowth: number | null;
     revenueGrowth: number | null;
@@ -109,6 +98,32 @@ interface TimeframeData {
   description: string;
   start: string;
   end: string;
+}
+
+const METRIC_TONE_CLASS: Record<AccountingMetric["tone"], string> = {
+  neutral: "text-gray-900",
+  positive: "text-emerald-800",
+  negative: "text-red-700",
+  funds: "text-indigo-800",
+  shareholder: "text-purple-800",
+};
+
+function MetricCell({ metric }: { metric: AccountingMetric }) {
+  const wide = metric.tone === "funds" || metric.hint !== undefined;
+  return (
+    <div className={wide ? "col-span-2" : undefined}>
+      <p className="text-xs text-gray-500">{metric.label}</p>
+      {metric.valueFC !== undefined ? (
+        <>
+          <p className={`font-semibold ${METRIC_TONE_CLASS[metric.tone]}`}>{formatFC(metric.valueFC)}</p>
+          <p className="text-xs text-gray-500">≈ {formatUSD(metric.value)}</p>
+        </>
+      ) : (
+        <p className={`font-semibold ${METRIC_TONE_CLASS[metric.tone]}`}>{formatUSD(metric.value)}</p>
+      )}
+      {metric.hint && <p className="text-[11px] leading-snug text-gray-500 mt-0.5">{metric.hint}</p>}
+    </div>
+  );
 }
 
 function TrendIndicator({ value }: { value: number | null }) {
@@ -254,6 +269,7 @@ const describeTimeframe = (
 export default function Analytics() {
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"day" | "week" | "month" | "year">(
     "day"
   );
@@ -342,6 +358,7 @@ export default function Analytics() {
   const fetchAnalytics = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const effectiveTimeframe = shouldSeeOnlyTodayData() ? "day" : timeframe;
       const effectiveDate = shouldSeeOnlyTodayData() ? getTodayDate() : selectedDate;
       const params = new URLSearchParams(
@@ -351,12 +368,10 @@ export default function Analytics() {
       const response = await fetch(`${serverUrl}/analytics/summary?${params}`, {
         headers: getHeaders(),
       });
-      if (!response.ok) throw new Error(`Failed to fetch analytics: ${response.status}`);
+      if (!response.ok) throw await apiErrorFromResponse(response);
       const payload = await response.json();
       if (payload.source !== "mongodb-aggregation" || payload.paginated !== false) {
-        throw new Error(
-          "Invalid analytics response: production must use the aggregation endpoint"
-        );
+        throw new Error("Réponse de rapport inattendue. Actualisez la page.");
       }
       const raw = payload.data;
       const chartRows = (raw.chartData || []).map((row: any, index: number) => {
@@ -394,7 +409,7 @@ export default function Analytics() {
       });
       setAvailableYears(extractAvailableYears());
     } catch (error) {
-      console.error("Error fetching analytics:", error);
+      setLoadError(toApiError(error).message);
       setAnalytics(null);
     } finally {
       setLoading(false);
@@ -601,10 +616,11 @@ export default function Analytics() {
           </div>
           <form onSubmit={handleAccessVerify} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label htmlFor="analytics-mot-de-passe" className="block text-sm font-medium text-gray-700 mb-1.5">
                 Mot de passe administrateur
               </label>
               <input
+                id="analytics-mot-de-passe"
                 type="password"
                 value={accessPassword}
                 onChange={(e) => setAccessPassword(e.target.value)}
@@ -638,10 +654,10 @@ export default function Analytics() {
         <div className="max-w-7xl mx-auto space-y-6 analytics-shell">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Analytiques
+              {MODULES.reports.label}
             </h1>
             <p className="text-sm sm:text-base text-gray-600 mt-2">
-              Analyse approfondie de la performance de votre entreprise
+              {MODULES.reports.description}
             </p>
           </div>
           <div className="text-center py-12">
@@ -661,17 +677,23 @@ export default function Analytics() {
         <div className="max-w-7xl mx-auto space-y-6 analytics-shell">
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Analytiques
+              {MODULES.reports.label}
             </h1>
             <p className="text-sm sm:text-base text-gray-600 mt-2">
-              Analyse approfondie de la performance de votre entreprise
+              {MODULES.reports.description}
             </p>
           </div>
           <div className="text-center py-12 text-gray-500">
             <BarChart3 className="w-12 h-12 mx-auto mb-4 opacity-50" />
-            <p className="text-sm sm:text-base">
-              Aucune donnée disponible pour les analytiques
-            </p>
+            {loadError ? (
+              <div role="alert">
+                <p className="text-sm sm:text-base font-semibold text-red-700">Impossible de charger les rapports</p>
+                <p className="mt-1 text-sm text-red-700">{loadError}</p>
+                <button type="button" onClick={fetchAnalytics} className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Réessayer</button>
+              </div>
+            ) : (
+              <p className="text-sm sm:text-base">Aucune donnée disponible pour cette période</p>
+            )}
           </div>
         </div>
       </div>
@@ -711,21 +733,13 @@ export default function Analytics() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-slate-950">
-                Analytiques
+                {MODULES.reports.label}
               </h1>
               <p className="text-sm sm:text-base text-slate-600 mt-2 max-w-2xl">
-                Analyse approfondie de la performance de votre entreprise
+                {MODULES.reports.description}
               </p>
             </div>
             <div className="flex items-center gap-3">
-              {shouldSeeOnlyTodayData() && (
-                <div className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-2 rounded-lg border border-blue-200">
-                  <Shield className="w-4 h-4" />
-                  <span className="text-sm font-medium">
-                    Vue limitée - Données du jour uniquement
-                  </span>
-                </div>
-              )}
               <button
                 onClick={fetchAnalytics}
                 disabled={loading}
@@ -836,10 +850,11 @@ export default function Analytics() {
           <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs sm:text-sm text-gray-600">Revenu Total</p>
+                <p className="text-xs sm:text-sm text-gray-600">Encaissements ventes</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.totalRevenue)}
                 </p>
+                <p className="text-[11px] text-gray-500">Ventes + acomptes de réservations</p>
                 <TrendIndicator value={analytics.recentTrends.revenueGrowth} />
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
@@ -894,7 +909,7 @@ export default function Analytics() {
         <section className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Rentabilité boutique</h2>
-            <p className="text-xs text-gray-500 mt-1">Calculée depuis les coûts et règles figés au moment de chaque vente. Équivalent FC approximatif au taux du jour.</p>
+            <p className="text-xs text-gray-500 mt-1">Calculée depuis les coûts figés au moment de chaque vente finalisée. Montants FC aux taux historiques de chaque transaction.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl bg-stone-50 border border-stone-200 p-4">
@@ -933,44 +948,26 @@ export default function Analytics() {
             <div className="mt-6">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Répartition par catégorie</h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {(
-                  [
-                    { key: "CLOTHES" as const, label: "Vêtements" },
-                    { key: "SHOES" as const, label: "Chaussures" },
-                  ]
-                ).map(({ key, label }) => {
+                {(["CLOTHES", "SHOES"] as const).map((key) => {
                   const cat = analytics.categoryBreakdown?.[key];
                   if (!cat) return null;
+                  const view = categoryPresentation(key, cat);
                   return (
-                    <div key={key} className="rounded-xl bg-gray-50 border border-gray-200 p-4">
-                      <p className="text-sm font-semibold text-gray-800 mb-2">{label}</p>
+                    <div key={key} className="rounded-xl bg-gradient-to-br from-white to-slate-50 border border-gray-200 p-4 shadow-sm">
+                      <p className="text-sm font-semibold text-gray-800">{view.title}</p>
+                      <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-3 mb-2">Performance de la période</p>
                       <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <p className="text-xs text-gray-500">Chiffre d'affaires</p>
-                          <p className="font-semibold text-gray-900">{formatFC(cat.revenueFC || 0)}</p>
-                          <p className="text-xs text-gray-500">≈ {formatUSD(cat.revenue || 0)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Coût des marchandises</p>
-                          <p className="font-semibold text-gray-900">{formatFC(cat.costOfGoodsSoldFC || 0)}</p>
-                          <p className="text-xs text-gray-500">≈ {formatUSD(cat.costOfGoodsSold || 0)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Bénéfice brut</p>
-                          <p className="font-semibold text-amber-800">{formatFC(cat.grossProfitFC || 0)}</p>
-                          <p className="text-xs text-gray-500">≈ {formatUSD(cat.grossProfit || 0)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Actionnaire vêtements</p>
-                          <p className="font-semibold text-purple-800">{formatFC(cat.clothesShareholderProfitFC || 0)}</p>
-                          <p className="text-xs text-gray-500">≈ {formatUSD(cat.clothesShareholderProfit || 0)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Chaque actionnaire chaussures</p>
-                          <p className="font-semibold text-rose-800">{formatFC(cat.shoeShareholder1ProfitFC || 0)}</p>
-                          <p className="text-xs text-gray-500">≈ {formatUSD(cat.shoeShareholder1Profit || 0)}</p>
-                        </div>
+                        {view.period.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
                       </div>
+                      {view.balance.length > 0 && (
+                        <>
+                          <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-4 mb-2">Situation actuelle (cumul)</p>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            {view.balance.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
+                          </div>
+                          <p className="mt-2 text-xs text-gray-500">{view.fundsExplanation}</p>
+                        </>
+                      )}
                     </div>
                   );
                 })}
@@ -1189,7 +1186,8 @@ export default function Analytics() {
             </div>
           </div>
 
-          <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          {/* Customer data is never sent to shareholder accounts. */}
+          {analytics.topCustomers && <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               Meilleurs Clients ({getTimeframeLabel()})
@@ -1204,7 +1202,7 @@ export default function Analytics() {
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm flex-shrink-0">
                         <span className="text-xs sm:text-sm font-medium text-white">
-                          {customer.name.charAt(0).toUpperCase()}
+                          {(customer.name || "?").charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
@@ -1233,7 +1231,7 @@ export default function Analytics() {
                 </div>
               )}
             </div>
-          </div>
+          </div>}
         </div>
         {/* ── Report Generation — Admin Only ────────────────────────── */}
         {isAdmin() && (
@@ -1354,10 +1352,11 @@ export default function Analytics() {
 
                   {/* Signature text input */}
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                    <label htmlFor="analytics-titre-poste" className="block text-xs font-medium text-gray-700 mb-1">
                       Titre / Poste (optionnel)
                     </label>
                     <input
+                      id="analytics-titre-poste"
                       type="text"
                       value={adminSignatureText}
                       onChange={(e) => setAdminSignatureText(e.target.value)}

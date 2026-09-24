@@ -87,3 +87,41 @@ export const formatMonthNameGMT2 = (monthIndex: number): string => {
     month: 'long',
   }).format(new Date(2000, monthIndex, 15));
 };
+
+const ISO_DAY = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** "2026-09-24" → "24/09/2026"; anything else is returned unchanged. */
+const frenchDay = (value: string): string => {
+  const match = value.trim().match(ISO_DAY);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value.trim();
+};
+
+/**
+ * The list endpoints describe their period in English with a fixed format
+ * ("Today (default)", "Day: …", "Month: YYYY-MM", "Year: …",
+ * "Custom range: A to B", "All history"). Shown to users in French.
+ */
+export const describeTimeframeFr = (description: string | null | undefined): string => {
+  const text = (description || "").trim();
+  if (!text || /^today/i.test(text)) return "Aujourd'hui";
+  if (/^all history$/i.test(text)) return "Tout l'historique";
+  let match = text.match(/^day:\s*(.+)$/i);
+  if (match) return `Journée du ${frenchDay(match[1])}`;
+  match = text.match(/^month:\s*(\d{4})-(\d{1,2})$/i);
+  if (match) {
+    const month = formatMonthNameGMT2(Number(match[2]) - 1);
+    return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${match[1]}`;
+  }
+  match = text.match(/^year:\s*(\d{4})$/i);
+  if (match) return `Année ${match[1]}`;
+  match = text.match(/^custom range:\s*(.+?)\s+to\s+(.+)$/i);
+  if (match) {
+    const from = /^beginning$/i.test(match[1]) ? null : frenchDay(match[1]);
+    const to = /^now$/i.test(match[2]) ? null : frenchDay(match[2]);
+    if (from && to) return `Du ${from} au ${to}`;
+    if (from) return `Depuis le ${from}`;
+    if (to) return `Jusqu'au ${to}`;
+    return "Tout l'historique";
+  }
+  return text;
+};

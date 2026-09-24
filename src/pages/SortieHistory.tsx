@@ -1,9 +1,21 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { formatDateTimeGMT2, formatTimeGMT2, formatMonthNameGMT2 } from "../utils/dateUtils";
+import { describeTimeframeFr, formatDateTimeGMT2, formatTimeGMT2, formatMonthNameGMT2 } from "../utils/dateUtils";
+import { expenseStatusLabel, paymentMethodLabel } from "../lib/labels";
 import { serverUrl } from "../utils/constants";
 import { formatFC, formatUSD } from "../utils/salePricing";
+import { apiErrorFromResponse, requestJson, toApiError, type ApiError } from "../lib/apiError";
+import { notifyInfo, notifySuccess } from "../lib/notify";
+import { useConfirmAction } from "../hooks/useConfirmAction";
+import { MODULES } from "../config/modules";
+import {
+  expenseDeletionCopy,
+  expenseRejectionCopy,
+  expenseReversalCopy,
+  expenseTypeLabel,
+  expenseValidationCopy,
+} from "../lib/confirmationCopy";
 import {
   Search,
   FileText,
@@ -15,7 +27,6 @@ import {
   Calendar,
   RefreshCw,
   User,
-  DollarSign,
   Trash2,
   Save,
   X,
@@ -24,6 +35,7 @@ import {
   Filter,
   ChevronDown,
   Shield,
+  RotateCcw,
 } from "lucide-react";
 
 interface ExpenseItem {
@@ -46,9 +58,26 @@ interface ExpenseItem {
   notes?: string;
   validatedBy?: string;
   validatedAt?: string;
-  expenseType?: "normal" | "repayment";
+  expenseType?: "COMPANY_EXPENSE" | "GOODS_PURCHASE" | "REPAYMENT" | "LEGACY_UNCLASSIFIED" | "normal" | "repayment";
+  category?: "CLOTHES" | "SHOES";
   creditorSnapshot?: { name?: string; type?: string };
+  transactionKind?: "DEBIT" | "REVERSAL";
+  reversedBy?: string | null;
 }
+
+// Shapes returned by GET /api/expenses and /api/expenses/:id/history.
+interface StatusTotals { count: number; amount: number }
+interface ExpenseSummary {
+  totalRecords: number;
+  totalAmount: number;
+  pending: StatusTotals;
+  validated: StatusTotals;
+  rejected?: StatusTotals;
+  averageAmount?: number;
+  validationRate?: number;
+}
+type AppliedFilters = Record<string, string | undefined>;
+interface ExpenseHistoryItem { action: string; timestamp: string; formattedDate?: string; [key: string]: unknown }
 
 interface ExpensesResponse {
   success: boolean;
@@ -140,18 +169,13 @@ const getCurrentYear = (): number => {
 
 export default function SortieHistory() {
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
-  const [allExpenses, setAllExpenses] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedExpense, setSelectedExpense] = useState<ExpenseItem | null>(null);
   const [showModal, setShowModal] = useState(false);
-  const [showValidationModal, setShowValidationModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
-  const [validatingExpense, setValidatingExpense] = useState<ExpenseItem | null>(null);
   const [editingExpense, setEditingExpense] = useState<ExpenseItem | null>(null);
-  const [deletingExpense, setDeletingExpense] = useState<ExpenseItem | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -164,12 +188,11 @@ export default function SortieHistory() {
     notes: "",
     updateReason: "",
   });
-  const [deleteReason, setDeleteReason] = useState("");
-  const [expenseHistory, setExpenseHistory] = useState<any[]>([]);
+  const confirmAction = useConfirmAction();
+  const [expenseHistory, setExpenseHistory] = useState<ExpenseHistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
   // User state for role checking
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   // Timeframe state - Updated to match backend query parameters
   const [timeframeType, setTimeframeType] = useState<
@@ -189,9 +212,11 @@ export default function SortieHistory() {
   });
 
   const [initialLoad, setInitialLoad] = useState(true);
-  const [summaryStats, setSummaryStats] = useState<any>(null);
-  const [appliedFilters, setAppliedFilters] = useState<any>(null);
-  const [timeframeDescription, setTimeframeDescription] = useState<string>("Today");
+  const [summaryStats, setSummaryStats] = useState<ExpenseSummary | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<AppliedFilters | null>(null);
+  const [timeframeDescription, setTimeframeDescription] = useState<string>("Aujourd'hui");
+  // Shown inside the edit dialog: the page-level banner sits behind its overlay.
+  const [editError, setEditError] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -243,9 +268,7 @@ export default function SortieHistory() {
     return params.toString();
   };
 
-  // Fetch current user on component mount
   useEffect(() => {
-    fetchCurrentUser();
     fetchUserPermissions();
     fetchExpenses();
   }, []);
@@ -290,34 +313,6 @@ export default function SortieHistory() {
       setInitialLoad(false);
     }
   }, [expenses]);
-
-  // Fetch current user from API or localStorage
-  const fetchCurrentUser = async () => {
-    try {
-      // Try to get user from localStorage first
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        const userData = JSON.parse(storedUser);
-        setCurrentUser(userData);
-      } else {
-        // Fallback to API call
-        const res = await fetch(`${serverUrl}/auth/me`, {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        });
-
-        if (res.ok) {
-          const userData = await res.json();
-          setCurrentUser(userData);
-          localStorage.setItem("user", JSON.stringify(userData));
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-    }
-  };
 
   const fetchUserPermissions = async () => {
     try {
@@ -370,26 +365,22 @@ export default function SortieHistory() {
           );
 
           setExpenses(sortedExpenses);
-          setAllExpenses(sortedExpenses);
           setPagination(data.pagination || null);
           
           // Update metadata
-          setTimeframeDescription(data.timeframe.description);
+          setTimeframeDescription(describeTimeframeFr(data.timeframe.description));
           setSummaryStats(data.summary);
           setAppliedFilters(data.filtersApplied);
           
         } else {
           console.warn("Unexpected expenses data structure:", data);
-          setError("Unexpected response format from server");
+          setError("Réponse inattendue du serveur. Actualisez la page.");
         }
       } else {
-        console.error("Expenses fetch failed:", res.status);
-        const errorText = await res.text();
-        setError(`Failed to load expenses: ${res.status} ${errorText}`);
+        setError(`Impossible de charger les décaissements. ${(await apiErrorFromResponse(res)).message}`);
       }
     } catch (error) {
-      console.error("Error loading expenses:", error);
-      setError("Failed to load expenses. Please check your connection.");
+      setError(`Impossible de charger les décaissements. ${toApiError(error).message}`);
     } finally {
       setLoading(false);
     }
@@ -513,10 +504,64 @@ export default function SortieHistory() {
     setError(null);
   };
 
-  const openValidationModal = (expense: ExpenseItem) => {
-    setValidatingExpense(expense);
-    setShowValidationModal(true);
-    setError(null);
+  // A conflict, an insufficient-funds refusal or a vanished record means the
+  // list is stale: refresh it so the user decides on current data.
+  const refreshIfStale = async (error: ApiError) => {
+    if (error.isConflict || error.code === "INSUFFICIENT_PURCHASE_FUNDS" || error.status === 404) await fetchExpenses();
+  };
+
+  const requestValidation = (expense: ExpenseItem) => {
+    const copy = expenseValidationCopy(expense);
+    if (copy.blockedReason) { notifyInfo(copy.blockedReason); return; }
+    confirmAction.request({
+      ...copy,
+      action: () => requestJson(`${serverUrl}/expenses/${expense._id}/validate`, { method: "PATCH", body: {} }),
+      onSuccess: async () => { setShowModal(false); await fetchExpenses(); },
+      onError: refreshIfStale,
+    });
+  };
+
+  const requestRejection = (expense: ExpenseItem) => {
+    confirmAction.request({
+      ...expenseRejectionCopy(expense),
+      reason: { label: "Motif du rejet", required: true, placeholder: "Ex. : doublon, montant erroné…" },
+      action: (reason) => requestJson(`${serverUrl}/expenses/${expense._id}/reject`, { method: "PATCH", body: { reason } }),
+      onSuccess: async () => { setShowModal(false); await fetchExpenses(); },
+      onError: refreshIfStale,
+    });
+  };
+
+  const requestDeletion = (expense: ExpenseItem) => {
+    const copy = expenseDeletionCopy(expense);
+    if (copy.blockedReason) { notifyInfo(copy.blockedReason); return; }
+    // Pending records use the owner route; other non-validated ones the admin route.
+    const endpoint = expense.status !== "pending" && userPermissions.isAdmin
+      ? `${serverUrl}/expenses/${expense._id}/admin`
+      : `${serverUrl}/expenses/${expense._id}`;
+    confirmAction.request({
+      ...copy,
+      action: () => requestJson(endpoint, { method: "DELETE" }),
+      onSuccess: () => {
+        setExpenses((current) => current.filter((item) => item._id !== expense._id));
+        if (selectedExpense?._id === expense._id) { setSelectedExpense(null); setShowModal(false); }
+      },
+      onError: refreshIfStale,
+    });
+  };
+
+  const canReverseExpense = (expense: ExpenseItem): boolean =>
+    userPermissions.isAdmin && expense.status === "validated" &&
+    (expense.expenseType === "COMPANY_EXPENSE" || expense.expenseType === "GOODS_PURCHASE") &&
+    expense.transactionKind !== "REVERSAL" && !expense.reversedBy;
+
+  const requestReversal = (expense: ExpenseItem) => {
+    confirmAction.request({
+      ...expenseReversalCopy(expense),
+      reason: { label: "Motif de la contre-passation", required: true, placeholder: "Ex. : achat annulé par le fournisseur" },
+      action: (reason) => requestJson(`${serverUrl}/expenses/${expense._id}/reverse`, { method: "POST", body: { reason } }),
+      onSuccess: async () => { setShowModal(false); await fetchExpenses(); },
+      onError: refreshIfStale,
+    });
   };
 
   const openEditModal = (expense: ExpenseItem) => {
@@ -525,7 +570,7 @@ export default function SortieHistory() {
       reason: expense.reason,
       recipientName: expense.recipientName,
       recipientPhone: expense.recipientPhone,
-      amount: expense.amount.toString(),
+      amount: String(expense.amount ?? ""),
       paymentMethod: expense.paymentMethod,
       notes: expense.notes || "",
       updateReason: "",
@@ -534,20 +579,8 @@ export default function SortieHistory() {
     setError(null);
   };
 
-  const openDeleteModal = (expense: ExpenseItem) => {
-    setDeletingExpense(expense);
-    setDeleteReason("");
-    setShowDeleteModal(true);
-    setError(null);
-  };
-
-  const closeValidationModal = () => {
-    setShowValidationModal(false);
-    setValidatingExpense(null);
-    setError(null);
-  };
-
   const closeEditModal = () => {
+    setEditError(null);
     setShowEditModal(false);
     setEditingExpense(null);
     setEditForm({
@@ -559,13 +592,6 @@ export default function SortieHistory() {
       notes: "",
       updateReason: "",
     });
-    setError(null);
-  };
-
-  const closeDeleteModal = () => {
-    setShowDeleteModal(false);
-    setDeletingExpense(null);
-    setDeleteReason("");
     setError(null);
   };
 
@@ -592,79 +618,12 @@ export default function SortieHistory() {
         setExpenseHistory(data.history || []);
         setShowHistoryModal(true);
       } else {
-        setError("Failed to load expense history");
+        setError(`Impossible de charger l'historique de ce décaissement. ${(await apiErrorFromResponse(res)).message}`);
       }
     } catch (error) {
-      console.error("Error fetching expense history:", error);
-      setError("Failed to load expense history");
+      setError(`Impossible de charger l'historique de ce décaissement. ${toApiError(error).message}`);
     } finally {
       setHistoryLoading(false);
-    }
-  };
-
-  const validateExpense = async (isValid: boolean) => {
-    if (!validatingExpense) return;
-
-    setActionLoading(`validating-${validatingExpense._id}`);
-    setError(null);
-
-    try {
-      if (!isValid) {
-        const response = await fetch(
-          `${serverUrl}/expenses/${validatingExpense._id}`,
-          {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-            },
-          }
-        );
-
-        if (response.ok) {
-          setMessage("❌ Dépense rejetée et suppression en cours...");
-          closeValidationModal();
-
-          // Wait 3 seconds before refreshing
-          setTimeout(() => {
-            fetchExpenses();
-            setMessage(null);
-          }, 3000);
-        } else {
-          const errorData = await response.json();
-          setError(errorData.error || "Failed to delete expense");
-        }
-      } else {
-        const response = await fetch(
-          `${serverUrl}/expenses/${
-            validatingExpense._id
-          }/validate`,
-          {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-            },
-            body: JSON.stringify({
-              validatedBy: userPermissions.userName || "admin",
-            }),
-          }
-        );
-
-        if (response.ok) {
-          setMessage("✅ Dépense validée avec succès !");
-          closeValidationModal();
-          fetchExpenses();
-        } else {
-          const errorData = await response.json();
-          setError(errorData.error || "Failed to validate expense");
-        }
-      }
-    } catch (error) {
-      console.error("Error processing expense:", error);
-      setError("Failed to process expense");
-    } finally {
-      setActionLoading(null);
     }
   };
 
@@ -672,13 +631,13 @@ export default function SortieHistory() {
     if (!editingExpense) return;
 
     setActionLoading(`editing-${editingExpense._id}`);
-    setError(null);
+    setEditError(null);
 
     try {
       // Check if update reason is required (for validated/rejected expenses)
       const requiresUpdateReason = editingExpense.status !== "pending" && userPermissions.isAdmin;
       if (requiresUpdateReason && !editForm.updateReason.trim()) {
-        setError("La raison de la mise à jour est requise pour les dépenses validées/rejetées");
+        setEditError("Indiquez la raison de la modification : ce décaissement a déjà été traité.");
         setActionLoading(null);
         return;
       }
@@ -705,14 +664,11 @@ export default function SortieHistory() {
 
       if (response.ok) {
         const updatedExpense = await response.json();
-        setMessage("✅ Dépense mise à jour avec succès !");
+        notifySuccess("Modification enregistrée avec succès.");
         closeEditModal();
-        
+
         // Update the expense in the local state
-        setExpenses(expenses.map(exp => 
-          exp._id === editingExpense._id ? { ...exp, ...updatedExpense } : exp
-        ));
-        setAllExpenses(allExpenses.map(exp => 
+        setExpenses((current) => current.map(exp =>
           exp._id === editingExpense._id ? { ...exp, ...updatedExpense } : exp
         ));
         
@@ -721,60 +677,12 @@ export default function SortieHistory() {
           setSelectedExpense({ ...selectedExpense, ...updatedExpense });
         }
       } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Failed to update expense");
+        const failure = await apiErrorFromResponse(response);
+        setEditError(failure.message);
+        if (failure.isConflict || failure.status === 404) void fetchExpenses();
       }
     } catch (error) {
-      console.error("Error updating expense:", error);
-      setError("Failed to update expense");
-    } finally {
-      setActionLoading(null);
-    }
-  };
-
-  const handleDeleteExpense = async () => {
-    if (!deletingExpense) return;
-
-    setActionLoading(`deleting-${deletingExpense._id}`);
-    setError(null);
-
-    try {
-      let endpoint = `${serverUrl}/expenses/${deletingExpense._id}`;
-      
-      // If expense is not pending and user is admin, use admin delete endpoint
-      if (deletingExpense.status !== "pending" && userPermissions.isAdmin) {
-        endpoint = `${serverUrl}/expenses/${deletingExpense._id}/admin`;
-      }
-
-      const response = await fetch(endpoint, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setMessage("✅ " + (result.message || "Dépense supprimée avec succès"));
-        closeDeleteModal();
-        
-        // Remove the expense from the local state
-        setExpenses(expenses.filter(exp => exp._id !== deletingExpense._id));
-        setAllExpenses(allExpenses.filter(exp => exp._id !== deletingExpense._id));
-        
-        // Clear selected expense if it's the same one
-        if (selectedExpense && selectedExpense._id === deletingExpense._id) {
-          setSelectedExpense(null);
-          setShowModal(false);
-        }
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Failed to delete expense");
-      }
-    } catch (error) {
-      console.error("Error deleting expense:", error);
-      setError("Failed to delete expense");
+      setEditError(toApiError(error).message);
     } finally {
       setActionLoading(null);
     }
@@ -800,7 +708,7 @@ export default function SortieHistory() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Expense Receipt</title>
+    <title>Reçu de décaissement</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -999,7 +907,7 @@ export default function SortieHistory() {
         }</strong></div>
       </div>
       
-      <div class="receipt-title">RECU DE SORTIE DE CAISSE</div>
+      <div class="receipt-title">REÇU DE DÉCAISSEMENT</div>
       
       <div class="expense-details">
         <div class="detail-row">
@@ -1039,7 +947,7 @@ export default function SortieHistory() {
       </div>
       
       <div class="footer">
-        <div class="thank-you"><strong>SOUCHE DE SORTIE DE CAISSE</strong></div>
+        <div class="thank-you"><strong>SOUCHE DE DÉCAISSEMENT</strong></div>
         <div class="warning"><strong>Conserver cette souche</strong></div>
         <div class="warning">Reçu #: <strong>${
           expense.expenseId
@@ -1073,6 +981,9 @@ export default function SortieHistory() {
 
   // Check if user can edit this expense
   const canEditExpense = (expense: ExpenseItem): boolean => {
+    // Validated accounting records and repayments are immutable server-side.
+    if (["REPAYMENT", "repayment"].includes(expense.expenseType || "")) return false;
+    if (expense.status === "validated" && ["COMPANY_EXPENSE", "GOODS_PURCHASE"].includes(expense.expenseType || "")) return false;
     if (userPermissions.isAdmin || userPermissions.canEditAll) {
       return true; // Admin can edit any expense
     }
@@ -1087,6 +998,8 @@ export default function SortieHistory() {
 
   // Check if user can delete this expense
   const canDeleteExpense = (expense: ExpenseItem): boolean => {
+    // Money that already left the till is never deleted (reversal instead).
+    if (expense.status === "validated") return false;
     if (userPermissions.isAdmin || userPermissions.canDeleteAll) {
       return true; // Admin can delete any expense
     }
@@ -1121,20 +1034,15 @@ export default function SortieHistory() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
             <Shield className="w-5 h-5" />
-            Statistiques des Dépenses (Vue Admin)
+            Synthèse des décaissements
           </h3>
-          {currentUser && (
-            <span className="text-sm text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
-              Connecté en tant que: {currentUser.name || currentUser.username} ({currentUser.role})
-            </span>
-          )}
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Dépenses</p>
+                <p className="text-sm text-gray-600">Total des décaissements</p>
                 <p className="text-2xl font-bold text-blue-600">{summaryStats.totalRecords}</p>
                 <p className="text-sm text-gray-500">{formatUSD(summaryStats.totalAmount)}</p>
               </div>
@@ -1145,7 +1053,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Validées</p>
+                <p className="text-sm text-gray-600">Validés</p>
                 <p className="text-2xl font-bold text-green-600">{summaryStats.validated.count}</p>
                 <p className="text-sm text-green-600">{formatUSD(summaryStats.validated.amount)}</p>
               </div>
@@ -1167,7 +1075,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Rejetées</p>
+                <p className="text-sm text-gray-600">Rejetés</p>
                 <p className="text-2xl font-bold text-red-600">{summaryStats.rejected?.count || 0}</p>
                 <p className="text-sm text-red-600">{formatUSD(summaryStats.rejected?.amount || 0)}</p>
               </div>
@@ -1183,21 +1091,21 @@ export default function SortieHistory() {
               <div className="text-sm font-medium text-gray-700 mb-2">Répartition par statut</div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Validées:</span>
+                  <span className="text-sm text-gray-600">Validés :</span>
                   <div className="text-right">
                     <span className="font-semibold text-green-600">{summaryStats.validated.count}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.validated.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">En attente:</span>
+                  <span className="text-sm text-gray-600">En attente :</span>
                   <div className="text-right">
                     <span className="font-semibold text-yellow-600">{summaryStats.pending.count}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.pending.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Rejetées:</span>
+                  <span className="text-sm text-gray-600">Rejetés :</span>
                   <div className="text-right">
                     <span className="font-semibold text-red-600">{summaryStats.rejected?.count || 0}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.rejected?.amount || 0)}</div>
@@ -1258,22 +1166,13 @@ export default function SortieHistory() {
   };
 
   return (
-    <div className="space-y-6 p-6 flex-1 overflow-auto">
+    <div className="space-y-6 p-4 sm:p-6 pb-28 md:pb-8 flex-1 overflow-auto">
       <div className="flex items-center justify-between flex-wrap gap-4 overflow-auto">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Historique des Sorties de Caisse
+            {MODULES.historicsortie.label}
           </h1>
-          <p className="text-gray-600">
-            {userPermissions.isAdmin
-              ? "Gestion et validation des dépenses"
-              : "Consultation des dépenses du jour"}
-          </p>
-          {!userPermissions.isAdmin && (
-            <div className="mt-2 text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-md inline-block">
-              🔒 Vue limitée aux dépenses d'aujourd'hui uniquement
-            </div>
-          )}
+          <p className="text-gray-600">{MODULES.historicsortie.description}</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -1288,7 +1187,8 @@ export default function SortieHistory() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Rechercher des dépenses..."
+              placeholder="Rechercher un décaissement…"
+              aria-label="Rechercher un décaissement"
               className="pl-10 w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1314,7 +1214,7 @@ export default function SortieHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <Filter className="w-4 h-4" />
-              {showFilters ? "Hide Filters" : "Show Filters"}
+              {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
             
@@ -1323,7 +1223,7 @@ export default function SortieHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Clear Filters
+              Réinitialiser les filtres
             </button>
           </div>
         </div>
@@ -1332,10 +1232,10 @@ export default function SortieHistory() {
         {showFilters && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <span id="sortie-history-timeframe-type" className="block text-sm font-medium text-gray-700 mb-2">
                 Type de période
-              </label>
-              <div className="flex flex-wrap gap-2">
+              </span>
+              <div role="group" aria-labelledby="sortie-history-timeframe-type" className="flex flex-wrap gap-2">
                 {(["today", "day", "month", "year", "custom"] as const).map((type) => (
                   <button
                     key={type}
@@ -1361,10 +1261,11 @@ export default function SortieHistory() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {timeframeType === "day" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="sortie-history-date" className="block text-sm font-medium text-gray-700 mb-1">
                     Date
                   </label>
                   <input
+                    id="sortie-history-date"
                     type="date"
                     value={queryParams.date}
                     onChange={(e) => handleQueryParamChange("date", e.target.value)}
@@ -1377,10 +1278,11 @@ export default function SortieHistory() {
               {timeframeType === "month" && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-mois-annee" className="block text-sm font-medium text-gray-700 mb-1">
                       Année
                     </label>
                     <select
+                      id="sortie-history-mois-annee"
                       value={queryParams.year}
                       onChange={(e) => handleQueryParamChange("year", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1391,10 +1293,11 @@ export default function SortieHistory() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-mois" className="block text-sm font-medium text-gray-700 mb-1">
                       Mois
                     </label>
                     <select
+                      id="sortie-history-mois"
                       value={queryParams.month}
                       onChange={(e) => handleQueryParamChange("month", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1414,10 +1317,11 @@ export default function SortieHistory() {
 
               {timeframeType === "year" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="sortie-history-annee" className="block text-sm font-medium text-gray-700 mb-1">
                     Année
                   </label>
                   <select
+                    id="sortie-history-annee"
                     value={queryParams.year}
                     onChange={(e) => handleQueryParamChange("year", e.target.value)}
                     className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1432,10 +1336,11 @@ export default function SortieHistory() {
               {timeframeType === "custom" && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-date-de-debut" className="block text-sm font-medium text-gray-700 mb-1">
                       Date de début
                     </label>
                     <input
+                      id="sortie-history-date-de-debut"
                       type="date"
                       value={queryParams.from}
                       onChange={(e) => handleQueryParamChange("from", e.target.value)}
@@ -1443,10 +1348,11 @@ export default function SortieHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-date-de-fin" className="block text-sm font-medium text-gray-700 mb-1">
                       Date de fin
                     </label>
                     <input
+                      id="sortie-history-date-de-fin"
                       type="date"
                       value={queryParams.to}
                       onChange={(e) => handleQueryParamChange("to", e.target.value)}
@@ -1463,34 +1369,36 @@ export default function SortieHistory() {
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
               >
-                {showAdvancedFilters ? "Hide Advanced Filters" : "Show Advanced Filters"}
+                {showAdvancedFilters ? "Masquer les filtres avancés" : "Filtres avancés"}
                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
               </button>
 
               {showAdvancedFilters && (
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-statut" className="block text-sm font-medium text-gray-700 mb-1">
                       Statut
                     </label>
                     <select
+                      id="sortie-history-statut"
                       value={queryParams.status}
                       onChange={(e) => handleQueryParamChange("status", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">Tous les statuts</option>
                       <option value="pending">En attente</option>
-                      <option value="validated">Validées</option>
-                      <option value="rejected">Rejetées</option>
-                      <option value="all">Toutes</option>
+                      <option value="validated">Validés</option>
+                      <option value="rejected">Rejetés</option>
+                      <option value="all">Tous</option>
                     </select>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
                       Méthode de paiement
                     </label>
                     <select
+                      id="sortie-history-methode-de-paiement"
                       value={queryParams.paymentMethod}
                       onChange={(e) => handleQueryParamChange("paymentMethod", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1505,10 +1413,11 @@ export default function SortieHistory() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-history-enregistre-par" className="block text-sm font-medium text-gray-700 mb-1">
                       Enregistré par
                     </label>
                     <input
+                      id="sortie-history-enregistre-par"
                       type="text"
                       value={queryParams.recordedBy}
                       onChange={(e) => handleQueryParamChange("recordedBy", e.target.value)}
@@ -1525,38 +1434,16 @@ export default function SortieHistory() {
         {/* Applied Filters Summary */}
         {appliedFilters && (
           <div className="mt-4 text-sm text-gray-600">
-            <span className="font-medium">Filtres appliqués:</span>
+            <span className="font-medium">Filtres appliqués :</span>
             <span className="ml-2">
-              Statut: {appliedFilters.status}, 
-              Paiement: {appliedFilters.paymentMethod}
-              {appliedFilters.recordedBy !== 'none' && `, Enregistreur: ${appliedFilters.recordedBy}`}
-              {appliedFilters.search !== 'none' && `, Recherche: ${appliedFilters.search}`}
+              Statut : {appliedFilters.status && !["all", "none"].includes(appliedFilters.status) ? expenseStatusLabel(appliedFilters.status) : "tous"},
+              Paiement : {appliedFilters.paymentMethod && !["all", "none"].includes(appliedFilters.paymentMethod) ? paymentMethodLabel(appliedFilters.paymentMethod) : "tous"}
+              {appliedFilters.recordedBy && appliedFilters.recordedBy !== 'none' && `, Enregistré par : ${appliedFilters.recordedBy}`}
+              {appliedFilters.search && appliedFilters.search !== 'none' && `, Recherche : ${appliedFilters.search}`}
             </span>
           </div>
         )}
       </div>
-
-      {/* User restriction notice */}
-      {!userPermissions.isAdmin && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <AlertCircle className="h-5 w-5 text-yellow-400" />
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800">
-                Accès limité
-              </h3>
-              <div className="mt-1 text-sm text-yellow-700">
-                <p>
-                  Vous ne pouvez voir que les dépenses d'aujourd'hui. Seul
-                  l'administrateur peut accéder à l'historique complet.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {message && (
         <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-lg border border-green-200">
@@ -1586,7 +1473,7 @@ export default function SortieHistory() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            {userPermissions.isAdmin ? "Dépenses en attente et validées" : "Dépenses du jour"} (
+            {userPermissions.isAdmin ? "Décaissements de la période" : "Décaissements du jour"} (
             {filteredExpenses.length})
           </h2>
         </div>
@@ -1595,12 +1482,12 @@ export default function SortieHistory() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Chargement des dépenses...</p>
+              <p className="text-gray-500 mt-2">Chargement des décaissements…</p>
             </div>
           ) : filteredExpenses.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Aucune dépense trouvée</p>
+              <p>Aucun décaissement trouvé</p>
               <p className="text-sm">pour la période sélectionnée</p>
             </div>
           ) : (
@@ -1608,10 +1495,10 @@ export default function SortieHistory() {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    ID Dépense
+                    Référence
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Raison
+                    Motif et type
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Bénéficiaire
@@ -1641,7 +1528,15 @@ export default function SortieHistory() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {expense.reason}
-                      {expense.expenseType === "repayment" && <div><span className="inline-flex mt-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">Remboursement · {expense.creditorSnapshot?.name || "Créancier"}</span></div>}
+                      {/* One badge per operation type; reversals and reversed originals are flagged. */}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${["REPAYMENT", "repayment"].includes(expense.expenseType || "") ? "bg-orange-100 text-orange-800" : expense.expenseType === "COMPANY_EXPENSE" ? "bg-red-100 text-red-800" : expense.expenseType === "GOODS_PURCHASE" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-700"}`}>
+                          {expenseTypeLabel(expense.expenseType)}
+                          {["REPAYMENT", "repayment"].includes(expense.expenseType || "") ? ` · ${expense.creditorSnapshot?.name || "Créancier"}` : expense.category ? ` · ${expense.category === "SHOES" ? "Chaussures" : "Vêtements"}` : ""}
+                        </span>
+                        {expense.transactionKind === "REVERSAL" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Contre-passation</span>}
+                        {expense.reversedBy && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Contre-passé</span>}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">
@@ -1656,7 +1551,7 @@ export default function SortieHistory() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {expense.paymentMethod}
+                        {paymentMethodLabel(expense.paymentMethod)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1704,22 +1599,20 @@ export default function SortieHistory() {
                           expense.status !== "rejected" && (
                             <>
                               <button
-                                onClick={() => openValidationModal(expense)}
-                                disabled={
-                                  actionLoading === `validating-${expense._id}`
-                                }
+                                onClick={() => requestValidation(expense)}
+                                disabled={confirmAction.busy}
                                 className="text-green-600 hover:text-green-900 p-1 rounded disabled:opacity-50"
-                                title="Valider la dépense"
+                                title="Valider le décaissement"
+                                aria-label={`Valider ${expense.expenseId}`}
                               >
                                 <CheckCircle className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => openValidationModal(expense)}
-                                disabled={
-                                  actionLoading === `validating-${expense._id}`
-                                }
+                                onClick={() => requestRejection(expense)}
+                                disabled={confirmAction.busy}
                                 className="text-red-600 hover:text-red-900 p-1 rounded disabled:opacity-50"
-                                title="Rejeter la dépense"
+                                title="Rejeter le décaissement"
+                                aria-label={`Rejeter ${expense.expenseId}`}
                               >
                                 <XCircle className="w-4 h-4" />
                               </button>
@@ -1731,7 +1624,7 @@ export default function SortieHistory() {
                           <button
                             onClick={() => openEditModal(expense)}
                             className="text-yellow-600 hover:text-yellow-900 p-1 rounded"
-                            title="Modifier la dépense"
+                            title="Modifier le décaissement"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
@@ -1740,11 +1633,23 @@ export default function SortieHistory() {
                         {/* Delete button - show if user has permission */}
                         {canDeleteExpense(expense) && (
                           <button
-                            onClick={() => openDeleteModal(expense)}
+                            onClick={() => requestDeletion(expense)}
                             className="text-red-600 hover:text-red-900 p-1 rounded"
-                            title="Supprimer la dépense"
+                            title="Supprimer le décaissement"
+                            aria-label={`Supprimer ${expense.expenseId}`}
                           >
                             <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+
+                        {canReverseExpense(expense) && (
+                          <button
+                            onClick={() => requestReversal(expense)}
+                            className="text-amber-600 hover:text-amber-800 p-1 rounded"
+                            title="Contre-passer l'opération"
+                            aria-label={`Contre-passer ${expense.expenseId}`}
+                          >
+                            <RotateCcw className="w-4 h-4" />
                           </button>
                         )}
 
@@ -1771,7 +1676,7 @@ export default function SortieHistory() {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
           <span className="text-sm text-gray-600">
-            Page {pagination.page} sur {pagination.totalPages} · {pagination.totalRecords} dépenses
+            Page {pagination.page} sur {pagination.totalPages} · {pagination.totalRecords} décaissements
           </span>
           <div className="flex gap-2">
             <button disabled={!pagination.hasPreviousPage} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded border px-3 py-1.5 disabled:opacity-40">Précédent</button>
@@ -1786,7 +1691,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Détails de la Dépense
+                Détails du décaissement
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -1800,33 +1705,33 @@ export default function SortieHistory() {
               {/* Expense Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    ID Dépense
-                  </label>
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Référence
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedExpense.expenseId}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Date
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {formatDate(selectedExpense.createdAt)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de Paiement
-                  </label>
-                  <p className="text-sm text-gray-900 capitalize">
-                    {selectedExpense.paymentMethod}
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Méthode de paiement
+                  </span>
+                  <p className="text-sm text-gray-900">
+                    {paymentMethodLabel(selectedExpense.paymentMethod)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Statut
-                  </label>
+                  </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
                       selectedExpense.status === "validated"
@@ -1844,9 +1749,9 @@ export default function SortieHistory() {
                   </span>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Enregistré par
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedExpense.recordedBy}
                   </p>
@@ -1857,23 +1762,23 @@ export default function SortieHistory() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  Détails de la Dépense
+                  Motif et montant
                 </h4>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="space-y-3">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Raison
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.reason}
                       </p>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <span className="block text-sm font-medium text-gray-700 mb-1">
                           Montant
-                        </label>
+                        </span>
                         <p className="text-lg font-semibold text-gray-900">
                           {formatUSD(selectedExpense.amount)}
                         </p>
@@ -1892,17 +1797,17 @@ export default function SortieHistory() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Nom
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.recipientName}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Téléphone
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.recipientPhone}
                       </p>
@@ -1926,7 +1831,7 @@ export default function SortieHistory() {
               )}
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 {/* History button */}
                 <button
                   onClick={() => fetchExpenseHistory(selectedExpense._id)}
@@ -1948,14 +1853,32 @@ export default function SortieHistory() {
                 {userPermissions.canValidate &&
                   selectedExpense.status !== "validated" &&
                   selectedExpense.status !== "rejected" && (
-                    <button
-                      onClick={() => openValidationModal(selectedExpense)}
-                      className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-                    >
-                      <CheckCircle className="w-4 h-4" />
-                      Valider/Rejeter
-                    </button>
+                    <>
+                      <button
+                        onClick={() => requestValidation(selectedExpense)}
+                        className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                        Valider
+                      </button>
+                      <button
+                        onClick={() => requestRejection(selectedExpense)}
+                        className="flex-1 bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <XCircle className="w-4 h-4" />
+                        Rejeter
+                      </button>
+                    </>
                   )}
+                {canReverseExpense(selectedExpense) && (
+                  <button
+                    onClick={() => requestReversal(selectedExpense)}
+                    className="flex-1 bg-amber-50 text-amber-800 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Contre-passer
+                  </button>
+                )}
                 {canEditExpense(selectedExpense) && (
                   <button
                     onClick={() => openEditModal(selectedExpense)}
@@ -1967,7 +1890,7 @@ export default function SortieHistory() {
                 )}
                 {canDeleteExpense(selectedExpense) && (
                   <button
-                    onClick={() => openDeleteModal(selectedExpense)}
+                    onClick={() => requestDeletion(selectedExpense)}
                     className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -1987,89 +1910,7 @@ export default function SortieHistory() {
       )}
 
       {/* Validation Modal */}
-      {showValidationModal && validatingExpense && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Validation de Dépense
-              </h3>
-              <button
-                onClick={closeValidationModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="text-center mb-6">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Confirmer la validation
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Voulez-vous valider ou rejeter cette dépense ?
-                </p>
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm font-medium text-gray-900">
-                    {validatingExpense.reason}
-                  </p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">
-                    {formatUSD(validatingExpense.amount)}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Pour: {validatingExpense.recipientName}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => validateExpense(false)}
-                  disabled={
-                    actionLoading === `validating-${validatingExpense._id}`
-                  }
-                  className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  {actionLoading === `validating-${validatingExpense._id}` ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <XCircle className="w-4 h-4" />
-                  )}
-                  Rejeter
-                </button>
-                <button
-                  onClick={() => validateExpense(true)}
-                  disabled={
-                    actionLoading === `validating-${validatingExpense._id}`
-                  }
-                  className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  {actionLoading === `validating-${validatingExpense._id}` ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <CheckCircle className="w-4 h-4" />
-                  )}
-                  Valider
-                </button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-xs text-gray-500">
-                  <strong>Rejeter:</strong> La dépense sera supprimée dans 3
-                  secondes
-                  <br />
-                  <strong>Valider:</strong> Le reçu deviendra disponible pour
-                  impression
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {confirmAction.dialog}
 
       {/* Edit Expense Modal */}
       {showEditModal && editingExpense && (
@@ -2077,7 +1918,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Modifier la Dépense
+                Modifier le décaissement
               </h3>
               <button
                 onClick={closeEditModal}
@@ -2093,22 +1934,23 @@ export default function SortieHistory() {
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600" />
                     <span className="text-sm font-medium text-yellow-800">
-                      Modification d'une dépense {editingExpense.status}
+                      Modification d'un décaissement {expenseStatusLabel(editingExpense.status).toLowerCase()}
                     </span>
                   </div>
                   <p className="text-sm text-yellow-700 mt-2">
-                    Vous modifiez une dépense {editingExpense.status}. Veuillez
-                    fournir une raison pour cette modification.
+                    Ce décaissement a déjà été traité. Indiquez la raison de
+                    cette modification.
                   </p>
                 </div>
               )}
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Raison de la dépense *
+                  <label htmlFor="sortie-edit-raison" className="block text-sm font-medium text-gray-700 mb-1">
+                    Motif du décaissement *
                   </label>
                   <input
+                    id="sortie-edit-raison"
                     type="text"
                     value={editForm.reason}
                     onChange={(e) =>
@@ -2121,10 +1963,11 @@ export default function SortieHistory() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-edit-beneficiaire-nom" className="block text-sm font-medium text-gray-700 mb-1">
                       Nom du bénéficiaire *
                     </label>
                     <input
+                      id="sortie-edit-beneficiaire-nom"
                       type="text"
                       value={editForm.recipientName}
                       onChange={(e) =>
@@ -2136,10 +1979,11 @@ export default function SortieHistory() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-edit-beneficiaire-telephone" className="block text-sm font-medium text-gray-700 mb-1">
                       Téléphone du bénéficiaire *
                     </label>
                     <input
+                      id="sortie-edit-beneficiaire-telephone"
                       type="tel"
                       value={editForm.recipientPhone}
                       onChange={(e) =>
@@ -2153,10 +1997,11 @@ export default function SortieHistory() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-edit-montant" className="block text-sm font-medium text-gray-700 mb-1">
                       Montant (USD) *
                     </label>
                     <input
+                      id="sortie-edit-montant"
                       type="number"
                       step="0.01"
                       min="0"
@@ -2170,10 +2015,11 @@ export default function SortieHistory() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-edit-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
                       Méthode de paiement *
                     </label>
                     <select
+                      id="sortie-edit-methode-de-paiement"
                       value={editForm.paymentMethod}
                       onChange={(e) =>
                         setEditForm({ ...editForm, paymentMethod: e.target.value })
@@ -2191,31 +2037,33 @@ export default function SortieHistory() {
 
                 {requiresUpdateReason(editingExpense) && (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sortie-edit-motif" className="block text-sm font-medium text-gray-700 mb-1">
                       Raison de la modification *
                     </label>
                     <textarea
+                      id="sortie-edit-motif"
                       value={editForm.updateReason}
                       onChange={(e) =>
                         setEditForm({ ...editForm, updateReason: e.target.value })
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       rows={3}
-                      placeholder="Expliquez pourquoi vous modifiez cette dépense..."
+                      placeholder="Expliquez pourquoi vous modifiez ce décaissement…"
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Cette raison sera enregistrée dans l'historique de la
-                      dépense.
+                      Cette raison sera enregistrée dans l'historique du
+                      décaissement.
                     </p>
                   </div>
                 )}
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="sortie-edit-notes" className="block text-sm font-medium text-gray-700 mb-1">
                     Notes supplémentaires (optionnel)
                   </label>
                   <textarea
+                    id="sortie-edit-notes"
                     value={editForm.notes}
                     onChange={(e) =>
                       setEditForm({ ...editForm, notes: e.target.value })
@@ -2227,7 +2075,13 @@ export default function SortieHistory() {
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
+              {editError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+                  {editError}
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={handleEditExpense}
                   disabled={actionLoading === `editing-${editingExpense._id}`}
@@ -2253,127 +2107,6 @@ export default function SortieHistory() {
       )}
 
       {/* Delete Expense Modal */}
-      {showDeleteModal && deletingExpense && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg max-w-md w-full mx-4">
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Supprimer la Dépense
-              </h3>
-              <button
-                onClick={closeDeleteModal}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6">
-              <div className="text-center mb-6">
-                <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
-                  <Trash2 className="h-6 w-6 text-red-600" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Confirmer la suppression
-                </h3>
-                <p className="text-sm text-gray-500">
-                  Êtes-vous sûr de vouloir supprimer cette dépense ?
-                </p>
-                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm font-medium text-gray-900">
-                    {deletingExpense.reason}
-                  </p>
-                  <p className="text-lg font-bold text-gray-900 mt-1">
-                    {formatUSD(deletingExpense.amount)}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Pour: {deletingExpense.recipientName}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    Statut:{" "}
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
-                        deletingExpense.status === "validated"
-                          ? "bg-green-100 text-green-800"
-                          : deletingExpense.status === "rejected"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
-                      }`}
-                    >
-                      {deletingExpense.status === "validated"
-                        ? "Validé"
-                        : deletingExpense.status === "rejected"
-                        ? "Rejeté"
-                        : "En attente"}
-                    </span>
-                  </p>
-                </div>
-
-                {deletingExpense.status !== "pending" && (
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-yellow-600" />
-                      <span className="text-sm font-medium text-yellow-800">
-                        Attention: Dépense {deletingExpense.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-yellow-700 mt-1">
-                      Vous êtes sur le point de supprimer une dépense{" "}
-                      {deletingExpense.status}. Cette action est permanente et
-                      enverra une notification aux administrateurs.
-                    </p>
-                  </div>
-                )}
-
-                {userPermissions.isAdmin &&
-                  deletingExpense.status !== "pending" && (
-                    <div className="mt-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Raison de la suppression (optionnel)
-                      </label>
-                      <textarea
-                        value={deleteReason}
-                        onChange={(e) => setDeleteReason(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        rows={2}
-                        placeholder="Expliquez pourquoi vous supprimez cette dépense..."
-                      />
-                    </div>
-                  )}
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  onClick={handleDeleteExpense}
-                  disabled={actionLoading === `deleting-${deletingExpense._id}`}
-                  className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
-                >
-                  {actionLoading === `deleting-${deletingExpense._id}` ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                  Supprimer définitivement
-                </button>
-                <button
-                  onClick={closeDeleteModal}
-                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Annuler
-                </button>
-              </div>
-
-              <div className="mt-4 text-center">
-                <p className="text-xs text-gray-500">
-                  <strong>Note:</strong> Cette action ne peut pas être annulée.
-                  {deletingExpense.status === "validated" &&
-                    " Les administrateurs seront notifiés par email."}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Expense History Modal */}
       {showHistoryModal && (
@@ -2381,7 +2114,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Historique de la Dépense
+                Historique du décaissement
               </h3>
               <button
                 onClick={closeHistoryModal}
@@ -2401,13 +2134,13 @@ export default function SortieHistory() {
                 <div className="text-center py-8 text-gray-500">
                   <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
                   <p>Aucun historique disponible</p>
-                  <p className="text-sm">pour cette dépense</p>
+                  <p className="text-sm">pour ce décaissement</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm font-medium text-gray-900">
-                      Dépense: {selectedExpense?.expenseId || "N/A"}
+                      Décaissement : {selectedExpense?.expenseId || "—"}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
                       Statut actuel:{" "}
@@ -2457,7 +2190,7 @@ export default function SortieHistory() {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-6">
+              <div className="flex flex-wrap gap-3 pt-6">
                 <button
                   onClick={closeHistoryModal}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

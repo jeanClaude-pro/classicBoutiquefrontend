@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useRef } from "react";
+import { apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { MODULES } from "../config/modules";
+import { notifySuccess } from "../lib/notify";
 import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, FileText, User, Calculator } from "lucide-react";
@@ -55,6 +58,8 @@ async function readJsonSafe(res: Response) {
 
 export default function Entry() {
   const [submitting, setSubmitting] = useState(false);
+  // Synchronous guard: a second click can arrive before `submitting` re-renders.
+  const submitLock = useRef(false);
   const [receiptData, setReceiptData] = useState<any>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [loadingRate, setLoadingRate] = useState(true);
@@ -869,8 +874,9 @@ export default function Entry() {
 
   async function handleEntry(e: React.FormEvent) {
     e.preventDefault();
-    if (!isFormValid) return;
+    if (!isFormValid || submitting || submitLock.current) return;
 
+    submitLock.current = true;
     setSubmitting(true);
     setMessage(null);
     setError(null);
@@ -913,8 +919,7 @@ export default function Entry() {
       const data = await readJsonSafe(res);
       
       if (!res.ok) {
-        const msg = data?.error || data?.text || `Échec de l'enregistrement (${res.status})`;
-        throw new Error(msg);
+        throw apiErrorFromPayload(res.status, data);
       }
 
       console.log("Entry created successfully:", data);
@@ -965,10 +970,12 @@ export default function Entry() {
       setMessage(
         "✅ Entrée d'argent enregistrée avec succès ! Impression du reçu et de la souche..."
       );
+      notifySuccess("Entrée de caisse enregistrée avec succès.");
     } catch (e: any) {
       console.error("Error creating entry:", e);
-      setError(e?.message || "L'entrée d'argent n'a pas pu être enregistrée");
+      setError(toApiError(e).message);
     } finally {
+      submitLock.current = false;
       setSubmitting(false);
     }
   }
@@ -980,8 +987,8 @@ export default function Entry() {
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">Nouvelle Entrée d'Argent</h2>
-              <p className="text-gray-600 mt-1">Enregistrez une nouvelle entrée d'argent dans le système</p>
+              <h2 className="text-2xl font-bold text-gray-900">{MODULES.entry.label}</h2>
+              <p className="text-gray-600 mt-1">{MODULES.entry.description}</p>
             </div>
             
             {/* Exchange Rate Display */}
@@ -1030,7 +1037,7 @@ export default function Entry() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="block font-medium text-gray-700">
+                  <label htmlFor="entry-amount" className="block font-medium text-gray-700">
                     Montant *
                   </label>
                   <button
@@ -1045,6 +1052,7 @@ export default function Entry() {
                 
                 {form.currencyMode === 'usd' ? (
                   <input
+                    id="entry-amount"
                     type="number"
                     step="0.01"
                     name="amount"
@@ -1057,6 +1065,7 @@ export default function Entry() {
                   />
                 ) : (
                   <input
+                    id="entry-amount"
                     type="number"
                     name="amountInFC"
                     value={form.amountInFC}
@@ -1082,10 +1091,11 @@ export default function Entry() {
               </div>
 
               <div>
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-source" className="block mb-2 font-medium text-gray-700">
                   Source *
                 </label>
                 <select
+                  id="entry-source"
                   name="source"
                   value={form.source}
                   onChange={handleChange}
@@ -1102,10 +1112,11 @@ export default function Entry() {
               </div>
 
               <div>
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-category" className="block mb-2 font-medium text-gray-700">
                   Catégorie *
                 </label>
                 <select
+                  id="entry-category"
                   name="category"
                   value={form.category}
                   onChange={handleChange}
@@ -1122,10 +1133,11 @@ export default function Entry() {
               </div>
 
               <div>
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-payment-method" className="block mb-2 font-medium text-gray-700">
                   Méthode de Paiement *
                 </label>
                 <select
+                  id="entry-payment-method"
                   name="paymentMethod"
                   value={form.paymentMethod}
                   onChange={handleChange}
@@ -1142,10 +1154,11 @@ export default function Entry() {
             </div>
 
             <div className="mt-4">
-              <label className="block mb-2 font-medium text-gray-700">
+              <label htmlFor="entry-description" className="block mb-2 font-medium text-gray-700">
                 Description (Optionnel)
               </label>
               <textarea
+                id="entry-description"
                 name="description"
                 value={form.description}
                 onChange={handleChange}
@@ -1165,10 +1178,11 @@ export default function Entry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-received-from-name" className="block mb-2 font-medium text-gray-700">
                   Nom de l'Expéditeur *
                 </label>
                 <input
+                  id="entry-received-from-name"
                   type="text"
                   name="receivedFromName"
                   value={form.receivedFromName}
@@ -1180,10 +1194,11 @@ export default function Entry() {
               </div>
 
               <div>
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-received-from-phone" className="block mb-2 font-medium text-gray-700">
                   Téléphone de l'Expéditeur *
                 </label>
                 <input
+                  id="entry-received-from-phone"
                   type="tel"
                   name="receivedFromPhone"
                   value={form.receivedFromPhone}
@@ -1195,10 +1210,11 @@ export default function Entry() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block mb-2 font-medium text-gray-700">
+                <label htmlFor="entry-received-from-email" className="block mb-2 font-medium text-gray-700">
                   Email de l'Expéditeur (Optionnel)
                 </label>
                 <input
+                  id="entry-received-from-email"
                   type="email"
                   name="receivedFromEmail"
                   value={form.receivedFromEmail}

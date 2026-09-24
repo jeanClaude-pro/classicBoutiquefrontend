@@ -384,10 +384,11 @@ export default function Pos() {
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="pos-numero-de-telephone" className="block text-sm font-medium text-gray-700 mb-1">
                     Numéro De Téléphone
                   </label>
                   <input
+                    id="pos-numero-de-telephone"
                     type="tel"
                     value={customer.phone}
                     onChange={(e) =>
@@ -399,10 +400,11 @@ export default function Pos() {
                   />
                 </div>
                 <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="pos-nom-du-client" className="block text-sm font-medium text-gray-700 mb-1">
                     Nom Du Client
                   </label>
                   <input
+                    id="pos-nom-du-client"
                     type="text"
                     value={customer.name}
                     onChange={(e) =>
@@ -413,10 +415,11 @@ export default function Pos() {
                   />
                 </div>
                 <div className="md:col-span-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="pos-email" className="block text-sm font-medium text-gray-700 mb-1">
                     Email (optionnel)
                   </label>
                   <input
+                    id="pos-email"
                     type="email"
                     value={customer.email || ""}
                     onChange={(e) =>
@@ -602,10 +605,11 @@ export default function Pos() {
 
               {/* Payment method */}
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="pos-payment-method" className="block text-sm font-medium text-gray-700 mb-1">
                   Payment Method
                 </label>
                 <select
+                  id="pos-payment-method"
                   value={paymentMethod}
                   onChange={(e) =>
                     setPaymentMethod(e.target.value as UiPayment)

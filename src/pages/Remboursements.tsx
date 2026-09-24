@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { Building2, CalendarDays, Landmark, Plus, ReceiptText } from "lucide-react";
 import { serverUrl } from "../utils/constants";
-import { Button, Card, EmptyState, PageHeader, StatusBadge } from "../components/ui";
+import { Button, Card, EmptyState, ErrorState, PageHeader, StatusBadge } from "../components/ui";
+import { requestJson, toApiError } from "../lib/apiError";
+import { notifyError, notifySuccess } from "../lib/notify";
+import { loanCopy } from "../lib/confirmationCopy";
+import { useConfirmAction } from "../hooks/useConfirmAction";
+import { MODULES } from "../config/modules";
 
 type Creditor = { _id: string; name: string; type: "person" | "bank" | "company"; phone: string; address: string; isActive: boolean; totalBorrowed: number; totalRepaid: number; remainingBalance: number };
 type Loan = { _id: string; amountUSD: number; borrowedAt: string; reference?: string };
@@ -10,7 +15,6 @@ type History = { creditor: Creditor; loans: Loan[]; repayments: Repayment[]; rec
 type CreditorForm = { name: string; type: Creditor["type"]; phone: string; address: string };
 type LoanForm = { enteredAmount: string; enteredCurrency: "USD" | "FC"; exchangeRate: string; borrowedAt: string; reference: string; note: string };
 
-const headers = () => ({ "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("authToken") || localStorage.getItem("token") || ""}` });
 const money = (value: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "USD" }).format(value || 0);
 const initialCreditor: CreditorForm = { name: "", type: "person", phone: "", address: "" };
 const initialLoan = (): LoanForm => ({ enteredAmount: "", enteredCurrency: "USD", exchangeRate: "", borrowedAt: new Date().toISOString().slice(0, 10), reference: "", note: "" });
@@ -19,44 +23,62 @@ export default function Remboursements() {
   const [creditors, setCreditors] = useState<Creditor[]>([]);
   const [selected, setSelected] = useState("");
   const [history, setHistory] = useState<History | null>(null);
-  const [message, setMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [savingCreditor, setSavingCreditor] = useState(false);
   const [form, setForm] = useState<CreditorForm>(initialCreditor);
   const [loan, setLoan] = useState<LoanForm>(initialLoan);
+  const confirmAction = useConfirmAction();
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { const response = await fetch(`${serverUrl}/creditors`, { headers: headers() }); if (response.ok) setCreditors(await response.json()); }
+    setLoadError("");
+    try { setCreditors(await requestJson<Creditor[]>(`${serverUrl}/creditors`)); }
+    catch (error) { setLoadError(toApiError(error).message); }
     finally { setLoading(false); }
   }, []);
   const loadHistory = useCallback(async (id: string) => {
     setSelected(id);
-    const response = await fetch(`${serverUrl}/creditors/${id}/history`, { headers: headers() });
-    setHistory(response.ok ? await response.json() : null);
+    try { setHistory(await requestJson<History>(`${serverUrl}/creditors/${id}/history`)); }
+    catch (error) { setHistory(null); notifyError(error); }
   }, []);
   useEffect(() => { void load(); }, [load]);
 
   const createCreditor = async (event: React.FormEvent) => {
     event.preventDefault();
-    const response = await fetch(`${serverUrl}/creditors`, { method: "POST", headers: headers(), body: JSON.stringify(form) });
-    const data = await response.json();
-    setMessage(response.ok ? "Créancier ajouté." : data.error);
-    if (response.ok) { setForm(initialCreditor); await load(); }
+    if (savingCreditor) return;
+    setSavingCreditor(true);
+    try {
+      await requestJson(`${serverUrl}/creditors`, { method: "POST", body: form });
+      notifySuccess("Créancier ajouté avec succès.");
+      setForm(initialCreditor);
+      await load();
+    } catch (error) {
+      notifyError(error);
+    } finally {
+      setSavingCreditor(false);
+    }
   };
-  const addLoan = async (event: React.FormEvent) => {
+  const addLoan = (event: React.FormEvent) => {
     event.preventDefault();
     const amount = Number(loan.enteredAmount);
     const rate = loan.enteredCurrency === "FC" ? Number(loan.exchangeRate) : (Number(loan.exchangeRate) || 1);
+    if (!(amount > 0) || !(rate > 0)) { notifyError(new Error("Montant ou taux de change invalide.")); return; }
     const body = { ...loan, enteredAmount: amount, exchangeRate: rate, amount, amountUSD: loan.enteredCurrency === "FC" ? amount / rate : amount, amountFC: loan.enteredCurrency === "FC" ? amount : amount * rate };
-    const response = await fetch(`${serverUrl}/creditors/${selected}/loans`, { method: "POST", headers: headers(), body: JSON.stringify(body) });
-    const data = await response.json();
-    setMessage(response.ok ? "Emprunt enregistré." : data.error);
-    if (response.ok) { setLoan(initialLoan()); await load(); await loadHistory(selected); }
+    const creditor = creditors.find((item) => item._id === selected);
+    const amountLabel = loan.enteredCurrency === "FC"
+      ? `${new Intl.NumberFormat("fr-FR").format(amount)} FC (${money(body.amountUSD)})`
+      : money(amount);
+    confirmAction.request({
+      ...loanCopy(creditor?.name || "ce créancier", amountLabel),
+      action: () => requestJson(`${serverUrl}/creditors/${selected}/loans`, { method: "POST", body }),
+      onSuccess: async () => { setLoan(initialLoan()); await load(); await loadHistory(selected); },
+    });
   };
 
   return <div className="p-6 max-w-7xl mx-auto">
-    <PageHeader title="Dettes & remboursements" description="Suivez les créanciers, les emprunts et les remboursements validés." />
-    {message && <div className="mb-5 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800" role="status">{message}</div>}
+    <PageHeader title={MODULES.remboursements.label} description={MODULES.remboursements.description} />
+    {loadError && <div className="mb-5"><ErrorState message={loadError} action={<Button variant="secondary" className="mt-3" onClick={() => void load()}>Réessayer</Button>} /></div>}
 
     <Card className="p-5 mb-5">
       <div className="flex items-center gap-2 mb-4"><Plus className="w-5 h-5 text-blue-700" /><h2 className="font-semibold">Ajouter un créancier</h2></div>
@@ -65,7 +87,7 @@ export default function Remboursements() {
         <div><label htmlFor="creditor-type" className="block mb-1.5">Type</label><select id="creditor-type" className="w-full px-3 py-2" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as Creditor["type"] })}><option value="person">Personne</option><option value="bank">Banque</option><option value="company">Entreprise</option></select></div>
         <div><label htmlFor="creditor-phone" className="block mb-1.5">Téléphone</label><input id="creditor-phone" className="w-full px-3 py-2" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></div>
         <div><label htmlFor="creditor-address" className="block mb-1.5">Adresse</label><input id="creditor-address" className="w-full px-3 py-2" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} /></div>
-        <div className="flex items-end"><Button className="w-full" type="submit"><Plus className="w-4 h-4" />Ajouter</Button></div>
+        <div className="flex items-end"><Button className="w-full" type="submit" disabled={savingCreditor}><Plus className="w-4 h-4" />{savingCreditor ? "Ajout…" : "Ajouter"}</Button></div>
       </form>
     </Card>
 
@@ -88,7 +110,7 @@ export default function Remboursements() {
               <div><label htmlFor="loan-rate" className="block mb-1.5">Taux USD/FC {loan.enteredCurrency === "FC" && "*"}</label><input id="loan-rate" required={loan.enteredCurrency === "FC"} type="number" className="w-full px-3 py-2" value={loan.exchangeRate} onChange={(e) => setLoan({ ...loan, exchangeRate: e.target.value })} /></div>
               <div><label htmlFor="loan-date" className="block mb-1.5">Date</label><input id="loan-date" type="date" className="w-full px-3 py-2" value={loan.borrowedAt} onChange={(e) => setLoan({ ...loan, borrowedAt: e.target.value })} /></div>
               <div><label htmlFor="loan-reference" className="block mb-1.5">Référence</label><input id="loan-reference" className="w-full px-3 py-2" value={loan.reference} onChange={(e) => setLoan({ ...loan, reference: e.target.value })} /></div>
-              <div className="flex items-end"><Button className="w-full" type="submit"><Landmark className="w-4 h-4" />Enregistrer</Button></div>
+              <div className="flex items-end"><Button className="w-full" type="submit" disabled={confirmAction.busy}><Landmark className="w-4 h-4" />Enregistrer l'emprunt</Button></div>
             </form>
           </Card>
           {history && <Card className="p-5">
@@ -99,5 +121,6 @@ export default function Remboursements() {
         </>}
       </div>
     </div>
+    {confirmAction.dialog}
   </div>;
 }

@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { formatDateTimeGMT2 } from "../utils/dateUtils";
 import { serverUrl } from "../utils/constants";
+import { requestJson } from "../lib/apiError";
+import { exchangeRateCopy } from "../lib/confirmationCopy";
+import { useConfirmAction } from "../hooks/useConfirmAction";
+import { MODULES } from "../config/modules";
 import { 
   DollarSign, 
   RefreshCw, 
@@ -48,7 +52,8 @@ export default function TauxChange() {
   const [tauxActuel, setTauxActuel] = useState<TauxChange | null>(null);
   const [historiqueTaux, setHistoriqueTaux] = useState<HistoriqueTaux[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const confirmAction = useConfirmAction();
+  const submitting = confirmAction.busy;
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,18 +79,8 @@ export default function TauxChange() {
 
       if (reponseActuel.ok) {
         const donneesActuel = await reponseActuel.json();
-        console.log('Données taux actuel:', donneesActuel); // Debug log
-        
-        // Handle different response structures
-        if (donneesActuel.rate) {
-          // If the response has a rate object (from POST response)
-          setTauxActuel(donneesActuel.rate);
-        } else if (donneesActuel._id) {
-          // If the response is the rate object itself
-          setTauxActuel(donneesActuel);
-        } else {
-          setTauxActuel(null);
-        }
+        // The endpoint returns a flat object whose `rate` is the number itself.
+        setTauxActuel(typeof donneesActuel?.rate === "number" && donneesActuel.rate > 0 ? donneesActuel : null);
       } else {
         console.warn('Aucun taux actuel trouvé ou erreur de chargement');
         setTauxActuel(null);
@@ -100,7 +95,6 @@ export default function TauxChange() {
 
       if (reponseHistorique.ok) {
         const donneesHistorique = await reponseHistorique.json();
-        console.log('Données historique:', donneesHistorique); // Debug log
         setHistoriqueTaux(donneesHistorique.history || donneesHistorique || []);
       } else if (reponseHistorique.status === 403) {
         setError('Vous n\'avez pas la permission de voir l\'historique des taux');
@@ -122,48 +116,26 @@ export default function TauxChange() {
     chargerTaux();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!form.rate || parseFloat(form.rate) <= 0) {
+    const rate = parseFloat(form.rate);
+    if (!Number.isFinite(rate) || rate <= 0) {
       setError('Veuillez entrer un taux de change valide');
       return;
     }
-
-    try {
-      setSubmitting(true);
-      setError(null);
-      setMessage(null);
-
-      const response = await fetch(`${API_BASE}/exchange-rates`, {
+    setError(null);
+    setMessage(null);
+    confirmAction.request({
+      ...exchangeRateCopy(rate, tauxActuel?.rate),
+      action: () => requestJson(`${API_BASE}/exchange-rates`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify({
-          rate: parseFloat(form.rate),
-          effectiveFrom: form.effectiveFrom || new Date().toISOString(),
-          notes: form.notes
-        }),
-      });
-
-      const data = await response.json();
-      console.log('Réponse mise à jour:', data); // Debug log
-
-      if (response.ok) {
-        setMessage('Taux de change mis à jour avec succès !');
+        body: { rate, effectiveFrom: form.effectiveFrom || new Date().toISOString(), notes: form.notes },
+      }),
+      onSuccess: async () => {
         setForm({ rate: '', effectiveFrom: '', notes: '' });
-        await chargerTaux(); // Actualiser les données
-      } else {
-        setError(data.error || `Échec de la mise à jour: ${response.status}`);
-      }
-    } catch (error: any) {
-      console.error('Erreur lors de la mise à jour du taux:', error);
-      setError(error?.message || 'Échec de la mise à jour du taux de change');
-    } finally {
-      setSubmitting(false);
-    }
+        await chargerTaux();
+      },
+    });
   };
 
   const formaterDate = (dateString: string) => {
@@ -198,10 +170,10 @@ export default function TauxChange() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                 <DollarSign className="w-8 h-8 text-green-600" />
-                Gestion des Taux de Change
+                {MODULES.rate.label}
               </h1>
               <p className="text-gray-600 mt-2">
-                Gérez les taux de change FC vers USD pour votre système de vente
+                {MODULES.rate.description}
               </p>
             </div>
             <button
@@ -271,7 +243,7 @@ export default function TauxChange() {
                     <div className="bg-green-50 p-4 rounded-lg">
                       <p className="text-sm text-green-600 font-medium">Taux USD → FC</p>
                       <p className="text-2xl font-bold text-green-800">
-                        1 FC = {formaterMontant(1 / tauxActuel.rate)} USD
+                        1 FC = {new Intl.NumberFormat("fr-FR", { maximumSignificantDigits: 3 }).format(1 / tauxActuel.rate)} USD
                       </p>
                     </div>
                   </div>
@@ -313,10 +285,11 @@ export default function TauxChange() {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="rate-nouveau-taux" className="block text-sm font-medium text-gray-700 mb-2">
                       Nouveau Taux (1 USD = X FC) *
                     </label>
                     <input
+                      id="rate-nouveau-taux"
                       type="number"
                       step="0.01"
                       min="0.01"
@@ -332,10 +305,11 @@ export default function TauxChange() {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label htmlFor="rate-date-d-effet" className="block text-sm font-medium text-gray-700 mb-2">
                       Date d'Effet
                     </label>
                     <input
+                      id="rate-date-d-effet"
                       type="datetime-local"
                       value={form.effectiveFrom}
                       onChange={(e) => setForm({ ...form, effectiveFrom: e.target.value })}
@@ -348,10 +322,11 @@ export default function TauxChange() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label htmlFor="rate-notes" className="block text-sm font-medium text-gray-700 mb-2">
                     Notes (Optionnel)
                   </label>
                   <textarea
+                    id="rate-notes"
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     placeholder="Raison du changement, source du taux, etc."
@@ -372,12 +347,12 @@ export default function TauxChange() {
                   {submitting ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Mise à jour...
+                      Enregistrement…
                     </>
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      Mettre à Jour le Taux
+                      Appliquer le nouveau taux
                     </>
                   )}
                 </button>
@@ -468,6 +443,7 @@ export default function TauxChange() {
           </div>
         </div>
       </div>
+      {confirmAction.dialog}
     </div>
   );
 }

@@ -3,6 +3,11 @@
 import { useState, useEffect } from "react";
 import { formatDateTimeGMT2 } from "../utils/dateUtils";
 import { serverUrl } from "../utils/constants";
+import { apiErrorFromResponse, requestJson } from "../lib/apiError";
+import { deleteEntryCopy } from "../lib/confirmationCopy";
+import { useConfirmAction } from "../hooks/useConfirmAction";
+import { MODULES } from "../config/modules";
+import { paymentMethodLabel } from "../lib/labels";
 import { formatFC, formatUSD } from "../utils/salePricing";
 import {
   Search,
@@ -24,10 +29,19 @@ import {
 } from "lucide-react";
 import jsPDF from "jspdf";
 
+// Stored edit history is free-form; legacy entries may hold plain values or null.
+type EditChange = { from: unknown; to: unknown };
+const asChange = (value: unknown): EditChange =>
+  value !== null && typeof value === "object" && ("from" in value || "to" in value)
+    ? { from: (value as EditChange).from, to: (value as EditChange).to }
+    : { from: undefined, to: value };
+const changeEntries = (changes: Record<string, unknown> | null | undefined) =>
+  Object.entries(changes || {}).map(([field, value]) => [field, asChange(value)] as const);
+
 interface EditHistoryEntry {
   editedBy: string;
   editedAt: string;
-  changes: any;
+  changes: Record<string, unknown> | null;
   reason: string;
   _id?: string;
 }
@@ -120,24 +134,27 @@ const getTimeframeParams = (
       params.set("date", selectedDate || getTodayDate());
       break;
       
-    case "week":
+    case "week": {
       const weekAgo = new Date();
       weekAgo.setDate(weekAgo.getDate() - 7);
       params.set("from", weekAgo.toISOString().split('T')[0]);
       params.set("to", today.toISOString().split('T')[0]);
       break;
-      
-    case "month":
+    }
+
+    case "month": {
       const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
       const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       params.set("from", firstDayOfMonth.toISOString().split('T')[0]);
       params.set("to", lastDayOfMonth.toISOString().split('T')[0]);
       break;
-      
-    case "year":
+    }
+
+    case "year": {
       const year = selectedYear || today.getFullYear();
       params.set("year", year.toString());
       break;
+    }
   }
   
   return params.toString();
@@ -173,6 +190,7 @@ export default function EntryHistory() {
   // User state for role checking
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const confirmAction = useConfirmAction();
 
   // Timeframe state
   const [timeframe, setTimeframe] = useState<"day" | "week" | "month" | "year">("day");
@@ -356,9 +374,7 @@ export default function EntryHistory() {
           setError("Format de réponse API inattendu");
         }
       } else {
-        const errorData = await res.json().catch(() => ({ error: "Erreur serveur" }));
-        console.error("Entries fetch failed:", res.status, errorData);
-        setError(errorData.error || `Échec du chargement (${res.status})`);
+        setError(`Impossible de charger les entrées. ${(await apiErrorFromResponse(res)).message}`);
         setEntries([]);
       }
     } catch (error) {
@@ -467,7 +483,7 @@ export default function EntryHistory() {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-yellow-700">Modifié par:</span>
-            <span className="font-medium">{latestEdit.editedBy || entry.editedBy || "Unknown"}</span>
+            <span className="font-medium">{latestEdit.editedBy || entry.editedBy || "Non renseigné"}</span>
           </div>
           
           <div className="flex justify-between">
@@ -483,7 +499,7 @@ export default function EntryHistory() {
           {changes && Object.keys(changes).length > 0 && (
             <div className="mt-3 pt-3 border-t border-yellow-200">
               <h5 className="font-medium text-yellow-800 mb-2">Changements:</h5>
-              {Object.entries(changes).map(([field, changeData]: [string, any]) => (
+              {changeEntries(changes).map(([field, changeData]) => (
                 <div key={field} className="mb-2 last:mb-0">
                   <div className="font-medium text-yellow-700 capitalize">
                     {field.replace(/([A-Z])/g, ' $1').toLowerCase()}:
@@ -706,7 +722,7 @@ export default function EntryHistory() {
 
   const openEditModal = async (entry: Entry) => {
     if (entry.status === "deleted") {
-      setError("Cannot edit a deleted entry");
+      setError("Une entrée supprimée ne peut plus être modifiée.");
       return;
     }
 
@@ -789,9 +805,7 @@ export default function EntryHistory() {
         await fetchEntries();
         closeEditModal();
       } else {
-        const errorData = await response.json();
-        console.error("Update error:", errorData);
-        setError(errorData.error || `Échec de la mise à jour: ${response.status} ${response.statusText}`);
+        setError((await apiErrorFromResponse(response)).message);
       }
     } catch (error) {
       console.error("Error updating entry:", error);
@@ -801,43 +815,15 @@ export default function EntryHistory() {
     }
   };
 
-  const handleDeleteEntry = async (entry: Entry) => {
-    if (entry.status === "deleted") {
-      setError("L'entrée est déjà supprimée");
-      return;
-    }
-
-    if (!window.confirm(`Êtes-vous sûr de vouloir supprimer l'entrée ${entry.entryId}? Cette action ne peut pas être annulée.`)) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `${serverUrl}/entries/${entry._id}`,
-        {
-          method: "DELETE",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-          },
-        }
-      );
-
-      if (response.ok) {
-        setMessage("✅ Entrée supprimée avec succès");
-        await fetchEntries();
-        setShowModal(false);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Échec de la suppression de l'entrée");
-      }
-    } catch (error) {
-      setError("Échec de la suppression de l'entrée");
-      console.error("Error deleting entry:", error);
-    } finally {
-      setLoading(false);
-    }
+  // Superadmin only; the server marks the entry as deleted (kept for audit).
+  const handleDeleteEntry = (entry: Entry) => {
+    if (entry.status === "deleted") return;
+    confirmAction.request({
+      ...deleteEntryCopy(entry),
+      action: () => requestJson(`${serverUrl}/entries/${entry._id}`, { method: "DELETE" }),
+      onSuccess: async () => { setShowModal(false); await fetchEntries(); },
+      onError: async (error) => { if (error.isConflict || error.status === 404) await fetchEntries(); },
+    });
   };
 
   // Summary statistics display component - ONLY VISIBLE TO ADMINS
@@ -862,7 +848,7 @@ export default function EntryHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Entrées</p>
+                <p className="text-sm text-gray-600">Total des entrées</p>
                 <p className="text-2xl font-bold text-blue-600">{summary.totalRecords}</p>
               </div>
               <FileText className="w-8 h-8 text-blue-500" />
@@ -908,7 +894,7 @@ export default function EntryHistory() {
           <div className="mt-4 pt-4 border-t border-blue-200">
             <h4 className="font-medium text-blue-800 mb-3">Détails par méthode de paiement:</h4>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {Object.entries(summary.paymentMethods).map(([method, data]: [string, any]) => (
+              {Object.entries(summary.paymentMethods).map(([method, data]) => (
                 <div key={method} className="bg-white p-3 rounded-lg border border-gray-200">
                   <div className="flex justify-between items-center">
                     <span className="font-medium text-gray-700 capitalize">{method}:</span>
@@ -929,9 +915,9 @@ export default function EntryHistory() {
             <h4 className="font-medium text-blue-800 mb-3">Sources principales:</h4>
             <div className="space-y-2">
               {Object.entries(summary.sources)
-                .sort(([, a], [, b]) => (b as any).amount - (a as any).amount)
+                .sort(([, a], [, b]) => b.amount - a.amount)
                 .slice(0, 3)
-                .map(([source, data]: [string, any]) => (
+                .map(([source, data]) => (
                   <div key={source} className="flex justify-between items-center bg-white p-2 rounded border">
                     <span className="text-gray-700">{source}</span>
                     <div className="text-right">
@@ -952,10 +938,10 @@ export default function EntryHistory() {
       <div className="flex items-center justify-between flex-wrap gap-4 overflow-auto">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Historique des Entrées d'Argent
+            {MODULES.entryhistory.label}
           </h1>
           <p className="text-gray-600">
-            Voir toutes les entrées d'argent enregistrées
+            {MODULES.entryhistory.description}
           </p>
         </div>
         <div className="flex gap-3">
@@ -1181,7 +1167,7 @@ export default function EntryHistory() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        {entry.paymentMethod}
+                        {paymentMethodLabel(entry.paymentMethod)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1250,9 +1236,9 @@ export default function EntryHistory() {
                             >
                               <Printer className="w-4 h-4" />
                             </button>
-                            <button
+                            {isAdmin && <button
                               onClick={() => handleDeleteEntry(entry)}
-                              disabled={entry.status === "deleted"}
+                              disabled={entry.status === "deleted" || confirmAction.busy}
                               className={`p-1 rounded ${
                                 entry.status === "deleted"
                                   ? "text-gray-400 cursor-not-allowed"
@@ -1261,7 +1247,7 @@ export default function EntryHistory() {
                               title="Supprimer l'entrée"
                             >
                               <Trash2 className="w-4 h-4" />
-                            </button>
+                            </button>}
                           </>
                         )}
                       </div>
@@ -1308,31 +1294,31 @@ export default function EntryHistory() {
               {/* Entry Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     ID Entrée
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">{selectedEntry.entryId}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Date
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {formatDate(selectedEntry.createdAt)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de Paiement
-                  </label>
-                  <p className="text-sm text-gray-900 capitalize">
-                    {selectedEntry.paymentMethod}
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Méthode de paiement
+                  </span>
+                  <p className="text-sm text-gray-900">
+                    {paymentMethodLabel(selectedEntry.paymentMethod)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Statut
-                  </label>
+                  </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
                       selectedEntry.status === "active"
@@ -1344,18 +1330,18 @@ export default function EntryHistory() {
                   </span>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Enregistré par
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedEntry.createdBy?.username || "Non spécifié"}
                   </p>
                 </div>
                 {selectedEntry.editedBy && (
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Dernière modification
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       Par: {selectedEntry.editedBy} à{" "}
                       {selectedEntry.editedAt
@@ -1375,26 +1361,26 @@ export default function EntryHistory() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Nom
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedEntry.receivedFrom.name}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Téléphone
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedEntry.receivedFrom.phone}
                       </p>
                     </div>
                     {selectedEntry.receivedFrom.email && (
                       <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <span className="block text-sm font-medium text-gray-700 mb-1">
                           Email
-                        </label>
+                        </span>
                         <p className="text-sm text-gray-900">
                           {selectedEntry.receivedFrom.email}
                         </p>
@@ -1440,7 +1426,7 @@ export default function EntryHistory() {
               )}
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={() => generateEntryPDF(selectedEntry)}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
@@ -1505,33 +1491,33 @@ export default function EntryHistory() {
                 </h4>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Expéditeur
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       {selectedEditedEntry.receivedFrom.name} ({selectedEditedEntry.receivedFrom.phone})
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Montant actuel
-                    </label>
+                    </span>
                     <p className="text-sm font-medium text-gray-900">
                       {formatUSD(selectedEditedEntry.amount)}
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Source
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       {selectedEditedEntry.source}
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Catégorie
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       {selectedEditedEntry.category}
                     </p>
@@ -1570,7 +1556,7 @@ export default function EntryHistory() {
                         {edit.changes && Object.keys(edit.changes).length > 0 && (
                           <div className="space-y-3">
                             <h6 className="font-medium text-gray-700 text-sm">Changements détaillés:</h6>
-                            {Object.entries(edit.changes).map(([field, changeData]: [string, any]) => (
+                            {changeEntries(edit.changes).map(([field, changeData]) => (
                               <div key={field} className="border-l-4 border-blue-500 pl-3">
                                 <div className="font-medium text-gray-700 text-sm capitalize mb-2">
                                   {field.replace(/([A-Z])/g, ' $1').toLowerCase()}:
@@ -1611,7 +1597,7 @@ export default function EntryHistory() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
                 <button
                   onClick={() => setShowEditedDetailsModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -1656,10 +1642,11 @@ export default function EntryHistory() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-montant" className="block text-sm font-medium text-gray-700 mb-1">
                       Montant (USD) *
                     </label>
                     <input
+                      id="entry-edit-montant"
                       type="number"
                       step="0.01"
                       value={editForm.amount}
@@ -1674,10 +1661,11 @@ export default function EntryHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-source" className="block text-sm font-medium text-gray-700 mb-1">
                       Source *
                     </label>
                     <select
+                      id="entry-edit-source"
                       value={editForm.source}
                       onChange={(e) =>
                         setEditForm((prev) => ({
@@ -1697,10 +1685,11 @@ export default function EntryHistory() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-categorie" className="block text-sm font-medium text-gray-700 mb-1">
                       Catégorie *
                     </label>
                     <select
+                      id="entry-edit-categorie"
                       value={editForm.category}
                       onChange={(e) =>
                         setEditForm((prev) => ({
@@ -1720,10 +1709,11 @@ export default function EntryHistory() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
                       Méthode de Paiement *
                     </label>
                     <select
+                      id="entry-edit-methode-de-paiement"
                       value={editForm.paymentMethod}
                       onChange={(e) =>
                         setEditForm((prev) => ({
@@ -1745,10 +1735,11 @@ export default function EntryHistory() {
 
               {/* Description */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="entry-edit-description" className="block text-sm font-medium text-gray-700 mb-1">
                   Description
                 </label>
                 <textarea
+                  id="entry-edit-description"
                   value={editForm.description}
                   onChange={(e) =>
                     setEditForm((prev) => ({
@@ -1768,10 +1759,11 @@ export default function EntryHistory() {
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-nom" className="block text-sm font-medium text-gray-700 mb-1">
                       Nom *
                     </label>
                     <input
+                      id="entry-edit-nom"
                       type="text"
                       value={editForm.receivedFrom.name}
                       onChange={(e) =>
@@ -1785,10 +1777,11 @@ export default function EntryHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-telephone" className="block text-sm font-medium text-gray-700 mb-1">
                       Téléphone *
                     </label>
                     <input
+                      id="entry-edit-telephone"
                       type="tel"
                       value={editForm.receivedFrom.phone}
                       onChange={(e) =>
@@ -1802,10 +1795,11 @@ export default function EntryHistory() {
                     />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="entry-edit-email" className="block text-sm font-medium text-gray-700 mb-1">
                       Email
                     </label>
                     <input
+                      id="entry-edit-email"
                       type="email"
                       value={editForm.receivedFrom.email}
                       onChange={(e) =>
@@ -1837,7 +1831,7 @@ export default function EntryHistory() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={handleEditEntry}
                   disabled={loading}
@@ -1864,6 +1858,7 @@ export default function EntryHistory() {
           </div>
         </div>
       )}
+      {confirmAction.dialog}
     </div>
   );
 }

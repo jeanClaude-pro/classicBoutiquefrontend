@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
-import { formatDateTimeGMT2, formatMonthNameGMT2 } from "../../utils/dateUtils";
+import { describeTimeframeFr, formatDateTimeGMT2, formatMonthNameGMT2 } from "../../utils/dateUtils";
+import { paymentMethodLabel, saleStatusLabel, saleTypeLabel } from "../../lib/labels";
 import { serverUrl } from "../../utils/constants";
 import {
   Search,
@@ -24,6 +25,11 @@ import {
   Shield,
 } from "lucide-react";
 import jsPDF from "jspdf";
+import { apiErrorFromResponse, requestJson, toApiError } from "../../lib/apiError";
+import { notifySuccess } from "../../lib/notify";
+import { voidSaleCopy } from "../../lib/confirmationCopy";
+import { useConfirmAction } from "../../hooks/useConfirmAction";
+import { MODULES } from "../../config/modules";
 import {
   formatFC,
   formatUSD,
@@ -52,10 +58,31 @@ interface SaleItem {
   exchangeRate?: number;
 }
 
+// Shapes returned by GET /api/sales (see server/routes/sales.js).
+interface SalesSummary {
+  totalRecords: number;
+  revenue: number;
+  expenses: number;
+  net: number;
+  salesCount: number;
+  expensesCount: number;
+  [key: string]: unknown;
+}
+type AppliedFilters = Record<string, string | undefined>;
+
+// Stored edit history is free-form; legacy entries may hold plain values or null.
+type EditChange = { from: unknown; to: unknown };
+const asChange = (value: unknown): EditChange =>
+  value !== null && typeof value === "object" && ("from" in value || "to" in value)
+    ? { from: (value as EditChange).from, to: (value as EditChange).to }
+    : { from: undefined, to: value };
+const changeEntries = (changes: Record<string, unknown> | null | undefined) =>
+  Object.entries(changes || {}).map(([field, value]) => [field, asChange(value)] as const);
+
 interface EditHistoryEntry {
   editedBy: string;
   editedAt: string;
-  changes: any;
+  changes: Record<string, unknown> | null;
   reason: string;
   _id?: string;
 }
@@ -213,6 +240,7 @@ export default function SalesHistory() {
   // Reprinting an existing receipt is available to every authenticated user.
   // This flag is intentionally independent from all edit/void/override rights.
   const canReprint = Boolean(currentUser);
+  const confirmAction = useConfirmAction();
 
   // Timeframe state - Updated to match backend query parameters
   const [timeframeType, setTimeframeType] = useState<
@@ -240,8 +268,8 @@ export default function SalesHistory() {
 
   // Timeframe metadata
   const [timeframeMetadata, setTimeframeMetadata] = useState<TimeframeMetadata | null>(null);
-  const [summaryStats, setSummaryStats] = useState<any>(null);
-  const [appliedFilters, setAppliedFilters] = useState<any>(null);
+  const [summaryStats, setSummaryStats] = useState<SalesSummary | null>(null);
+  const [appliedFilters, setAppliedFilters] = useState<AppliedFilters | null>(null);
 
   // UI state
   const [showFilters, setShowFilters] = useState(false);
@@ -341,11 +369,14 @@ export default function SalesHistory() {
       const nonSaleStatuses = ['expense', 'depense'];
       const isValidStatus = !nonSaleStatuses.includes(sale.status?.toLowerCase());
       
-      // Also check if it's a sale (has saleId and customer structure)
-      const isSaleStructure = sale.saleId && sale.customer && sale.items;
+      const isSaleStructure = Boolean(sale.saleId) && Array.isArray(sale.items);
       
       return isValidStatus && isSaleStructure;
-    });
+    }).map((sale) => (sale.customer
+      ? sale
+      // Sales recorded by earlier versions may have no customer object;
+      // they stay visible instead of silently disappearing from the history.
+      : { ...sale, customer: { name: "Client non renseigné", phone: "", email: "" } }));
   };
 
   // Build query string from queryParams
@@ -429,16 +460,13 @@ export default function SalesHistory() {
           updateEditedSales(validSales);
         } else {
           console.warn("Unexpected sales data structure:", data);
-          setError("Unexpected response format from server");
+          setError("Réponse inattendue du serveur. Actualisez la page.");
         }
       } else {
-        console.error("Sales fetch failed:", res.status);
-        const errorText = await res.text();
-        setError(`Failed to load sales: ${res.status} ${errorText}`);
+        setError(`Impossible de charger les ventes. ${(await apiErrorFromResponse(res)).message}`);
       }
     } catch (error) {
-      console.error("Error loading sales:", error);
-      setError("Failed to load sales. Please check your connection.");
+      setError(`Impossible de charger les ventes. ${toApiError(error).message}`);
     } finally {
       setLoading(false);
     }
@@ -625,31 +653,22 @@ export default function SalesHistory() {
   // Get human-readable timeframe description
   const getTimeframeDescription = () => {
     if (timeframeMetadata) {
-      return timeframeMetadata.description;
+      return describeTimeframeFr(timeframeMetadata.description);
     }
-    
+
     switch(timeframeType) {
-      case "today":
-        return "Today";
       case "day":
-        return queryParams.date ? `Day: ${queryParams.date}` : "Today";
+        return queryParams.date ? describeTimeframeFr(`Day: ${queryParams.date}`) : "Aujourd'hui";
       case "month":
-        return queryParams.year && queryParams.month 
-          ? `Month: ${queryParams.year}-${queryParams.month.padStart(2, '0')}`
-          : "This month";
+        return queryParams.year && queryParams.month
+          ? describeTimeframeFr(`Month: ${queryParams.year}-${queryParams.month.padStart(2, '0')}`)
+          : "Ce mois-ci";
       case "year":
-        return queryParams.year ? `Year: ${queryParams.year}` : "This year";
+        return queryParams.year ? describeTimeframeFr(`Year: ${queryParams.year}`) : "Cette année";
       case "custom":
-        if (queryParams.from && queryParams.to) {
-          return `Range: ${queryParams.from} to ${queryParams.to}`;
-        } else if (queryParams.from) {
-          return `From: ${queryParams.from}`;
-        } else if (queryParams.to) {
-          return `Until: ${queryParams.to}`;
-        }
-        return "Custom range";
+        return describeTimeframeFr(`Custom range: ${queryParams.from || "Beginning"} to ${queryParams.to || "Now"}`);
       default:
-        return "Today";
+        return "Aujourd'hui";
     }
   };
 
@@ -676,7 +695,7 @@ export default function SalesHistory() {
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-yellow-700">Modifié par:</span>
-            <span className="font-medium">{latestEdit.editedBy || sale.editedBy || "Unknown"}</span>
+            <span className="font-medium">{latestEdit.editedBy || sale.editedBy || "Non renseigné"}</span>
           </div>
           
           <div className="flex justify-between">
@@ -692,7 +711,7 @@ export default function SalesHistory() {
           {changes && Object.keys(changes).length > 0 && (
             <div className="mt-3 pt-3 border-t border-yellow-200">
               <h5 className="font-medium text-yellow-800 mb-2">Changements:</h5>
-              {Object.entries(changes).map(([field, changeData]: [string, any]) => (
+              {changeEntries(changes).map(([field, changeData]) => (
                 <div key={field} className="mb-2 last:mb-0">
                   <div className="font-medium text-yellow-700 capitalize">
                     {field.replace(/([A-Z])/g, ' $1').toLowerCase()}:
@@ -723,7 +742,7 @@ export default function SalesHistory() {
       printWindow.document.write(`
 <html>
   <head>
-    <title>Sale Receipt - ESC/POS</title>
+    <title>Reçu de vente</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -1186,7 +1205,7 @@ export default function SalesHistory() {
 
   const openEditModal = async (sale: Sale) => {
     if (sale.status === "voided" || sale.status === "corrected") {
-      setError("Cannot edit a voided or corrected sale");
+      setError("Une vente annulée ou corrigée ne peut plus être modifiée.");
       return;
     }
 
@@ -1239,7 +1258,7 @@ export default function SalesHistory() {
     );
 
     if (product && newQuantity > product.stock + updatedItems[index].quantity) {
-      setError(`Insufficient stock. Available: ${product.stock}`);
+      setError(`Stock insuffisant (disponible : ${product.stock}).`);
       return;
     }
 
@@ -1286,7 +1305,7 @@ export default function SalesHistory() {
 
   const addNewItem = () => {
     if (products.length === 0) {
-      setError("No products available. Please refresh products first.");
+      setError("Aucun article disponible. Actualisez la liste des articles.");
       return;
     }
 
@@ -1316,7 +1335,7 @@ export default function SalesHistory() {
   const updateItemProduct = (index: number, productId: string) => {
     const product = products.find((p) => p._id === productId);
     if (!product) {
-      setError("Selected product not found");
+      setError("Article introuvable. Actualisez la liste des articles.");
       return;
     }
 
@@ -1348,21 +1367,36 @@ export default function SalesHistory() {
     return { subtotal, total: subtotal };
   };
 
+  const requestVoid = (sale: Sale) => {
+    if (sale.status === "voided") return;
+    confirmAction.request({
+      ...voidSaleCopy(sale),
+      reason: { label: "Motif de l'annulation", placeholder: "Ex. : client remboursé, erreur de saisie…" },
+      action: (reason) => requestJson(`${serverUrl}/sales/${sale._id}/void`, { method: "PATCH", body: { reason: reason || "Vente annulée" } }),
+      onSuccess: async () => {
+        setShowModal(false);
+        await fetchSales();
+        window.dispatchEvent(new Event("salesUpdated"));
+      },
+      onError: async (error) => { if (error.isConflict || error.status === 404) await fetchSales(); },
+    });
+  };
+
   const handleEditSale = async () => {
     if (!editingSale) return;
 
     if (editForm.items.length === 0) {
-      setError("Sale must contain at least one item");
+      setError("La vente doit contenir au moins un article.");
       return;
     }
 
     if (!editForm.isWalkIn && (!editForm.customer.name || !editForm.customer.phone)) {
-      setError("Customer name and phone are required");
+      setError("Le nom et le téléphone du client sont obligatoires.");
       return;
     }
 
     if (!editForm.reason) {
-      setError("Please provide a reason for editing this sale");
+      setError("Indiquez le motif de la correction.");
       return;
     }
 
@@ -1414,7 +1448,8 @@ export default function SalesHistory() {
 
       if (response.ok) {
         await response.json();
-        setMessage("✅ Sale updated successfully");
+        setMessage("✅ Modification enregistrée avec succès.");
+        notifySuccess("Modification enregistrée avec succès.");
 
         // Refresh the sales list immediately
         await fetchSales();
@@ -1426,61 +1461,12 @@ export default function SalesHistory() {
 
         closeEditModal();
       } else {
-        const errorData = await response.json();
-        setError(
-          errorData.error || errorData.message ||
-            `Failed to update sale: ${response.status} ${response.statusText}`
-        );
+        const failure = await apiErrorFromResponse(response);
+        setError(failure.message);
+        if (failure.isConflict) await fetchSales();
       }
     } catch (error) {
-      console.error("Error updating sale:", error);
-      setError("Failed to update sale. Please check your connection.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVoidSale = async (sale: Sale) => {
-    if (sale.status === "voided") {
-      setError("Sale is already voided");
-      return;
-    }
-
-    if (
-      !window.confirm(
-        `Are you sure you want to void sale ${sale.saleId}? This action cannot be undone.`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `${serverUrl}/sales/${sale._id}/void`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            reason: "Sale voided by admin",
-          }),
-        }
-      );
-
-      if (response.ok) {
-        setMessage("✅ Sale voided successfully");
-        await fetchSales();
-        setShowModal(false);
-      } else {
-        const errorData = await response.json();
-        setError(errorData.error || "Failed to void sale");
-      }
-    } catch (error) {
-      setError("Failed to void sale");
-      console.error("Error voiding sale:", error);
+      setError(toApiError(error).message);
     } finally {
       setLoading(false);
     }
@@ -1493,10 +1479,10 @@ export default function SalesHistory() {
       <div className="flex items-center justify-between flex-wrap gap-4 overflow-auto">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">
-            Historique des ventes
+            {MODULES.sales.label}
           </h1>
           <p className="text-gray-600">
-            Voir toutes les transactions et ventes passées
+            {MODULES.sales.description}
           </p>
         </div>
         <div className="flex gap-3">
@@ -1522,7 +1508,8 @@ export default function SalesHistory() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Search sales..."
+              placeholder="Rechercher une vente…"
+              aria-label="Rechercher une vente"
               className="pl-10 w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1537,20 +1524,15 @@ export default function SalesHistory() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
               <Shield className="w-5 h-5" />
-              Summary Statistics (Admin View)
+              Synthèse de la période
             </h3>
-            {currentUser && (
-              <span className="text-sm text-blue-700 bg-blue-100 px-3 py-1 rounded-full">
-                Logged in as: {currentUser.name} ({currentUser.role})
-              </span>
-            )}
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Records</p>
+                  <p className="text-sm text-gray-600">Enregistrements</p>
                   <p className="text-2xl font-bold text-gray-900">{summaryStats.totalRecords}</p>
                 </div>
                 <FileText className="w-8 h-8 text-blue-500" />
@@ -1560,7 +1542,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Revenue</p>
+                  <p className="text-sm text-gray-600">Chiffre d'affaires</p>
                   <p className="text-2xl font-bold text-green-600">{formatFc(summaryStats.revenue * (currentExchangeRate || 0))}</p>
                   <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.revenue)}</p>
                 </div>
@@ -1571,7 +1553,8 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Expenses</p>
+                  <p className="text-sm text-gray-600">Sorties historiques</p>
+                  <p className="text-[11px] text-gray-500">Anciennes sorties enregistrées avec les ventes</p>
                   <p className="text-2xl font-bold text-red-600">{formatFc(summaryStats.expenses * (currentExchangeRate || 0))}</p>
                   <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.expenses)}</p>
                 </div>
@@ -1582,7 +1565,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Net</p>
+                  <p className="text-sm text-gray-600">Chiffre d'affaires − sorties historiques</p>
                   <p className="text-2xl font-bold text-blue-600">{formatFc(summaryStats.net * (currentExchangeRate || 0))}</p>
                   <p className="text-xs text-gray-500">≈ {formatCurrency(summaryStats.net)}</p>
                 </div>
@@ -1596,7 +1579,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Sales</p>
+                  <p className="text-sm text-gray-600">Nombre de ventes</p>
                   <p className="text-xl font-bold text-green-700">{summaryStats.salesCount}</p>
                 </div>
                 <FileText className="w-6 h-6 text-green-500" />
@@ -1606,7 +1589,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Expenses</p>
+                  <p className="text-sm text-gray-600">Nombre de sorties historiques</p>
                   <p className="text-xl font-bold text-red-700">{summaryStats.expensesCount}</p>
                 </div>
                 <Minus className="w-6 h-6 text-red-500" />
@@ -1630,7 +1613,7 @@ export default function SalesHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <Filter className="w-4 h-4" />
-              {showFilters ? "Hide Filters" : "Show Filters"}
+              {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
             
@@ -1639,7 +1622,7 @@ export default function SalesHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Clear Filters
+              Réinitialiser les filtres
             </button>
           </div>
         </div>
@@ -1648,10 +1631,10 @@ export default function SalesHistory() {
         {showFilters && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Timeframe Type
-              </label>
-              <div className="flex flex-wrap gap-2">
+              <span id="sales-history-timeframe-type" className="block text-sm font-medium text-gray-700 mb-2">
+                Période
+              </span>
+              <div role="group" aria-labelledby="sales-history-timeframe-type" className="flex flex-wrap gap-2">
                 {(["today", "day", "month", "year", "custom"] as const).map((type) => (
                   <button
                     key={type}
@@ -1662,11 +1645,11 @@ export default function SalesHistory() {
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    {type === "today" && "Today"}
-                    {type === "day" && "Specific Day"}
-                    {type === "month" && "Specific Month"}
-                    {type === "year" && "Specific Year"}
-                    {type === "custom" && "Custom Range"}
+                    {type === "today" && "Aujourd'hui"}
+                    {type === "day" && "Un jour"}
+                    {type === "month" && "Un mois"}
+                    {type === "year" && "Une année"}
+                    {type === "custom" && "Intervalle"}
                   </button>
                 ))}
               </div>
@@ -1676,10 +1659,11 @@ export default function SalesHistory() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {timeframeType === "day" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="sales-history-date" className="block text-sm font-medium text-gray-700 mb-1">
                     Date
                   </label>
                   <input
+                    id="sales-history-date"
                     type="date"
                     value={queryParams.date}
                     onChange={(e) => handleQueryParamChange("date", e.target.value)}
@@ -1691,10 +1675,11 @@ export default function SalesHistory() {
               {timeframeType === "month" && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Year
+                    <label htmlFor="sales-history-month-year" className="block text-sm font-medium text-gray-700 mb-1">
+                      Année
                     </label>
                     <input
+                      id="sales-history-month-year"
                       type="number"
                       value={queryParams.year}
                       onChange={(e) => handleQueryParamChange("year", e.target.value)}
@@ -1704,10 +1689,11 @@ export default function SalesHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Month
+                    <label htmlFor="sales-history-month" className="block text-sm font-medium text-gray-700 mb-1">
+                      Mois
                     </label>
                     <select
+                      id="sales-history-month"
                       value={queryParams.month}
                       onChange={(e) => handleQueryParamChange("month", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1727,10 +1713,11 @@ export default function SalesHistory() {
 
               {timeframeType === "year" && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Year
+                  <label htmlFor="sales-history-year" className="block text-sm font-medium text-gray-700 mb-1">
+                    Année
                   </label>
                   <input
+                    id="sales-history-year"
                     type="number"
                     value={queryParams.year}
                     onChange={(e) => handleQueryParamChange("year", e.target.value)}
@@ -1744,10 +1731,11 @@ export default function SalesHistory() {
               {timeframeType === "custom" && (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      From Date
+                    <label htmlFor="sales-history-from-date" className="block text-sm font-medium text-gray-700 mb-1">
+                      Du
                     </label>
                     <input
+                      id="sales-history-from-date"
                       type="date"
                       value={queryParams.from}
                       onChange={(e) => handleQueryParamChange("from", e.target.value)}
@@ -1755,10 +1743,11 @@ export default function SalesHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      To Date
+                    <label htmlFor="sales-history-to-date" className="block text-sm font-medium text-gray-700 mb-1">
+                      Au
                     </label>
                     <input
+                      id="sales-history-to-date"
                       type="date"
                       value={queryParams.to}
                       onChange={(e) => handleQueryParamChange("to", e.target.value)}
@@ -1775,7 +1764,7 @@ export default function SalesHistory() {
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
               >
-                {showAdvancedFilters ? "Hide Advanced Filters" : "Show Advanced Filters"}
+                {showAdvancedFilters ? "Masquer les filtres avancés" : "Filtres avancés"}
                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
               </button>
 
@@ -1783,8 +1772,9 @@ export default function SalesHistory() {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                   {isAdmin && (
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
+                      <label htmlFor="sales-history-categorie" className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
                       <select
+                        id="sales-history-categorie"
                         value={queryParams.category}
                         onChange={(e) => handleQueryParamChange("category", e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-lg"
@@ -1796,46 +1786,49 @@ export default function SalesHistory() {
                     </div>
                   )}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Sale Type
+                    <label htmlFor="sales-history-sale-type" className="block text-sm font-medium text-gray-700 mb-1">
+                      Type d'opération
                     </label>
                     <select
+                      id="sales-history-sale-type"
                       value={queryParams.type}
                       onChange={(e) => handleQueryParamChange("type", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">All Types</option>
-                      <option value="sale">Sale</option>
-                      <option value="reservation">Reservation</option>
-                      <option value="expense">Expense</option>
+                      <option value="">Tous les types</option>
+                      <option value="sale">Vente</option>
+                      <option value="reservation">Réservation</option>
+                      <option value="expense">Sortie historique</option>
                     </select>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Status
+                    <label htmlFor="sales-history-status" className="block text-sm font-medium text-gray-700 mb-1">
+                      Statut
                     </label>
                     <select
+                      id="sales-history-status"
                       value={queryParams.status}
                       onChange={(e) => handleQueryParamChange("status", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">All Status</option>
-                      <option value="completed">Completed</option>
-                      <option value="pending">Pending</option>
-                      <option value="expense">Expense</option>
+                      <option value="">Tous les statuts</option>
+                      <option value="completed">Terminée</option>
+                      <option value="pending">En attente</option>
+                      <option value="voided">Annulée</option>
                     </select>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Customer Phone
+                    <label htmlFor="sales-history-customer-phone" className="block text-sm font-medium text-gray-700 mb-1">
+                      Téléphone du client
                     </label>
                     <input
+                      id="sales-history-customer-phone"
                       type="text"
                       value={queryParams.customerPhone}
                       onChange={(e) => handleQueryParamChange("customerPhone", e.target.value)}
-                      placeholder="Filter by phone..."
+                      placeholder="Filtrer par téléphone…"
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     />
                   </div>
@@ -1848,10 +1841,10 @@ export default function SalesHistory() {
         {/* Applied Filters Summary */}
         {appliedFilters && (
           <div className="mt-4 text-sm text-gray-600">
-            <span className="font-medium">Applied filters:</span>
+            <span className="font-medium">Filtres appliqués :</span>
             <span className="ml-2">
-              Status: {appliedFilters.status}, Type: {appliedFilters.type}
-              {appliedFilters.customerPhone !== 'none' && `, Phone: ${appliedFilters.customerPhone}`}
+              Statut : {appliedFilters.status && appliedFilters.status !== "all" ? saleStatusLabel(appliedFilters.status) : "tous"}, Type : {appliedFilters.type && appliedFilters.type !== "all" ? saleTypeLabel(appliedFilters.type) : "tous"}
+              {appliedFilters.customerPhone && appliedFilters.customerPhone !== 'none' && `, Téléphone : ${appliedFilters.customerPhone}`}
             </span>
           </div>
         )}
@@ -1974,7 +1967,7 @@ export default function SalesHistory() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          {sale.paymentMethod}
+                          {paymentMethodLabel(sale.paymentMethod)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1987,7 +1980,7 @@ export default function SalesHistory() {
                               : "bg-yellow-100 text-yellow-800"
                           }`}
                         >
-                          {sale.status}
+                          {saleStatusLabel(sale.status)}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -2022,7 +2015,7 @@ export default function SalesHistory() {
                             <button
                               onClick={() => viewSaleDetails(sale)}
                               className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                              title="Voir les détails de"
+                              title="Voir les détails"
                             >
                               <Eye className="w-4 h-4" />
                             </button>
@@ -2041,7 +2034,7 @@ export default function SalesHistory() {
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-yellow-600 hover:text-yellow-900"
                                 }`}
-                                title="Edit Sale"
+                                title="Corriger la vente"
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
@@ -2050,31 +2043,32 @@ export default function SalesHistory() {
                                   <button
                                     onClick={() => generateReceiptPDF(sale)}
                                     className="text-green-600 hover:text-green-900 p-1 rounded"
-                                    title="Download PDF Receipt"
+                                    title="Télécharger le reçu (PDF)"
                                   >
                                     <Download className="w-4 h-4" />
                                   </button>
                                   <button
                                     onClick={() => printESC_POSReceipt(sale)}
                                     className="text-purple-600 hover:text-purple-900 p-1 rounded"
-                                    title="Print ESC/POS Receipt"
+                                    title="Réimprimer le reçu"
                                   >
                                     <Printer className="w-4 h-4" />
                                   </button>
                                 </>
                               )}
-                              <button
-                                onClick={() => handleVoidSale(sale)}
-                                disabled={sale.status === "voided"}
+                              {isAdmin && <button
+                                onClick={() => requestVoid(sale)}
+                                disabled={sale.status === "voided" || confirmAction.busy}
                                 className={`p-1 rounded ${
                                   sale.status === "voided"
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-red-600 hover:text-red-900"
                                 }`}
-                                title="Void Sale"
+                                title="Annuler la vente"
+                                aria-label={`Annuler la vente ${sale.saleId}`}
                               >
                                 <Trash2 className="w-4 h-4" />
-                              </button>
+                              </button>}
                             </>
                           )}
                         </div>
@@ -2146,31 +2140,31 @@ export default function SalesHistory() {
               {/* Sale Info */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Identifiant de vente
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">{selectedSale.saleId}</p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Date
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {formatDate(selectedSale.createdAt)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Methode de Payment{" "}
-                  </label>
-                  <p className="text-sm text-gray-900 capitalize">
-                    {selectedSale.paymentMethod}
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
+                    Méthode de paiement
+                  </span>
+                  <p className="text-sm text-gray-900">
+                    {paymentMethodLabel(selectedSale.paymentMethod)}
                   </p>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Statut
-                  </label>
+                  </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
                       selectedSale.status === "completed"
@@ -2180,27 +2174,25 @@ export default function SalesHistory() {
                         : "bg-yellow-100 text-yellow-800"
                     }`}
                   >
-                    {selectedSale.status}
+                    {saleStatusLabel(selectedSale.status)}
                   </span>
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <span className="block text-sm font-medium text-gray-700 mb-1">
                     Agent
-                  </label>
+                  </span>
                   <p className="text-sm text-gray-900">
                     {selectedSale.salesPerson || "Non spécifié"}
                   </p>
                 </div>
                 {selectedSale.editedBy && (
                   <div className="col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Dernière modification
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
-                      By: {selectedSale.editedBy} at{" "}
-                      {selectedSale.editedAt
-                        ? formatDate(selectedSale.editedAt)
-                        : "N/A"}
+                      Par {selectedSale.editedBy}
+                      {selectedSale.editedAt ? `, le ${formatDate(selectedSale.editedAt)}` : ""}
                     </p>
                   </div>
                 )}
@@ -2220,26 +2212,26 @@ export default function SalesHistory() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Nom
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedSale.customer.name}
                       </p>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <span className="block text-sm font-medium text-gray-700 mb-1">
                         Phone
-                      </label>
+                      </span>
                       <p className="text-sm text-gray-900">
                         {selectedSale.customer.phone}
                       </p>
                     </div>
                     {selectedSale.customer.email && (
                       <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                        <span className="block text-sm font-medium text-gray-700 mb-1">
                           Email
-                        </label>
+                        </span>
                         <p className="text-sm text-gray-900">
                           {selectedSale.customer.email}
                         </p>
@@ -2321,7 +2313,7 @@ export default function SalesHistory() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 {canReprint && <button
                   onClick={() => generateReceiptPDF(selectedSale)}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
@@ -2400,34 +2392,34 @@ export default function SalesHistory() {
                 </h4>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Client
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       {selectedEditedSale.customer.name} ({selectedEditedSale.customer.phone})
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Total actuel
-                    </label>
+                    </span>
                     <p className="text-sm font-medium text-gray-900">
                       {formatFc(getSaleFcTotal(selectedEditedSale.total, selectedEditedSale.items, selectedEditedSale.exchangeRate) ?? 0)}
                       <span className="block text-xs font-normal text-gray-500">≈ {formatCurrency(selectedEditedSale.total)}</span>
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Méthode de paiement
-                    </label>
-                    <p className="text-sm text-gray-900 capitalize">
-                      {selectedEditedSale.paymentMethod}
+                    </span>
+                    <p className="text-sm text-gray-900">
+                      {paymentMethodLabel(selectedEditedSale.paymentMethod)}
                     </p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <span className="block text-sm font-medium text-gray-700 mb-1">
                       Articles
-                    </label>
+                    </span>
                     <p className="text-sm text-gray-900">
                       {selectedEditedSale.items.length} article(s)
                     </p>
@@ -2466,7 +2458,7 @@ export default function SalesHistory() {
                         {edit.changes && Object.keys(edit.changes).length > 0 && (
                           <div className="space-y-3">
                             <h6 className="font-medium text-gray-700 text-sm">Changements détaillés:</h6>
-                            {Object.entries(edit.changes).map(([field, changeData]: [string, any]) => (
+                            {changeEntries(edit.changes).map(([field, changeData]) => (
                               <div key={field} className="border-l-4 border-blue-500 pl-3">
                                 <div className="font-medium text-gray-700 text-sm capitalize mb-2">
                                   {field.replace(/([A-Z])/g, ' $1').toLowerCase()}:
@@ -2507,7 +2499,7 @@ export default function SalesHistory() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4 border-t border-gray-200">
+              <div className="flex flex-wrap gap-3 pt-4 border-t border-gray-200">
                 <button
                   onClick={() => setShowEditedDetailsModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
@@ -2526,7 +2518,7 @@ export default function SalesHistory() {
           <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Edit Sale - {editingSale.saleId}
+                Corriger la vente {editingSale.saleId}
               </h3>
               <button
                 onClick={closeEditModal}
@@ -2575,10 +2567,11 @@ export default function SalesHistory() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sales-edit-nom" className="block text-sm font-medium text-gray-700 mb-1">
                       Nom
                     </label>
                     <input
+                      id="sales-edit-nom"
                       type="text"
                       value={editForm.customer.name}
                       onChange={(e) =>
@@ -2593,10 +2586,11 @@ export default function SalesHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sales-edit-telephone" className="block text-sm font-medium text-gray-700 mb-1">
                       Numéro de téléphone
                     </label>
                     <input
+                      id="sales-edit-telephone"
                       type="tel"
                       value={editForm.customer.phone}
                       onChange={(e) =>
@@ -2611,10 +2605,11 @@ export default function SalesHistory() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <label htmlFor="sales-edit-email" className="block text-sm font-medium text-gray-700 mb-1">
                       Email
                     </label>
                     <input
+                      id="sales-edit-email"
                       type="email"
                       value={editForm.customer.email}
                       onChange={(e) =>
@@ -2645,10 +2640,10 @@ export default function SalesHistory() {
                   }
                   className="w-full p-2 border rounded"
                 >
-                  <option value="cash">Cash</option>
-                  <option value="card">Card</option>
-                  <option value="transfer">Transfer</option>
-                  <option value="other">Other</option>
+                  <option value="cash">Espèces</option>
+                  <option value="card">Carte</option>
+                  <option value="transfer">Virement</option>
+                  <option value="other">Autre</option>
                 </select>
               </div>
 
@@ -2669,7 +2664,7 @@ export default function SalesHistory() {
                           loadingProducts ? "animate-spin" : ""
                         }`}
                       />{" "}
-                      Refresh Products
+                      Actualiser les articles
                     </button>
                     <button
                       onClick={addNewItem}
@@ -2698,15 +2693,16 @@ export default function SalesHistory() {
                     >
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`sales-edit-item-${index}-article`} className="block text-sm font-medium text-gray-700 mb-1">
                             Article
                           </label>
                           {loadingProducts ? (
                             <div className="p-2 border rounded bg-gray-200 text-gray-600 text-sm">
-                              Loading products...
+                              Chargement des articles…
                             </div>
                           ) : products.length === 0 ? (
                             <input
+                              id={`sales-edit-item-${index}-article`}
                               type="text"
                               value={item.name}
                               onChange={(e) => {
@@ -2717,11 +2713,12 @@ export default function SalesHistory() {
                                   items: updatedItems,
                                 }));
                               }}
-                              placeholder="Product name"
+                              placeholder="Nom de l'article"
                               className="w-full p-2 border rounded"
                             />
                           ) : (
                             <select
+                              id={`sales-edit-item-${index}-article`}
                               value={item.productId}
                               onChange={(e) =>
                                 updateItemProduct(index, e.target.value)
@@ -2740,10 +2737,11 @@ export default function SalesHistory() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`sales-edit-item-${index}-price`} className="block text-sm font-medium text-gray-700 mb-1">
                             Prix
                           </label>
                           <input
+                            id={`sales-edit-item-${index}-price`}
                             type="number"
                             min="0"
                             step="0.01"
@@ -2759,7 +2757,7 @@ export default function SalesHistory() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <label htmlFor={`sales-edit-item-${index}-quantity`} className="block text-sm font-medium text-gray-700 mb-1">
                             Nombre de pièces{" "}
                           </label>
                           <div className="flex items-center border rounded">
@@ -2774,6 +2772,7 @@ export default function SalesHistory() {
                               <Minus className="w-3 h-3" />
                             </button>
                             <input
+                              id={`sales-edit-item-${index}-quantity`}
                               type="number"
                               min="1"
                               value={item.quantity}
@@ -2798,9 +2797,9 @@ export default function SalesHistory() {
                         </div>
 
                         <div className="md:col-span-2">
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                          <span className="block text-sm font-medium text-gray-700 mb-1">
                             Total
-                          </label>
+                          </span>
                           <div className="p-2 bg-white border rounded font-medium">
                             {formatCurrency(item.total)}
                           </div>
@@ -2852,7 +2851,7 @@ export default function SalesHistory() {
               </div>
 
               {/* Actions */}
-              <div className="flex gap-3 pt-4">
+              <div className="flex flex-wrap gap-3 pt-4">
                 <button
                   onClick={handleEditSale}
                   disabled={loading || editForm.items.length === 0}
@@ -2860,7 +2859,7 @@ export default function SalesHistory() {
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Updating...
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Enregistrement…
                     </>
                   ) : (
                     <>
@@ -2872,13 +2871,14 @@ export default function SalesHistory() {
                   onClick={closeEditModal}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cancel
+                  Annuler
                 </button>
               </div>
             </div>
           </div>
         </div>
       )}
+      {confirmAction.dialog}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import './lib/authFetchInterceptor'
 import './index.css'
 import './design-system.css'
 import App from './App.tsx'
+import { reloadForNewVersion } from './lib/chunkRecovery'
 
 const updateToastId = 'pwa-update-available'
 const offlineToastId = 'network-offline'
@@ -45,6 +46,13 @@ const showOfflineToast = () => {
     autoClose: 4500,
   })
 }
+
+// Vite reports a failed chunk preload (typically an outdated tab after a
+// deployment). Reload once to fetch the new build; if the guard refuses,
+// the error propagates to the route error boundary instead of looping.
+window.addEventListener('vite:preloadError', (event) => {
+  if (reloadForNewVersion()) event.preventDefault()
+})
 
 window.addEventListener('offline', showOfflineToast)
 

@@ -486,7 +486,10 @@ h3 {
     white-space: nowrap;
   }
 
+  /* Page modals must sit above the bottom tab bar (z-index 60) and its
+     "Plus" sheet, otherwise their action buttons end up underneath it. */
   .app-content [class*="fixed"][class*="inset-0"] {
+    z-index: 80;
     padding: max(0.75rem, env(safe-area-inset-top)) max(0.75rem, env(safe-area-inset-right)) max(0.75rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
   }
 
@@ -549,3 +552,62 @@ h3 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---- Shared confirmation dialog (components/ConfirmDialog.tsx) ---- */
+.confirm-dialog-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+  background: rgb(15 23 42 / 0.55);
+}
+.confirm-dialog-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 30rem;
+  max-height: calc(100dvh - 2rem - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
+}
+.confirm-dialog-header { display: flex; align-items: flex-start; gap: 0.75rem; padding: 1.25rem 1.25rem 0.5rem; }
+.confirm-dialog-header h2 { flex: 1; min-width: 0; margin-top: 0.35rem; font-size: 1.1rem; font-weight: 700; line-height: 1.35; color: #0f172a; }
+.confirm-dialog-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: 9999px; }
+.confirm-dialog-close { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: -0.5rem -0.5rem 0 0; border-radius: 0.75rem; color: #64748b; }
+.confirm-dialog-close:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
+.confirm-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 1.25rem 1rem; }
+.confirm-dialog-details { display: grid; gap: 0.35rem; margin-top: 0.9rem; padding: 0.75rem 0.9rem; border-radius: 0.75rem; background: #f8fafc; border: 1px solid #e2e8f0; font-size: 0.875rem; }
+.confirm-dialog-details > div { display: flex; justify-content: space-between; gap: 1rem; }
+.confirm-dialog-details dt { color: #64748b; }
+.confirm-dialog-details dd { margin: 0; font-weight: 600; color: #0f172a; text-align: right; overflow-wrap: anywhere; }
+.confirm-dialog-consequences { margin-top: 0.9rem; padding-left: 1.1rem; list-style: disc; display: grid; gap: 0.35rem; font-size: 0.875rem; line-height: 1.45; color: #334155; }
+.confirm-dialog-error { margin-top: 1rem; padding: 0.75rem 0.9rem; border-radius: 0.75rem; border: 1px solid #fecaca; background: #fef2f2; color: #991b1b; font-size: 0.875rem; }
+.confirm-dialog-error p { margin-top: 0.2rem; white-space: pre-line; }
+.confirm-dialog-actions { display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 0.625rem; padding: 0.875rem 1.25rem 1.25rem; border-top: 1px solid #f1f5f9; background: #fff; }
+.confirm-dialog-cancel, .confirm-dialog-confirm { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0 1.1rem; border-radius: 0.75rem; font-weight: 600; font-size: 0.95rem; }
+.confirm-dialog-cancel { border: 1px solid #cbd5e1; background: #fff; color: #1e293b; }
+.confirm-dialog-cancel:hover:not(:disabled) { background: #f8fafc; }
+.confirm-dialog-confirm { color: #fff; }
+.confirm-dialog-cancel:focus-visible, .confirm-dialog-confirm:focus-visible, .confirm-dialog-close:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.confirm-dialog-cancel:disabled, .confirm-dialog-confirm:disabled, .confirm-dialog-close:disabled { opacity: 0.55; cursor: not-allowed; }
+
+/* Phones: bottom sheet with thumb-reachable, full-width actions. */
+@media (max-width: 480px) {
+  .confirm-dialog-layer { align-items: flex-end; padding: max(0.75rem, env(safe-area-inset-top)) 0 0; }
+  .confirm-dialog-panel { max-width: none; max-height: calc(100dvh - max(0.75rem, env(safe-area-inset-top))); border-radius: 1.25rem 1.25rem 0 0; }
+  .confirm-dialog-actions { padding-bottom: calc(1rem + env(safe-area-inset-bottom)); }
+  .confirm-dialog-cancel, .confirm-dialog-confirm { flex: 1 1 100%; min-height: 3rem; }
+}
+
+/* ---- Error boundary fallback (components/AppErrorBoundary.tsx) ---- */
+.app-error-fallback { display: flex; min-height: 60vh; align-items: center; justify-content: center; padding: 1.5rem; }
+.app-error-card { width: 100%; max-width: 28rem; border-radius: 1rem; border: 1px solid #e2e8f0; background: #fff; padding: 1.75rem; text-align: center; box-shadow: 0 10px 30px -12px rgb(15 23 42 / 0.25); }
+.app-error-card h1 { margin-top: 1rem; font-size: 1.25rem; font-weight: 700; color: #0f172a; }
+.app-error-card p { margin-top: 0.5rem; font-size: 0.925rem; line-height: 1.5; color: #475569; }
+.app-error-actions { margin-top: 1.25rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.625rem; }
+.app-error-actions button, .app-error-actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1.1rem; border-radius: 0.75rem; font-weight: 600; }
