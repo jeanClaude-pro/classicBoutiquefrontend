@@ -16,10 +16,7 @@ import {
   createPriceSnapshot,
   formatFC,
   formatUSD,
-  getItemFcTotal,
   getItemFcUnitPrice,
-  getSaleFcTotal,
-  getItemUsdUnitPrice,
   isDiscountedPrice,
   productReferencePrice,
   totalCartQuantity,
@@ -37,6 +34,14 @@ import {
   repriceCartLine,
   type SaleCartLine,
 } from "../utils/saleCart";
+import { PrintService } from "../services/printService";
+import {
+  buildSaleReceipt,
+  escPosReceiptData,
+  openReceiptPrintWindow,
+  renderSaleReceiptHtml,
+  type SaleReceiptDocument,
+} from "../lib/saleReceipt";
 
 // One key per checkout: a retry after a lost response replays the recorded
 // sale instead of creating a second one (see POST /api/sales requestKey).
@@ -44,22 +49,6 @@ const newRequestKey = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-
-const compactFc = (value: number) => `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(value)}FC`;
-// Payment line of the browser receipt; the raw value still goes to the print API.
-const receiptPayment = (method: string) => translate(`saleReceipt.payments.${method}`, { defaultValue: method.toUpperCase() });
-const compactDualUnit = (item: CartItem, rate?: number) => {
-  const fc = getItemFcUnitPrice(item, rate);
-  return `${getItemUsdUnitPrice(item).toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
-};
-const compactDualTotal = (item: CartItem, rate?: number) => {
-  const fc = getItemFcTotal(item, rate);
-  return `${(getItemUsdUnitPrice(item) * item.quantity).toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
-};
-const compactDualSaleTotal = (total: number, items: CartItem[], rate?: number) => {
-  const fc = getSaleFcTotal(total, items, rate);
-  return `${total.toFixed(2)}$${fc === undefined ? "" : ` / ${compactFc(fc)}`}`;
-};
 
 interface Product extends ProductPricing {
   _id: string;
@@ -95,61 +84,6 @@ async function readJsonSafe(res: Response) {
   return { __nonJson: true, text };
 }
 
-// Simplified Print service for ESC/POS printing
-class PrintService {
-  static async printReceipt(
-    receiptData: any,
-    type: "sale" | "reservation" = "sale"
-  ): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE}/print/receipt`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify({ receiptData, type }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to print receipt");
-      }
-
-      const result = await response.json();
-      return result.success;
-    } catch (error) {
-      console.error("Print receipt error:", error);
-      throw error;
-    }
-  }
-
-  static async printStub(
-    receiptData: any,
-    type: "sale" | "reservation" = "sale"
-  ): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE}/print/stub`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-        body: JSON.stringify({ receiptData, type }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to print stub");
-      }
-
-      const result = await response.json();
-      return result.success;
-    } catch (error) {
-      console.error("Print stub error:", error);
-      throw error;
-    }
-  }
-}
-
 export default function NewSale() {
   const { t } = useTranslation();
   const [products, setProducts] = useState<Product[]>([]);
@@ -163,7 +97,7 @@ export default function NewSale() {
   // Server refusals attached to a cart line (lineId -> message).
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
-  const [receiptData, setReceiptData] = useState<any>(null);
+  const [receiptData, setReceiptData] = useState<SaleReceiptDocument | null>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [loadingRate, setLoadingRate] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -171,7 +105,7 @@ export default function NewSale() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopNumber: "+243 836 017 031",
+    shopNumber: "+243 975 085 799",
     shopRegistration: "LSH/RCCM/22-A-01266",
     receiptFooter: translate("pos.defaultFooter"),
   });
@@ -658,776 +592,34 @@ export default function NewSale() {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  // Print function for receipt only - UPDATED for 80mm thermal paper
-  const printReceiptOnly = () => {
-    const printWindow = window.open("", "_blank", "width=320,height=600");
-    if (printWindow) {
-      printWindow.document.write(`
-<html>
-  <head>
-    <title>${t("saleReceipt.title")}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body { 
-        font-family: 'Courier New', Courier, monospace; 
-        margin: 0; 
-        padding: 0; 
-        font-size: 12px;
-        font-weight: bold;
-        line-height: 1.2;
-        width: 80mm;
-        background-color: white;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      .receipt-container {
-        width: 78mm;
-        margin: 0 auto;
-        padding: 1mm 2mm;
-        border: none;
-        text-align: center;
-        position: relative;
-      }
-      .logo-watermark {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image: url('${window.location.origin}/newlogo.png');
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: 65%;
-        opacity: 0.18;
-        pointer-events: none;
-        z-index: 0;
-      }
-      .content-wrapper {
-        position: relative;
-        z-index: 1;
-      }
-      .header {
-        text-align: center;
-        margin-bottom: 2mm;
-        padding-bottom: 1mm;
-        border-bottom: 2px double #000;
-      }
-      .shop-name {
-        font-size: 14px;
-        font-weight: bold;
-        margin-bottom: 0.5mm;
-        text-transform: uppercase;
-      }
-      .shop-details {
-        font-size: 10px;
-        margin-bottom: 0.3mm;
-        line-height: 1.2;
-        font-weight: bold;
-      }
-      .receipt-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        background-color: #f8f8f8;
-        border-left: 3px solid #000;
-        text-align: left;
-      }
-      .receipt-title {
-        font-size: 11px;
-        font-weight: bold;
-        margin: 1mm 0;
-        text-transform: uppercase;
-        background-color: #000;
-        color: white;
-        padding: 1mm 2mm;
-        border-radius: 2px;
-        text-align: center;
-      }
-      .items-section {
-        margin: 0;
-        padding: 0;
-        background-color: #fafafa;
-        border: none;
-        border-top: none;
-      }
-      .items-col-header {
-        display: flex;
-        justify-content: space-between;
-        background-color: #e0e0e0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-transform: uppercase;
-        font-size: 10px;
-        margin: 0;
-        border-bottom: 1px solid #999;
-      }
-      .col-article {
-        flex: 2;
-        text-align: left;
-      }
-      .col-qte {
-        width: 10mm;
-        text-align: center;
-      }
-      .col-pu {
-        width: 18mm;
-        text-align: right;
-      }
-      .col-pt {
-        width: 18mm;
-        text-align: right;
-      }
-      .item-row { 
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        padding: 0.5mm 2mm;
-        border-bottom: 1px dotted #ddd;
-        font-size: 10px;
-      }
-      .item-name {
-        flex: 2;
-        text-align: left;
-        font-weight: bold;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 1mm;
-      }
-      .item-quantity {
-        width: 10mm;
-        text-align: center;
-        font-weight: bold;
-      }
-      .item-unit-price {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .item-line-total {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .total-section { 
-        font-weight: bold; 
-        margin-top: 2mm;
-        padding: 1mm 2mm;
-        background-color: #f0f0f0;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-      }
-      .total-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        font-size: 11px;
-        padding: 0 1mm;
-      }
-      .payment-method {
-        text-transform: uppercase;
-        font-weight: bold;
-        font-size: 11px;
-        color: #000;
-      }
-      .footer { 
-        text-align: center; 
-        margin-top: 2mm; 
-        font-size: 10px;
-        font-weight: bold;
-        padding: 1mm 2mm;
-        background-color: #f8f8f8;
-        border-top: 1px dashed #000;
-      }
-      .sales-person {
-        margin-top: 2mm;
-        text-align: center;
-        font-weight: bold;
-        font-size: 10px;
-        padding: 1mm 2mm;
-        background-color: #e8e8e8;
-        border: 1px solid #ccc;
-        border-radius: 2px;
-      }
-      .customer-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-align: left;
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        font-size: 10px;
-      }
-      .customer-field {
-        margin-bottom: 0.3mm;
-        font-size: 10px;
-      }
-      .separator {
-        border-top: 1px dashed #000;
-        margin: 1mm 0;
-      }
-      .cut-line {
-        text-align: center;
-        margin: 2mm 0 0 0;
-        font-weight: bold;
-        font-size: 10px;
-        color: #000;
-        letter-spacing: 1px;
-      }
-      .thank-you {
-        font-weight: bold;
-        margin: 0.5mm 0;
-        font-size: 10px;
-      }
-      .warning {
-        font-size: 9px;
-        color: #000;
-        margin: 0.3mm 0;
-        font-weight: bold;
-      }
-      .section-divider {
-        height: 2px;
-        background: linear-gradient(to right, transparent, #000, transparent);
-        margin: 1mm 0;
-      }
-      @media print {
-        @page {
-          margin: 0 !important;
-          size: 80mm auto !important;
-        }
-        body { 
-          margin: 0 !important; 
-          padding: 0 !important; 
-          width: 80mm !important;
-          font-size: 12px !important;
-          background: white !important;
-          font-weight: bold !important;
-          height: auto !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .receipt-container { 
-          border: none !important; 
-          box-shadow: none !important; 
-          margin: 0 auto !important;
-          padding: 1mm 2mm !important;
-          width: 78mm !important;
-        }
-        .cut-line {
-          page-break-after: always !important;
-          margin-bottom: 0 !important;
-        }
-        body::after,
-        body::before {
-          display: none !important;
-          content: none !important;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="receipt-container">
-      <div class="logo-watermark"></div>
-      <div class="content-wrapper">
-      <div class="header">
-        <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">${t("saleReceipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopRegistration}</strong></div>
-      </div>
-      
-      <div class="section-divider"></div>
-      
-      <div class="receipt-info">
-        <div class="shop-details">${t("saleReceipt.date")}: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">${t("saleReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
-      </div>
-      
-      <div class="customer-info">
-        <div class="customer-field">${t("saleReceipt.customer")}: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
-        ${
-          receiptData.customerPhone
-            ? `<div class="customer-field">${t("saleReceipt.phone")}: <strong>${receiptData.customerPhone}</strong></div>`
-            : ""
-        }
-      </div>
+  // Browser printing (fallback when the thermal printer is unavailable):
+  // the same FC-only receipt and stub as the thermal printer.
+  const printReceiptOnly = (doc: SaleReceiptDocument) =>
+    openReceiptPrintWindow(renderSaleReceiptHtml(doc, "receipt"));
 
-      <div class="receipt-title">${t("saleReceipt.itemsBought")}</div>
-      
-      <div class="items-col-header">
-        <span class="col-article">${t("saleReceipt.item")}</span>
-        <span class="col-qte">${t("saleReceipt.qty")}</span>
-      </div>
-      
-      <div class="items-section">
-      ${receiptData.items
-        .map(
-          (item: CartItem) => `
-        <div class="item-row" style="flex-wrap:wrap">
-          <div class="item-name"><strong>${item.name}</strong></div>
-          <div class="item-quantity"><strong>${item.quantity}</strong></div>
-          <div style="width:100%;text-align:left;padding-left:2mm"><strong>${item.quantity} x ${compactDualUnit(item, receiptData.exchangeRate)} = ${compactDualTotal(item, receiptData.exchangeRate)}</strong></div>
-        </div>
-      `
-        )
-        .join("")}
-      </div>
-      
-      <div class="total-section">
-        <div class="total-row">
-          <div><strong>${t("saleReceipt.subtotal")}:</strong></div>
-          <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
-        </div>
-        <div class="total-row">
-          <div><strong>${t("saleReceipt.total")}:</strong></div>
-          <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
-        </div>
-        <div class="total-row">
-          <div><strong>${t("saleReceipt.payment")}:</strong></div>
-          <div class="payment-method"><strong>${receiptPayment(receiptData.paymentMethod)}</strong></div>
-        </div>
-      </div>
-      
-      <div class="sales-person">
-        ${t("saleReceipt.agent")}: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
-      </div>
-
-      <div class="footer">
-        <div class="thank-you"><strong>${receiptData.receiptFooter || t("saleReceipt.thanks")}</strong></div>
-        <div class="warning"><strong>${t("saleReceipt.noExchange")}</strong></div>
-        <div class="warning"><strong>${t("saleReceipt.noRefund")}</strong></div>
-      </div>
-
-      <!-- PAPER CUT INDICATOR -->
-      <div class="cut-line">
-        ✄ ────────────────────────── ✄
-      </div>
-      </div>
-    </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
-  </body>
-</html>
-`);
-      printWindow.document.close();
-    }
-  };
-
-  // Print function for stub only - UPDATED for 80mm thermal paper
-  const printStubOnly = () => {
-    const printWindow = window.open("", "_blank", "width=320,height=600");
-    if (printWindow) {
-      printWindow.document.write(`
-<html>
-  <head>
-    <title>${t("saleReceipt.stubTitle")}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body { 
-        font-family: 'Courier New', Courier, monospace; 
-        margin: 0; 
-        padding: 0; 
-        font-size: 12px;
-        font-weight: bold;
-        line-height: 1.2;
-        width: 80mm;
-        background-color: white;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      .stub-container {
-        width: 78mm;
-        margin: 0 auto;
-        padding: 1mm 2mm;
-        border: none;
-        text-align: center;
-        position: relative;
-      }
-      .logo-watermark {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image: url('${window.location.origin}/newlogo.png');
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: 65%;
-        opacity: 0.18;
-        pointer-events: none;
-        z-index: 0;
-      }
-      .content-wrapper {
-        position: relative;
-        z-index: 1;
-      }
-      .header {
-        text-align: center;
-        margin-bottom: 2mm;
-        padding-bottom: 1mm;
-        border-bottom: 2px double #000;
-      }
-      .shop-name {
-        font-size: 14px;
-        font-weight: bold;
-        margin-bottom: 0.5mm;
-        text-transform: uppercase;
-      }
-      .shop-details {
-        font-size: 10px;
-        margin-bottom: 0.3mm;
-        line-height: 1.2;
-        font-weight: bold;
-      }
-      .receipt-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        background-color: #f8f8f8;
-        border-left: 3px solid #000;
-        text-align: left;
-      }
-      .receipt-title {
-        font-size: 11px;
-        font-weight: bold;
-        margin: 1mm 0;
-        text-transform: uppercase;
-        background-color: #000;
-        color: white;
-        padding: 1mm 2mm;
-        border-radius: 2px;
-        text-align: center;
-      }
-      .stub-number {
-        font-size: 11px;
-        font-weight: bold;
-        margin: 2mm 0;
-        text-transform: uppercase;
-        background-color: #333;
-        color: white;
-        padding: 1mm 2mm;
-        border-radius: 3px;
-      }
-      .items-section {
-        margin: 0;
-        padding: 0;
-        background-color: #fafafa;
-        border: none;
-        border-top: none;
-      }
-      .items-col-header {
-        display: flex;
-        justify-content: space-between;
-        background-color: #e0e0e0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-transform: uppercase;
-        font-size: 10px;
-        margin: 0;
-        border-bottom: 1px solid #999;
-      }
-      .col-article {
-        flex: 2;
-        text-align: left;
-      }
-      .col-qte {
-        width: 10mm;
-        text-align: center;
-      }
-      .col-pu {
-        width: 18mm;
-        text-align: right;
-      }
-      .col-pt {
-        width: 18mm;
-        text-align: right;
-      }
-      .item-row { 
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        padding: 0.5mm 2mm;
-        border-bottom: 1px dotted #ddd;
-        font-size: 10px;
-      }
-      .item-name {
-        flex: 2;
-        text-align: left;
-        font-weight: bold;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 1mm;
-      }
-      .item-quantity {
-        width: 10mm;
-        text-align: center;
-        font-weight: bold;
-      }
-      .item-unit-price {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .item-line-total {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .total-section { 
-        font-weight: bold; 
-        margin-top: 2mm;
-        padding: 1mm 2mm;
-        background-color: #f0f0f0;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-      }
-      .total-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        font-size: 11px;
-        padding: 0 1mm;
-      }
-      .payment-method {
-        text-transform: uppercase;
-        font-weight: bold;
-        font-size: 11px;
-      }
-      .stub-footer { 
-        text-align: center; 
-        margin-top: 2mm; 
-        font-size: 10px;
-        font-weight: bold;
-        padding: 1mm 2mm;
-        background-color: #e8e8e8;
-        border: 1px solid #ccc;
-        border-radius: 3px;
-      }
-      .sales-person {
-        margin-top: 2mm;
-        text-align: center;
-        font-weight: bold;
-        font-size: 10px;
-        padding: 1mm 2mm;
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 2px;
-      }
-      .customer-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-align: left;
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        font-size: 10px;
-      }
-      .customer-field {
-        margin-bottom: 0.3mm;
-        font-size: 10px;
-      }
-      .separator {
-        border-top: 1px dashed #000;
-        margin: 1mm 0;
-      }
-      .cut-line {
-        text-align: center;
-        margin: 2mm 0 0 0;
-        font-weight: bold;
-        font-size: 10px;
-        color: #000;
-        letter-spacing: 1px;
-      }
-      .thank-you {
-        font-weight: bold;
-        margin: 0.5mm 0;
-        font-size: 10px;
-      }
-      .warning {
-        font-size: 9px;
-        color: #000;
-        margin: 0.3mm 0;
-        font-weight: bold;
-      }
-      .section-divider {
-        height: 2px;
-        background: linear-gradient(to right, transparent, #000, transparent);
-        margin: 1mm 0;
-      }
-      @media print {
-        @page {
-          margin: 0 !important;
-          size: 80mm auto !important;
-        }
-        body { 
-          margin: 0 !important; 
-          padding: 0 !important; 
-          width: 80mm !important;
-          font-size: 12px !important;
-          background: white !important;
-          font-weight: bold !important;
-          height: auto !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .stub-container { 
-          border: none !important; 
-          box-shadow: none !important; 
-          margin: 0 auto !important;
-          padding: 1mm 2mm !important;
-          width: 78mm !important;
-        }
-        .cut-line {
-          page-break-after: always !important;
-          margin-bottom: 0 !important;
-        }
-        body::after,
-        body::before {
-          display: none !important;
-          content: none !important;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="stub-container">
-      <div class="logo-watermark"></div>
-      <div class="content-wrapper">
-      <div class="header">
-        <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">${t("saleReceipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
-      </div>
-      
-      <div class="section-divider"></div>
-      
-      <div class="receipt-info">
-        <div class="shop-details">${t("saleReceipt.date")}: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">${t("saleReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
-      </div>
-      
-      <div class="stub-number">
-        ${t("saleReceipt.stubNo")}<strong>${receiptData.stubNumber}</strong>
-      </div>
-      
-      <div class="customer-info">
-        <div class="customer-field">${t("saleReceipt.customer")}: <strong>${receiptData.customerName.toUpperCase()}</strong></div>
-        ${
-          receiptData.customerPhone
-            ? `<div class="customer-field">${t("saleReceipt.phone")}: <strong>${receiptData.customerPhone}</strong></div>`
-            : ""
-        }
-      </div>
-
-      <div class="receipt-title">${t("saleReceipt.itemsSold")}</div>
-      
-      <div class="items-col-header">
-        <span class="col-article">${t("saleReceipt.item")}</span>
-        <span class="col-qte">${t("saleReceipt.qty")}</span>
-      </div>
-      
-      <div class="items-section">
-      ${receiptData.items
-        .map(
-          (item: CartItem) => `
-        <div class="item-row" style="flex-wrap:wrap">
-          <div class="item-name"><strong>${item.name}</strong></div>
-          <div class="item-quantity"><strong>${item.quantity}</strong></div>
-          <div style="width:100%;text-align:left;padding-left:2mm"><strong>${item.quantity} x ${compactDualUnit(item, receiptData.exchangeRate)} = ${compactDualTotal(item, receiptData.exchangeRate)}</strong></div>
-        </div>
-      `
-        )
-        .join("")}
-      </div>
-      
-      <div class="total-section">
-        <div class="total-row">
-          <div><strong>${t("saleReceipt.saleTotal")}:</strong></div>
-          <div><strong>${compactDualSaleTotal(receiptData.total, receiptData.items, receiptData.exchangeRate)}</strong></div>
-        </div>
-        <div class="total-row">
-          <div><strong>${t("saleReceipt.payment")}:</strong></div>
-          <div class="payment-method"><strong>${receiptPayment(receiptData.paymentMethod)}</strong></div>
-        </div>
-      </div>
-      
-      <div class="sales-person">
-        ${t("saleReceipt.agent")}: <strong>${receiptData.salesPerson.toUpperCase()}</strong>
-      </div>
-
-      <div class="stub-footer">
-        <div class="thank-you"><strong>${t("saleReceipt.stubFooter")}</strong></div>
-        <div class="warning"><strong>${receiptData.shopName}</strong></div>
-        <div class="warning"><strong>${t("saleReceipt.keepStub")}</strong></div>
-        <div class="warning">${t("saleReceipt.receiptNoShort")}: <strong>${receiptData.receiptNumber}</strong></div>
-        <div class="warning">${t("saleReceipt.dateShort")}: <strong>${receiptData.date}</strong></div>
-      </div>
-
-      <!-- PAPER CUT INDICATOR -->
-      <div class="cut-line">
-        ✄ ────────────────────────── ✄
-      </div>
-      </div>
-    </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
-  </body>
-</html>
-`);
-      printWindow.document.close();
-    }
-  };
+  const printStubOnly = (doc: SaleReceiptDocument) =>
+    openReceiptPrintWindow(renderSaleReceiptHtml(doc, "stub"));
 
   // Sequential printing function
-  const printSequentially = () => {
+  const printSequentially = (doc: SaleReceiptDocument) => {
     // Print receipt first
-    printReceiptOnly();
+    printReceiptOnly(doc);
 
     // Wait 2 seconds then print stub
     setTimeout(() => {
-      printStubOnly();
+      printStubOnly(doc);
     }, 2000);
   };
 
   // ESC/POS printing function
-  const printWithESCPOS = async (receiptData: any) => {
+  const printWithESCPOS = async (doc: SaleReceiptDocument) => {
     try {
       console.log("Attempting ESC/POS printing...");
+      const payload = escPosReceiptData(doc);
       // Print receipt
-      await PrintService.printReceipt(receiptData, "sale");
+      await PrintService.printReceipt(payload, "sale");
       // Print stub
-      await PrintService.printStub(receiptData, "sale");
+      await PrintService.printStub(payload, "sale");
       console.log("ESC/POS printing successful");
       return true;
     } catch (error: any) {
@@ -1436,7 +628,7 @@ export default function NewSale() {
         error
       );
       // Fallback to sequential browser printing
-      printSequentially();
+      printSequentially(doc);
       return false;
     }
   };
@@ -1451,7 +643,7 @@ export default function NewSale() {
         } catch (error) {
           console.error("Printing failed:", error);
           // Last resort: try sequential browser printing directly
-          printSequentially();
+          printSequentially(receiptData);
         }
       }, 500);
 
@@ -1509,8 +701,9 @@ export default function NewSale() {
       // Get the sale ID from the API response
       const saleId = data.saleId || data._id;
       
-      // Enhanced receipt data with better formatting - use actual sale ID
-      const newReceiptData = {
+      // Receipt of the recorded sale: the server's stored items carry the FC
+      // snapshots printed on the receipt and stub.
+      const newReceiptData = buildSaleReceipt({
         shopName: shopSettings.shopName,
         shopAddress: shopSettings.shopAddress,
         shopNumber: shopSettings.shopNumber,
@@ -1519,14 +712,13 @@ export default function NewSale() {
         customerName: form.isWalkIn ? t("pos.walkIn") : form.customerName,
         customerPhone: form.isWalkIn ? "" : form.customerPhone,
         items: Array.isArray(data.items) ? data.items : cart,
-        total: Number(data.total ?? cartTotal),
         exchangeRate: data.exchangeRate ?? body.exchangeRate,
         paymentMethod: form.paymentMethod,
         salesPerson: currentUser?.username || t("pos.agent"),
         date: formatNowGMT2(),
         receiptNumber: saleId, // Use actual sale ID from API
         stubNumber: saleId, // Use actual sale ID from API for stub as well
-      };
+      });
 
       setReceiptData(newReceiptData);
       requestKey.current = newRequestKey();

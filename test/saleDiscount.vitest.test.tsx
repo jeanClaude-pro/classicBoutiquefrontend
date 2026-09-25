@@ -193,9 +193,11 @@ test("Historique des ventes: history and reprint keep 20,000 FC and never call t
 
   await user.click(within(row).getByTitle("Réimprimer le reçu"));
   const receipt = flat(written.join(""));
-  expect(receipt).toContain("20000FC");
-  expect(receipt).toContain("60000FC");
-  expect(receipt).not.toMatch(/20007|60021/);
+  // Receipts print whole francs as "20,000 FC" and never a $ amount.
+  expect(receipt).toContain("20,000FC");
+  expect(receipt).toContain("60,000FC");
+  expect(receipt).not.toMatch(/20,?007|60,?021/);
+  expect(receipt).not.toContain("$");
   expect(api.calls.some((call) => /exchange-rates/.test(call.url))).toBe(false);
 });
 

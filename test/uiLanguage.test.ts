@@ -94,3 +94,18 @@ test("routed pages no longer show the English interface strings found in the aud
     for (const phrase of english) assert.ok(!source.includes(phrase), `${file} still shows "${phrase}"`);
   }
 });
+
+test("the history pages read their interface text from the dictionaries", () => {
+  const pages = ["src/pages/history/SalesHistory.tsx", "src/pages/EntryHistory.tsx", "src/pages/SortieHistory.tsx"];
+  const french = [
+    "Synthèse de la période", "Chargement des ventes", "Toutes les ventes", "Identifiant de vente", "Détails de la vente",
+    "Toutes les entrées", "Information sur l'Expéditeur", "Statistiques des Entrées", "Détails de l'Entrée",
+    "Décaissements du jour", "Motif et type", "Synthèse des décaissements", "Historique du décaissement",
+    "Filtres appliqués", "Réinitialiser les filtres", "Précédent", "Aucun détail de modification disponible",
+  ];
+  for (const page of pages) {
+    const source = read(page).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    assert.match(source, /useTranslation\(\)/, `${page} does not use the translation hook`);
+    for (const phrase of french) assert.ok(!source.includes(phrase), `${page} still hardcodes "${phrase}"`);
+  }
+});

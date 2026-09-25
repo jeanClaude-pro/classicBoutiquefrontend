@@ -919,7 +919,7 @@ export default function Entry() {
       const newReceiptData = {
         shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
         shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-        shopNumber: "+243 836 017 031",
+        shopNumber: "+243 975 085 799",
         shopRegistration: "LSH/RCCM/22-A-01266",
         amount: amountSnapshot.amountUSD,
         ...amountSnapshot,

@@ -29,10 +29,15 @@ test("historical surfaces prefer saved sale snapshots and analytics never fetche
   const history = readFileSync(new URL("../src/pages/history/SalesHistory.tsx", import.meta.url), "utf8");
   const pos = readFileSync(new URL("../src/pages/NewSale.tsx", import.meta.url), "utf8");
   const analytics = readFileSync(new URL("../src/pages/analytics/Analytics.tsx", import.meta.url), "utf8");
-  for (const source of [history, pos]) {
-    assert.match(source, /getItemFcUnitPrice/);
-    assert.match(source, /getSaleFcTotal/);
-  }
+  // Receipts of both pages go through the shared receipt module, which
+  // prices every line from the sale's own FC snapshot.
+  const receipt = readFileSync(new URL("../src/lib/saleReceipt.ts", import.meta.url), "utf8");
+  assert.match(receipt, /getItemFcUnitPrice\(item, saleRate\)/);
+  assert.doesNotMatch(receipt, /exchange-rates|fetch\(/);
+  for (const source of [history, pos]) assert.match(source, /buildSaleReceipt\(/);
+  assert.match(pos, /getItemFcUnitPrice/);
+  assert.match(history, /getSaleFcTotal/);
+  assert.match(history, /getItemFcTotal/);
   assert.doesNotMatch(history, /exchange-rates\/current/);
   assert.doesNotMatch(analytics, /exchange-rates\/current/);
 });

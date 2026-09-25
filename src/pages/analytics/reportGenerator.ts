@@ -329,7 +329,7 @@ export function generateCompanyReport(config: ReportConfig): void {
     timeframeLabel,
     formatCurrency,
     companyAddress = "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    companyPhone = "+243 836 017 031",
+    companyPhone = "+243 975 085 799",
     companyRegistration = "LSH/RCCM/22-A-01266",
   } = config;
 

@@ -1037,7 +1037,7 @@ export default function AdminPanel() {
                       onChange={(e) =>
                         setShopSettings((s) => ({ ...s, shopNumber: e.target.value }))
                       }
-                      placeholder="+243 836 017 031"
+                      placeholder="+243 975 085 799"
                       className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     />
                   </div>

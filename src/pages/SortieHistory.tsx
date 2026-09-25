@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import { currentLocale } from "../i18n";
 import { describeTimeframeFr, formatDateTimeGMT2, formatTimeGMT2, formatMonthNameGMT2 } from "../utils/dateUtils";
 import { expenseStatusLabel, paymentMethodLabel } from "../lib/labels";
 import { serverUrl } from "../utils/constants";
@@ -168,6 +170,7 @@ const getCurrentYear = (): number => {
 };
 
 export default function SortieHistory() {
+  const { t } = useTranslation();
   const [expenses, setExpenses] = useState<ExpenseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -368,19 +371,20 @@ export default function SortieHistory() {
           setPagination(data.pagination || null);
           
           // Update metadata
-          setTimeframeDescription(describeTimeframeFr(data.timeframe.description));
+          // Kept raw: displayed with describeTimeframeFr in the current language.
+          setTimeframeDescription(data.timeframe.description);
           setSummaryStats(data.summary);
           setAppliedFilters(data.filtersApplied);
           
         } else {
           console.warn("Unexpected expenses data structure:", data);
-          setError("Réponse inattendue du serveur. Actualisez la page.");
+          setError(t("salesHistory.unexpectedResponse"));
         }
       } else {
-        setError(`Impossible de charger les décaissements. ${(await apiErrorFromResponse(res)).message}`);
+        setError(t("expenseHistory.loadFailed", { message: (await apiErrorFromResponse(res)).message }));
       }
     } catch (error) {
-      setError(`Impossible de charger les décaissements. ${toApiError(error).message}`);
+      setError(t("expenseHistory.loadFailed", { message: toApiError(error).message }));
     } finally {
       setLoading(false);
     }
@@ -392,10 +396,10 @@ export default function SortieHistory() {
 
   const getTimeframeLabel = () => {
     if (!userPermissions.isAdmin) {
-      return "Aujourd'hui";
+      return t("dates.today");
     }
-    
-    return timeframeDescription;
+
+    return describeTimeframeFr(timeframeDescription);
   };
 
   const handleTimeframeTypeChange = (type: "custom" | "day" | "month" | "year" | "today") => {
@@ -486,7 +490,7 @@ export default function SortieHistory() {
 
   const formatOriginalAmount = (expense: ExpenseItem) =>
     expense.enteredCurrency === "FC"
-      ? `${formatFC(expense.enteredAmount ?? expense.amountFC ?? 0)} (Équiv. ${formatUSD(expense.amountUSD ?? expense.amount)})`
+      ? `${formatFC(expense.enteredAmount ?? expense.amountFC ?? 0)} (${t("entryHistory.equivalent", { amount: formatUSD(expense.amountUSD ?? expense.amount) })})`
       : formatUSD(expense.enteredAmount ?? expense.amount);
 
   const filteredExpenses = expenses.filter(
@@ -524,7 +528,7 @@ export default function SortieHistory() {
   const requestRejection = (expense: ExpenseItem) => {
     confirmAction.request({
       ...expenseRejectionCopy(expense),
-      reason: { label: "Motif du rejet", required: true, placeholder: "Ex. : doublon, montant erroné…" },
+      reason: { label: t("expenseHistory.rejectReasonLabel"), required: true, placeholder: t("expenseHistory.rejectReasonPlaceholder") },
       action: (reason) => requestJson(`${serverUrl}/expenses/${expense._id}/reject`, { method: "PATCH", body: { reason } }),
       onSuccess: async () => { setShowModal(false); await fetchExpenses(); },
       onError: refreshIfStale,
@@ -557,7 +561,7 @@ export default function SortieHistory() {
   const requestReversal = (expense: ExpenseItem) => {
     confirmAction.request({
       ...expenseReversalCopy(expense),
-      reason: { label: "Motif de la contre-passation", required: true, placeholder: "Ex. : achat annulé par le fournisseur" },
+      reason: { label: t("expenseHistory.reverseReasonLabel"), required: true, placeholder: t("expenseHistory.reverseReasonPlaceholder") },
       action: (reason) => requestJson(`${serverUrl}/expenses/${expense._id}/reverse`, { method: "POST", body: { reason } }),
       onSuccess: async () => { setShowModal(false); await fetchExpenses(); },
       onError: refreshIfStale,
@@ -618,10 +622,10 @@ export default function SortieHistory() {
         setExpenseHistory(data.history || []);
         setShowHistoryModal(true);
       } else {
-        setError(`Impossible de charger l'historique de ce décaissement. ${(await apiErrorFromResponse(res)).message}`);
+        setError(t("expenseHistory.historyLoadFailed", { message: (await apiErrorFromResponse(res)).message }));
       }
     } catch (error) {
-      setError(`Impossible de charger l'historique de ce décaissement. ${toApiError(error).message}`);
+      setError(t("expenseHistory.historyLoadFailed", { message: toApiError(error).message }));
     } finally {
       setHistoryLoading(false);
     }
@@ -637,7 +641,7 @@ export default function SortieHistory() {
       // Check if update reason is required (for validated/rejected expenses)
       const requiresUpdateReason = editingExpense.status !== "pending" && userPermissions.isAdmin;
       if (requiresUpdateReason && !editForm.updateReason.trim()) {
-        setEditError("Indiquez la raison de la modification : ce décaissement a déjà été traité.");
+        setEditError(t("expenseHistory.updateReasonRequired"));
         setActionLoading(null);
         return;
       }
@@ -664,7 +668,7 @@ export default function SortieHistory() {
 
       if (response.ok) {
         const updatedExpense = await response.json();
-        notifySuccess("Modification enregistrée avec succès.");
+        notifySuccess(t("salesHistory.editSaved"));
         closeEditModal();
 
         // Update the expense in the local state
@@ -694,8 +698,8 @@ export default function SortieHistory() {
     if (printWindow) {
       // Format the amount directly for the print window
       const formattedAmount = expense.enteredCurrency === "FC"
-        ? `${(expense.enteredAmount ?? expense.amountFC ?? 0).toLocaleString("fr-FR")} FC (Équiv. $${(expense.amountUSD ?? expense.amount).toFixed(2)})`
-        : new Intl.NumberFormat("fr-FR", {
+        ? `${(expense.enteredAmount ?? expense.amountFC ?? 0).toLocaleString(currentLocale())} FC (${t("entryHistory.equivalent", { amount: `$${(expense.amountUSD ?? expense.amount).toFixed(2)}` })})`
+        : new Intl.NumberFormat(currentLocale(), {
             style: "currency",
             currency: "USD",
           }).format(expense.enteredAmount ?? expense.amount);
@@ -706,9 +710,9 @@ export default function SortieHistory() {
         : formattedDate;
 
       printWindow.document.write(`
-<html>
+<html lang="${currentLocale().slice(0, 2)}">
   <head>
-    <title>Reçu de décaissement</title>
+    <title>${t("expenseVoucher.title")}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
       * {
@@ -894,65 +898,65 @@ export default function SortieHistory() {
       <div class="header">
         <div class="shop-name"><strong>ETS DOUBLE M CLASSIC BOUTIQUE</strong></div>
         <div class="shop-details"><strong>780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi</strong></div>
-        <div class="shop-details">TEL: <strong>+243 836 017 031</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>+243 975 085 799</strong></div>
         <div class="shop-details"><strong>LSH/RCCM/22-A-01266</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${formattedDate}</strong></div>
-        <div class="shop-details">RECU #: <strong>${
+        <div class="shop-details">${t("receipt.date")}: <strong>${formattedDate}</strong></div>
+        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${
           expense.expenseId
         }</strong></div>
       </div>
       
-      <div class="receipt-title">REÇU DE DÉCAISSEMENT</div>
+      <div class="receipt-title">${t("expenseVoucher.heading")}</div>
       
       <div class="expense-details">
         <div class="detail-row">
-          <div class="detail-label"><strong>RAISON:</strong></div>
+          <div class="detail-label"><strong>${t("expenseVoucher.reason")}:</strong></div>
           <div class="detail-value"><strong>${expense.reason.toUpperCase()}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>BÉNÉFICIAIRE:</strong></div>
+          <div class="detail-label"><strong>${t("expenseVoucher.beneficiary")}:</strong></div>
           <div class="detail-value"><strong>${expense.recipientName.toUpperCase()}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>TÉLÉPHONE:</strong></div>
+          <div class="detail-label"><strong>${t("receipt.phone")}:</strong></div>
           <div class="detail-value"><strong>${
             expense.recipientPhone
           }</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>MONTANT:</strong></div>
+          <div class="detail-label"><strong>${t("expenseVoucher.amount")}:</strong></div>
           <div class="detail-value"><strong>${formattedAmount}</strong></div>
         </div>
         <div class="detail-row">
-          <div class="detail-label"><strong>PAIEMENT:</strong></div>
-          <div class="detail-value"><strong>${expense.paymentMethod.toUpperCase()}</strong></div>
+          <div class="detail-label"><strong>${t("saleReceipt.payment")}:</strong></div>
+          <div class="detail-value"><strong>${paymentMethodLabel(expense.paymentMethod).toUpperCase()}</strong></div>
         </div>
       </div>
       
       <div class="total-section">
         <div class="total-row">
-          <div><strong>MONTANT TOTAL:</strong></div>
+          <div><strong>${t("expenseVoucher.totalAmount")}:</strong></div>
           <div><strong>${formattedAmount}</strong></div>
         </div>
       </div>
       
       <div class="validation-info">
-        Validé par: <strong>${expense.validatedBy || "ADMIN"}</strong><br>
-        Le: <strong>${validatedDate}</strong>
+        ${t("expenseVoucher.validatedBy")}: <strong>${expense.validatedBy || "ADMIN"}</strong><br>
+        ${t("expenseVoucher.on")}: <strong>${validatedDate}</strong>
       </div>
       
       <div class="footer">
-        <div class="thank-you"><strong>SOUCHE DE DÉCAISSEMENT</strong></div>
-        <div class="warning"><strong>Conserver cette souche</strong></div>
-        <div class="warning">Reçu #: <strong>${
+        <div class="thank-you"><strong>${t("expenseVoucher.stub")}</strong></div>
+        <div class="warning"><strong>${t("saleReceipt.keepStub")}</strong></div>
+        <div class="warning">${t("entryReceipt.receiptNo")}: <strong>${
           expense.expenseId
         }</strong></div>
-        <div class="warning">Date: <strong>${formattedDate}</strong></div>
+        <div class="warning">${t("entryReceipt.date")}: <strong>${formattedDate}</strong></div>
       </div>
       
       <!-- PAPER CUT INDICATOR -->
@@ -1034,7 +1038,7 @@ export default function SortieHistory() {
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
             <Shield className="w-5 h-5" />
-            Synthèse des décaissements
+            {t("expenseHistory.summary.title")}
           </h3>
         </div>
         
@@ -1042,7 +1046,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total des décaissements</p>
+                <p className="text-sm text-gray-600">{t("expenseHistory.summary.total")}</p>
                 <p className="text-2xl font-bold text-blue-600">{summaryStats.totalRecords}</p>
                 <p className="text-sm text-gray-500">{formatUSD(summaryStats.totalAmount)}</p>
               </div>
@@ -1053,7 +1057,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Validés</p>
+                <p className="text-sm text-gray-600">{t("expenseHistory.summary.validated")}</p>
                 <p className="text-2xl font-bold text-green-600">{summaryStats.validated.count}</p>
                 <p className="text-sm text-green-600">{formatUSD(summaryStats.validated.amount)}</p>
               </div>
@@ -1064,7 +1068,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">En Attente</p>
+                <p className="text-sm text-gray-600">{t("expenseHistory.summary.pending")}</p>
                 <p className="text-2xl font-bold text-yellow-600">{summaryStats.pending.count}</p>
                 <p className="text-sm text-yellow-600">{formatUSD(summaryStats.pending.amount)}</p>
               </div>
@@ -1075,7 +1079,7 @@ export default function SortieHistory() {
           <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Rejetés</p>
+                <p className="text-sm text-gray-600">{t("expenseHistory.summary.rejected")}</p>
                 <p className="text-2xl font-bold text-red-600">{summaryStats.rejected?.count || 0}</p>
                 <p className="text-sm text-red-600">{formatUSD(summaryStats.rejected?.amount || 0)}</p>
               </div>
@@ -1088,24 +1092,24 @@ export default function SortieHistory() {
         <div className="mt-4 pt-4 border-t border-blue-200">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <div className="text-sm font-medium text-gray-700 mb-2">Répartition par statut</div>
+              <div className="text-sm font-medium text-gray-700 mb-2">{t("expenseHistory.summary.byStatus")}</div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Validés :</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.validated")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-green-600">{summaryStats.validated.count}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.validated.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">En attente :</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.pending")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-yellow-600">{summaryStats.pending.count}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.pending.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Rejetés :</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.rejected")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-red-600">{summaryStats.rejected?.count || 0}</span>
                     <div className="text-xs text-gray-500">{formatUSD(summaryStats.rejected?.amount || 0)}</div>
@@ -1115,14 +1119,14 @@ export default function SortieHistory() {
             </div>
 
             <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <div className="text-sm font-medium text-gray-700 mb-2">Montants totaux</div>
+              <div className="text-sm font-medium text-gray-700 mb-2">{t("expenseHistory.summary.totals")}</div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Total général:</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.grandTotal")}:</span>
                   <span className="font-bold text-blue-600">{formatUSD(summaryStats.totalAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Montant moyen:</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.average")}:</span>
                   <span className="font-medium text-gray-900">
                     {summaryStats.totalRecords > 0 
                       ? formatUSD(summaryStats.totalAmount / summaryStats.totalRecords)
@@ -1131,7 +1135,7 @@ export default function SortieHistory() {
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Taux de validation:</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.validationRate")}:</span>
                   <span className="font-medium text-green-600">
                     {summaryStats.totalRecords > 0 
                       ? `${((summaryStats.validated.count / summaryStats.totalRecords) * 100).toFixed(1)}%`
@@ -1143,18 +1147,18 @@ export default function SortieHistory() {
             </div>
 
             <div className="bg-white p-3 rounded-lg border border-gray-200">
-              <div className="text-sm font-medium text-gray-700 mb-2">Informations temporelles</div>
+              <div className="text-sm font-medium text-gray-700 mb-2">{t("expenseHistory.summary.timeInfo")}</div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Période:</span>
-                  <span className="text-sm font-medium text-gray-900">{timeframeDescription}</span>
+                  <span className="text-sm text-gray-600">{t("salesHistory.filters.period")}:</span>
+                  <span className="text-sm font-medium text-gray-900">{describeTimeframeFr(timeframeDescription)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Dernière mise à jour:</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.lastUpdate")}:</span>
                   <span className="text-sm text-gray-900">{formatTimeGMT2(new Date())}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-600">Données filtrées:</span>
+                  <span className="text-sm text-gray-600">{t("expenseHistory.summary.filtered")}:</span>
                   <span className="text-sm text-gray-900">{filteredExpenses.length} / {expenses.length}</span>
                 </div>
               </div>
@@ -1181,14 +1185,14 @@ export default function SortieHistory() {
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            Actualiser
+            {t("common.refresh")}
           </button>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Rechercher un décaissement…"
-              aria-label="Rechercher un décaissement"
+              placeholder={t("expenseHistory.searchPlaceholder")}
+              aria-label={t("expenseHistory.searchLabel")}
               className="pl-10 w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1205,7 +1209,7 @@ export default function SortieHistory() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
-            Filtre par période ({getTimeframeLabel()})
+            {t("expenseHistory.periodFilter", { period: getTimeframeLabel() })}
           </h3>
           
           <div className="flex flex-wrap gap-2">
@@ -1214,7 +1218,7 @@ export default function SortieHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <Filter className="w-4 h-4" />
-              {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
+              {showFilters ? t("salesHistory.filters.hide") : t("salesHistory.filters.show")}
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
             
@@ -1223,7 +1227,7 @@ export default function SortieHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Réinitialiser les filtres
+              {t("salesHistory.filters.reset")}
             </button>
           </div>
         </div>
@@ -1233,7 +1237,7 @@ export default function SortieHistory() {
           <div className="space-y-4">
             <div>
               <span id="sortie-history-timeframe-type" className="block text-sm font-medium text-gray-700 mb-2">
-                Type de période
+                {t("expenseHistory.periodType")}
               </span>
               <div role="group" aria-labelledby="sortie-history-timeframe-type" className="flex flex-wrap gap-2">
                 {(["today", "day", "month", "year", "custom"] as const).map((type) => (
@@ -1247,11 +1251,7 @@ export default function SortieHistory() {
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     } ${!userPermissions.isAdmin && type !== "day" ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
-                    {type === "today" && "Aujourd'hui"}
-                    {type === "day" && "Jour spécifique"}
-                    {type === "month" && "Mois spécifique"}
-                    {type === "year" && "Année spécifique"}
-                    {type === "custom" && "Plage personnalisée"}
+                    {t(`expenseHistory.timeframes.${type}`)}
                   </button>
                 ))}
               </div>
@@ -1262,7 +1262,7 @@ export default function SortieHistory() {
               {timeframeType === "day" && (
                 <div>
                   <label htmlFor="sortie-history-date" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
+                    {t("common.date")}
                   </label>
                   <input
                     id="sortie-history-date"
@@ -1279,7 +1279,7 @@ export default function SortieHistory() {
                 <>
                   <div>
                     <label htmlFor="sortie-history-mois-annee" className="block text-sm font-medium text-gray-700 mb-1">
-                      Année
+                      {t("salesHistory.filters.year")}
                     </label>
                     <select
                       id="sortie-history-mois-annee"
@@ -1294,7 +1294,7 @@ export default function SortieHistory() {
                   </div>
                   <div>
                     <label htmlFor="sortie-history-mois" className="block text-sm font-medium text-gray-700 mb-1">
-                      Mois
+                      {t("salesHistory.filters.month")}
                     </label>
                     <select
                       id="sortie-history-mois"
@@ -1318,7 +1318,7 @@ export default function SortieHistory() {
               {timeframeType === "year" && (
                 <div>
                   <label htmlFor="sortie-history-annee" className="block text-sm font-medium text-gray-700 mb-1">
-                    Année
+                    {t("salesHistory.filters.year")}
                   </label>
                   <select
                     id="sortie-history-annee"
@@ -1337,7 +1337,7 @@ export default function SortieHistory() {
                 <>
                   <div>
                     <label htmlFor="sortie-history-date-de-debut" className="block text-sm font-medium text-gray-700 mb-1">
-                      Date de début
+                      {t("expenseHistory.startDate")}
                     </label>
                     <input
                       id="sortie-history-date-de-debut"
@@ -1349,7 +1349,7 @@ export default function SortieHistory() {
                   </div>
                   <div>
                     <label htmlFor="sortie-history-date-de-fin" className="block text-sm font-medium text-gray-700 mb-1">
-                      Date de fin
+                      {t("expenseHistory.endDate")}
                     </label>
                     <input
                       id="sortie-history-date-de-fin"
@@ -1369,7 +1369,7 @@ export default function SortieHistory() {
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
               >
-                {showAdvancedFilters ? "Masquer les filtres avancés" : "Filtres avancés"}
+                {showAdvancedFilters ? t("salesHistory.filters.hideAdvanced") : t("salesHistory.filters.advanced")}
                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
               </button>
 
@@ -1377,7 +1377,7 @@ export default function SortieHistory() {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                   <div>
                     <label htmlFor="sortie-history-statut" className="block text-sm font-medium text-gray-700 mb-1">
-                      Statut
+                      {t("salesHistory.filters.status")}
                     </label>
                     <select
                       id="sortie-history-statut"
@@ -1385,17 +1385,17 @@ export default function SortieHistory() {
                       onChange={(e) => handleQueryParamChange("status", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">Tous les statuts</option>
-                      <option value="pending">En attente</option>
-                      <option value="validated">Validés</option>
-                      <option value="rejected">Rejetés</option>
-                      <option value="all">Tous</option>
+                      <option value="">{t("salesHistory.filters.allStatuses")}</option>
+                      <option value="pending">{t("expenseHistory.summary.pending")}</option>
+                      <option value="validated">{t("expenseHistory.summary.validated")}</option>
+                      <option value="rejected">{t("expenseHistory.summary.rejected")}</option>
+                      <option value="all">{t("salesHistory.filters.all")}</option>
                     </select>
                   </div>
                   
                   <div>
                     <label htmlFor="sortie-history-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
-                      Méthode de paiement
+                      {t("salesHistory.details.paymentMethod")}
                     </label>
                     <select
                       id="sortie-history-methode-de-paiement"
@@ -1403,25 +1403,23 @@ export default function SortieHistory() {
                       onChange={(e) => handleQueryParamChange("paymentMethod", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">Toutes</option>
-                      <option value="cash">Espèces</option>
-                      <option value="card">Carte</option>
-                      <option value="bank">Banque</option>
-                      <option value="mpesa">M-Pesa</option>
-                      <option value="other">Autre</option>
+                      <option value="">{t("expenseHistory.allPaymentMethods")}</option>
+                      {(["cash", "card", "bank", "mpesa", "other"] as const).map((value) => (
+                        <option key={value} value={value}>{paymentMethodLabel(value)}</option>
+                      ))}
                     </select>
                   </div>
                   
                   <div>
                     <label htmlFor="sortie-history-enregistre-par" className="block text-sm font-medium text-gray-700 mb-1">
-                      Enregistré par
+                      {t("entryHistory.recordedBy")}
                     </label>
                     <input
                       id="sortie-history-enregistre-par"
                       type="text"
                       value={queryParams.recordedBy}
                       onChange={(e) => handleQueryParamChange("recordedBy", e.target.value)}
-                      placeholder="Filtrer par enregistreur..."
+                      placeholder={t("expenseHistory.recordedByPlaceholder")}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     />
                   </div>
@@ -1434,12 +1432,12 @@ export default function SortieHistory() {
         {/* Applied Filters Summary */}
         {appliedFilters && (
           <div className="mt-4 text-sm text-gray-600">
-            <span className="font-medium">Filtres appliqués :</span>
+            <span className="font-medium">{t("salesHistory.filters.applied")}</span>
             <span className="ml-2">
-              Statut : {appliedFilters.status && !["all", "none"].includes(appliedFilters.status) ? expenseStatusLabel(appliedFilters.status) : "tous"},
-              Paiement : {appliedFilters.paymentMethod && !["all", "none"].includes(appliedFilters.paymentMethod) ? paymentMethodLabel(appliedFilters.paymentMethod) : "tous"}
-              {appliedFilters.recordedBy && appliedFilters.recordedBy !== 'none' && `, Enregistré par : ${appliedFilters.recordedBy}`}
-              {appliedFilters.search && appliedFilters.search !== 'none' && `, Recherche : ${appliedFilters.search}`}
+              {t("salesHistory.filters.appliedStatus", { value: appliedFilters.status && !["all", "none"].includes(appliedFilters.status) ? expenseStatusLabel(appliedFilters.status) : t("salesHistory.filters.any") })},{" "}
+              {t("expenseHistory.appliedPayment", { value: appliedFilters.paymentMethod && !["all", "none"].includes(appliedFilters.paymentMethod) ? paymentMethodLabel(appliedFilters.paymentMethod) : t("salesHistory.filters.any") })}
+              {appliedFilters.recordedBy && appliedFilters.recordedBy !== 'none' && `, ${t("expenseHistory.appliedRecordedBy", { value: appliedFilters.recordedBy })}`}
+              {appliedFilters.search && appliedFilters.search !== 'none' && `, ${t("expenseHistory.appliedSearch", { value: appliedFilters.search })}`}
             </span>
           </div>
         )}
@@ -1473,7 +1471,7 @@ export default function SortieHistory() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            {userPermissions.isAdmin ? "Décaissements de la période" : "Décaissements du jour"} (
+            {userPermissions.isAdmin ? t("expenseHistory.periodExpenses") : t("expenseHistory.todayExpenses")} (
             {filteredExpenses.length})
           </h2>
         </div>
@@ -1482,41 +1480,41 @@ export default function SortieHistory() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Chargement des décaissements…</p>
+              <p className="text-gray-500 mt-2">{t("expenseHistory.loading")}</p>
             </div>
           ) : filteredExpenses.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>Aucun décaissement trouvé</p>
-              <p className="text-sm">pour la période sélectionnée</p>
+              <p>{t("expenseHistory.none")}</p>
+              <p className="text-sm">{t("salesHistory.forPeriod")}</p>
             </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Référence
+                    {t("common.reference")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Motif et type
+                    {t("expenseHistory.cols.reasonType")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Bénéficiaire
+                    {t("expenseHistory.cols.beneficiary")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Montant
+                    {t("entryHistory.amount")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Paiement
+                    {t("salesHistory.cols.payment")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Statut
+                    {t("entryHistory.status")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                    {t("common.date")}
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                    {t("common.actions")}
                   </th>
                 </tr>
               </thead>
@@ -1532,10 +1530,10 @@ export default function SortieHistory() {
                       <div className="mt-1 flex flex-wrap gap-1">
                         <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${["REPAYMENT", "repayment"].includes(expense.expenseType || "") ? "bg-orange-100 text-orange-800" : expense.expenseType === "COMPANY_EXPENSE" ? "bg-red-100 text-red-800" : expense.expenseType === "GOODS_PURCHASE" ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-700"}`}>
                           {expenseTypeLabel(expense.expenseType)}
-                          {["REPAYMENT", "repayment"].includes(expense.expenseType || "") ? ` · ${expense.creditorSnapshot?.name || "Créancier"}` : expense.category ? ` · ${expense.category === "SHOES" ? "Chaussures" : "Vêtements"}` : ""}
+                          {["REPAYMENT", "repayment"].includes(expense.expenseType || "") ? ` · ${expense.creditorSnapshot?.name || t("expenseHistory.creditor")}` : expense.category ? ` · ${t(`confirm.categories.${expense.category === "SHOES" ? "SHOES" : "CLOTHES"}`)}` : ""}
                         </span>
-                        {expense.transactionKind === "REVERSAL" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">Contre-passation</span>}
-                        {expense.reversedBy && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">Contre-passé</span>}
+                        {expense.transactionKind === "REVERSAL" && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">{t("expenseHistory.reversal")}</span>}
+                        {expense.reversedBy && <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">{t("expenseHistory.reversed")}</span>}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -1564,11 +1562,7 @@ export default function SortieHistory() {
                             : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {expense.status === "validated"
-                          ? "Validé"
-                          : expense.status === "rejected"
-                          ? "Rejeté"
-                          : "En attente"}
+                        {expenseStatusLabel(expense.status)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1579,7 +1573,7 @@ export default function SortieHistory() {
                         <button
                           onClick={() => viewExpenseDetails(expense)}
                           className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                          title="Voir les détails"
+                          title={t("salesHistory.actions.view")}
                         >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -1588,7 +1582,7 @@ export default function SortieHistory() {
                         <button
                           onClick={() => fetchExpenseHistory(expense._id)}
                           className="text-gray-600 hover:text-gray-900 p-1 rounded"
-                          title="Voir l'historique"
+                          title={t("expenseHistory.actions.history")}
                         >
                           <History className="w-4 h-4" />
                         </button>
@@ -1602,8 +1596,8 @@ export default function SortieHistory() {
                                 onClick={() => requestValidation(expense)}
                                 disabled={confirmAction.busy}
                                 className="text-green-600 hover:text-green-900 p-1 rounded disabled:opacity-50"
-                                title="Valider le décaissement"
-                                aria-label={`Valider ${expense.expenseId}`}
+                                title={t("expenseHistory.actions.validate")}
+                                aria-label={t("expenseHistory.actions.validateId", { id: expense.expenseId })}
                               >
                                 <CheckCircle className="w-4 h-4" />
                               </button>
@@ -1611,8 +1605,8 @@ export default function SortieHistory() {
                                 onClick={() => requestRejection(expense)}
                                 disabled={confirmAction.busy}
                                 className="text-red-600 hover:text-red-900 p-1 rounded disabled:opacity-50"
-                                title="Rejeter le décaissement"
-                                aria-label={`Rejeter ${expense.expenseId}`}
+                                title={t("expenseHistory.actions.reject")}
+                                aria-label={t("expenseHistory.actions.rejectId", { id: expense.expenseId })}
                               >
                                 <XCircle className="w-4 h-4" />
                               </button>
@@ -1624,7 +1618,7 @@ export default function SortieHistory() {
                           <button
                             onClick={() => openEditModal(expense)}
                             className="text-yellow-600 hover:text-yellow-900 p-1 rounded"
-                            title="Modifier le décaissement"
+                            title={t("expenseHistory.actions.edit")}
                           >
                             <Edit className="w-4 h-4" />
                           </button>
@@ -1635,8 +1629,8 @@ export default function SortieHistory() {
                           <button
                             onClick={() => requestDeletion(expense)}
                             className="text-red-600 hover:text-red-900 p-1 rounded"
-                            title="Supprimer le décaissement"
-                            aria-label={`Supprimer ${expense.expenseId}`}
+                            title={t("expenseHistory.actions.delete")}
+                            aria-label={t("expenseHistory.actions.deleteId", { id: expense.expenseId })}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1646,8 +1640,8 @@ export default function SortieHistory() {
                           <button
                             onClick={() => requestReversal(expense)}
                             className="text-amber-600 hover:text-amber-800 p-1 rounded"
-                            title="Contre-passer l'opération"
-                            aria-label={`Contre-passer ${expense.expenseId}`}
+                            title={t("expenseHistory.actions.reverse")}
+                            aria-label={t("expenseHistory.actions.reverseId", { id: expense.expenseId })}
                           >
                             <RotateCcw className="w-4 h-4" />
                           </button>
@@ -1658,7 +1652,7 @@ export default function SortieHistory() {
                           <button
                             onClick={() => printExpenseReceipt(expense)}
                             className="text-purple-600 hover:text-purple-900 p-1 rounded"
-                            title="Imprimer le reçu"
+                            title={t("salesHistory.actions.printReceipt")}
                           >
                             <Printer className="w-4 h-4" />
                           </button>
@@ -1676,11 +1670,11 @@ export default function SortieHistory() {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
           <span className="text-sm text-gray-600">
-            Page {pagination.page} sur {pagination.totalPages} · {pagination.totalRecords} décaissements
+            {t("expenseHistory.pagination", { page: pagination.page, pages: pagination.totalPages, count: pagination.totalRecords })}
           </span>
           <div className="flex gap-2">
-            <button disabled={!pagination.hasPreviousPage} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded border px-3 py-1.5 disabled:opacity-40">Précédent</button>
-            <button disabled={!pagination.hasNextPage} onClick={() => setCurrentPage((page) => page + 1)} className="rounded border px-3 py-1.5 disabled:opacity-40">Suivant</button>
+            <button disabled={!pagination.hasPreviousPage} onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} className="rounded border px-3 py-1.5 disabled:opacity-40">{t("salesHistory.previous")}</button>
+            <button disabled={!pagination.hasNextPage} onClick={() => setCurrentPage((page) => page + 1)} className="rounded border px-3 py-1.5 disabled:opacity-40">{t("salesHistory.next")}</button>
           </div>
         </div>
       )}
@@ -1691,7 +1685,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Détails du décaissement
+                {t("expenseHistory.details.title")}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -1706,7 +1700,7 @@ export default function SortieHistory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Référence
+                    {t("common.reference")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {selectedExpense.expenseId}
@@ -1714,7 +1708,7 @@ export default function SortieHistory() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
+                    {t("common.date")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {formatDate(selectedExpense.createdAt)}
@@ -1722,7 +1716,7 @@ export default function SortieHistory() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de paiement
+                    {t("salesHistory.details.paymentMethod")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {paymentMethodLabel(selectedExpense.paymentMethod)}
@@ -1730,7 +1724,7 @@ export default function SortieHistory() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Statut
+                    {t("entryHistory.status")}
                   </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
@@ -1741,16 +1735,12 @@ export default function SortieHistory() {
                         : "bg-yellow-100 text-yellow-800"
                     }`}
                   >
-                    {selectedExpense.status === "validated"
-                      ? "Validé"
-                      : selectedExpense.status === "rejected"
-                      ? "Rejeté"
-                      : "En attente"}
+                    {expenseStatusLabel(selectedExpense.status)}
                   </span>
                 </div>
                 <div className="col-span-2">
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Enregistré par
+                    {t("entryHistory.recordedBy")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {selectedExpense.recordedBy}
@@ -1762,13 +1752,13 @@ export default function SortieHistory() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  Motif et montant
+                  {t("expenseHistory.details.reasonAmount")}
                 </h4>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="space-y-3">
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Raison
+                        {t("salesHistory.reason")}
                       </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.reason}
@@ -1777,7 +1767,7 @@ export default function SortieHistory() {
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <span className="block text-sm font-medium text-gray-700 mb-1">
-                          Montant
+                          {t("entryHistory.amount")}
                         </span>
                         <p className="text-lg font-semibold text-gray-900">
                           {formatUSD(selectedExpense.amount)}
@@ -1792,13 +1782,13 @@ export default function SortieHistory() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  Information du Bénéficiaire
+                  {t("expenseHistory.details.beneficiaryInfo")}
                 </h4>
                 <div className="bg-gray-50 rounded-lg p-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Nom
+                        {t("entryHistory.name")}
                       </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.recipientName}
@@ -1806,7 +1796,7 @@ export default function SortieHistory() {
                     </div>
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Téléphone
+                        {t("common.phone")}
                       </span>
                       <p className="text-sm text-gray-900">
                         {selectedExpense.recipientPhone}
@@ -1820,7 +1810,7 @@ export default function SortieHistory() {
               {selectedExpense.notes && (
                 <div>
                   <h4 className="text-md font-medium text-gray-900 mb-3">
-                    Notes supplémentaires
+                    {t("expenseHistory.details.notes")}
                   </h4>
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm text-gray-900 whitespace-pre-line">
@@ -1838,7 +1828,7 @@ export default function SortieHistory() {
                   className="flex-1 bg-gray-600 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <History className="w-4 h-4" />
-                  Historique
+                  {t("expenseHistory.details.history")}
                 </button>
                 
                 {selectedExpense.status === "validated" && (
@@ -1847,7 +1837,7 @@ export default function SortieHistory() {
                     className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <Printer className="w-4 h-4" />
-                    Imprimer Reçu
+                    {t("salesHistory.actions.printReceipt")}
                   </button>
                 )}
                 {userPermissions.canValidate &&
@@ -1859,14 +1849,14 @@ export default function SortieHistory() {
                         className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                       >
                         <CheckCircle className="w-4 h-4" />
-                        Valider
+                        {t("expenseHistory.details.validate")}
                       </button>
                       <button
                         onClick={() => requestRejection(selectedExpense)}
                         className="flex-1 bg-red-50 text-red-700 border border-red-200 px-4 py-2 rounded-lg hover:bg-red-100 transition-colors flex items-center justify-center gap-2"
                       >
                         <XCircle className="w-4 h-4" />
-                        Rejeter
+                        {t("expenseHistory.details.reject")}
                       </button>
                     </>
                   )}
@@ -1876,7 +1866,7 @@ export default function SortieHistory() {
                     className="flex-1 bg-amber-50 text-amber-800 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 transition-colors flex items-center justify-center gap-2"
                   >
                     <RotateCcw className="w-4 h-4" />
-                    Contre-passer
+                    {t("expenseHistory.details.reverse")}
                   </button>
                 )}
                 {canEditExpense(selectedExpense) && (
@@ -1885,7 +1875,7 @@ export default function SortieHistory() {
                     className="flex-1 bg-yellow-600 text-white px-4 py-2 rounded-lg hover:bg-yellow-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <Edit className="w-4 h-4" />
-                    Modifier
+                    {t("expenseHistory.details.edit")}
                   </button>
                 )}
                 {canDeleteExpense(selectedExpense) && (
@@ -1894,14 +1884,14 @@ export default function SortieHistory() {
                     className="flex-1 bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors flex items-center justify-center gap-2"
                   >
                     <Trash2 className="w-4 h-4" />
-                    Supprimer
+                    {t("salesHistory.correction.remove")}
                   </button>
                 )}
                 <button
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>
@@ -1918,7 +1908,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Modifier le décaissement
+                {t("expenseHistory.actions.edit")}
               </h3>
               <button
                 onClick={closeEditModal}
@@ -1934,12 +1924,11 @@ export default function SortieHistory() {
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-5 h-5 text-yellow-600" />
                     <span className="text-sm font-medium text-yellow-800">
-                      Modification d'un décaissement {expenseStatusLabel(editingExpense.status).toLowerCase()}
+                      {t("expenseHistory.edit.processedTitle", { status: expenseStatusLabel(editingExpense.status).toLowerCase() })}
                     </span>
                   </div>
                   <p className="text-sm text-yellow-700 mt-2">
-                    Ce décaissement a déjà été traité. Indiquez la raison de
-                    cette modification.
+                    {t("expenseHistory.edit.processedHint")}
                   </p>
                 </div>
               )}
@@ -1947,7 +1936,7 @@ export default function SortieHistory() {
               <div className="space-y-4">
                 <div>
                   <label htmlFor="sortie-edit-raison" className="block text-sm font-medium text-gray-700 mb-1">
-                    Motif du décaissement *
+                    {t("expenseHistory.edit.reason")} *
                   </label>
                   <input
                     id="sortie-edit-raison"
@@ -1964,7 +1953,7 @@ export default function SortieHistory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="sortie-edit-beneficiaire-nom" className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom du bénéficiaire *
+                      {t("expenseHistory.edit.beneficiaryName")} *
                     </label>
                     <input
                       id="sortie-edit-beneficiaire-nom"
@@ -1980,7 +1969,7 @@ export default function SortieHistory() {
 
                   <div>
                     <label htmlFor="sortie-edit-beneficiaire-telephone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Téléphone du bénéficiaire *
+                      {t("expenseHistory.edit.beneficiaryPhone")} *
                     </label>
                     <input
                       id="sortie-edit-beneficiaire-telephone"
@@ -1998,7 +1987,7 @@ export default function SortieHistory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="sortie-edit-montant" className="block text-sm font-medium text-gray-700 mb-1">
-                      Montant (USD) *
+                      {t("entryHistory.amountUsd")} *
                     </label>
                     <input
                       id="sortie-edit-montant"
@@ -2016,7 +2005,7 @@ export default function SortieHistory() {
 
                   <div>
                     <label htmlFor="sortie-edit-methode-de-paiement" className="block text-sm font-medium text-gray-700 mb-1">
-                      Méthode de paiement *
+                      {t("salesHistory.details.paymentMethod")} *
                     </label>
                     <select
                       id="sortie-edit-methode-de-paiement"
@@ -2026,11 +2015,9 @@ export default function SortieHistory() {
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     >
-                      <option value="cash">Espèces</option>
-                      <option value="card">Carte</option>
-                      <option value="bank">Virement bancaire</option>
-                      <option value="mpesa">M-Pesa</option>
-                      <option value="other">Autre</option>
+                      {(["cash", "card", "bank", "mpesa", "other"] as const).map((value) => (
+                        <option key={value} value={value}>{paymentMethodLabel(value)}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -2038,7 +2025,7 @@ export default function SortieHistory() {
                 {requiresUpdateReason(editingExpense) && (
                   <div>
                     <label htmlFor="sortie-edit-motif" className="block text-sm font-medium text-gray-700 mb-1">
-                      Raison de la modification *
+                      {t("expenseHistory.edit.updateReason")} *
                     </label>
                     <textarea
                       id="sortie-edit-motif"
@@ -2048,19 +2035,18 @@ export default function SortieHistory() {
                       }
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                       rows={3}
-                      placeholder="Expliquez pourquoi vous modifiez ce décaissement…"
+                      placeholder={t("expenseHistory.edit.updateReasonPlaceholder")}
                       required
                     />
                     <p className="text-xs text-gray-500 mt-1">
-                      Cette raison sera enregistrée dans l'historique du
-                      décaissement.
+                      {t("expenseHistory.edit.updateReasonHint")}
                     </p>
                   </div>
                 )}
 
                 <div>
                   <label htmlFor="sortie-edit-notes" className="block text-sm font-medium text-gray-700 mb-1">
-                    Notes supplémentaires (optionnel)
+                    {t("expenseHistory.edit.notes")}
                   </label>
                   <textarea
                     id="sortie-edit-notes"
@@ -2070,7 +2056,7 @@ export default function SortieHistory() {
                     }
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     rows={3}
-                    placeholder="Ajoutez des notes supplémentaires..."
+                    placeholder={t("expenseHistory.edit.notesPlaceholder")}
                   />
                 </div>
               </div>
@@ -2092,13 +2078,13 @@ export default function SortieHistory() {
                   ) : (
                     <Save className="w-4 h-4" />
                   )}
-                  Enregistrer les modifications
+                  {t("expenseHistory.edit.save")}
                 </button>
                 <button
                   onClick={closeEditModal}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
@@ -2114,7 +2100,7 @@ export default function SortieHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Historique du décaissement
+                {t("expenseHistory.historyModal.title")}
               </h3>
               <button
                 onClick={closeHistoryModal}
@@ -2128,22 +2114,22 @@ export default function SortieHistory() {
               {historyLoading ? (
                 <div className="text-center py-8">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-                  <p className="text-gray-500 mt-2">Chargement de l'historique...</p>
+                  <p className="text-gray-500 mt-2">{t("expenseHistory.historyModal.loading")}</p>
                 </div>
               ) : expenseHistory.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Aucun historique disponible</p>
-                  <p className="text-sm">pour ce décaissement</p>
+                  <p>{t("expenseHistory.historyModal.none")}</p>
+                  <p className="text-sm">{t("expenseHistory.historyModal.forExpense")}</p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4">
                     <p className="text-sm font-medium text-gray-900">
-                      Décaissement : {selectedExpense?.expenseId || "—"}
+                      {t("expenseHistory.historyModal.expense", { id: selectedExpense?.expenseId || "—" })}
                     </p>
                     <p className="text-sm text-gray-600 mt-1">
-                      Statut actuel:{" "}
+                      {t("expenseHistory.historyModal.currentStatus")}:{" "}
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium capitalize ${
                           selectedExpense?.status === "validated"
@@ -2153,18 +2139,14 @@ export default function SortieHistory() {
                             : "bg-yellow-100 text-yellow-800"
                         }`}
                       >
-                        {selectedExpense?.status === "validated"
-                          ? "Validé"
-                          : selectedExpense?.status === "rejected"
-                          ? "Rejeté"
-                          : "En attente"}
+                        {expenseStatusLabel(selectedExpense?.status)}
                       </span>
                     </p>
                   </div>
 
                   <div className="space-y-3">
                     <h4 className="text-md font-medium text-gray-900">
-                      Journal des modifications
+                      {t("expenseHistory.historyModal.log")}
                     </h4>
                     <div className="space-y-3">
                       {expenseHistory.map((item, index) => (
@@ -2195,7 +2177,7 @@ export default function SortieHistory() {
                   onClick={closeHistoryModal}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>

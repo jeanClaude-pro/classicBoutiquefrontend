@@ -1,25 +1,11 @@
 import { serverUrl } from "../utils/constants";
+import type { escPosReceiptData } from "../lib/saleReceipt";
 
-export interface PrintReceiptData {
-  shopName: string;
-  shopAddress: string;
-  shopNumber: string;
-  shopRegistration: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail?: string;
-  items: Array<{
-    name: string;
-    quantity: number;
-    total: number;
-  }>;
-  total: number;
-  paymentMethod: string;
-  salesPerson: string;
-  date: string;
-  receiptNumber: number;
-  stubNumber: number;
-}
+// Thermal (ESC/POS) printing through the server. The payload is built by
+// escPosReceiptData (lib/saleReceipt.ts): stored item snapshots, the sale's
+// rate snapshot and the receipt labels in the interface language. The server
+// prints every amount in FC only (server/utils/receiptLayout.js).
+export type PrintReceiptData = ReturnType<typeof escPosReceiptData>;
 
 export class PrintService {
   static async printReceipt(receiptData: PrintReceiptData, type: 'sale' | 'reservation' = 'sale'): Promise<boolean> {

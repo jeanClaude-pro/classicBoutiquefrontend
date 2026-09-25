@@ -30,8 +30,15 @@ import { notifySuccess } from "../../lib/notify";
 import { voidSaleCopy } from "../../lib/confirmationCopy";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
 import { MODULES } from "../../config/modules";
+import { useTranslation } from "react-i18next";
 import { t as translate } from "../../i18n";
 import UnitPriceInput from "../../components/UnitPriceInput";
+import {
+  buildSaleReceipt,
+  formatReceiptFC,
+  openReceiptPrintWindow,
+  renderSaleReceiptHtml,
+} from "../../lib/saleReceipt";
 import {
   DISCOUNT_QUANTITY_THRESHOLD,
   createPriceSnapshot,
@@ -41,10 +48,8 @@ import {
   getItemOriginalTotal,
   getItemOriginalUnitPrice,
   getItemFcTotal,
-  getItemFcUnitPrice,
   getSaleFcTotal,
   getItemUsdTotal,
-  getItemUsdUnitPrice,
   isDiscountedPrice,
   productPriceAuthority,
   totalCartQuantity,
@@ -222,6 +227,7 @@ const getCurrentYear = (): number => {
 };
 
 export default function SalesHistory() {
+  const { t } = useTranslation();
   const { token: authToken } = useAuth();
 
   // Always prefer the React auth context token; fall back to localStorage
@@ -238,9 +244,10 @@ export default function SalesHistory() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopNumber: "+243 836 017 031",
+    shopNumber: "+243 975 085 799",
     shopRegistration: "LSH/RCCM/22-A-01266",
-    receiptFooter: "Merci pour votre confiance ! À bientôt.",
+    // Empty: the receipt then uses its own thank-you line in the interface language.
+    receiptFooter: "",
   });
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -395,7 +402,7 @@ export default function SalesHistory() {
       ? sale
       // Sales recorded by earlier versions may have no customer object;
       // they stay visible instead of silently disappearing from the history.
-      : { ...sale, customer: { name: "Client non renseigné", phone: "", email: "" } }));
+      : { ...sale, customer: { name: translate("salesHistory.customerMissing"), phone: "", email: "" } }));
   };
 
   // Build query string from queryParams
@@ -479,13 +486,13 @@ export default function SalesHistory() {
           updateEditedSales(validSales);
         } else {
           console.warn("Unexpected sales data structure:", data);
-          setError("Réponse inattendue du serveur. Actualisez la page.");
+          setError(t("salesHistory.unexpectedResponse"));
         }
       } else {
-        setError(`Impossible de charger les ventes. ${(await apiErrorFromResponse(res)).message}`);
+        setError(t("salesHistory.loadFailed", { message: (await apiErrorFromResponse(res)).message }));
       }
     } catch (error) {
-      setError(`Impossible de charger les ventes. ${toApiError(error).message}`);
+      setError(t("salesHistory.loadFailed", { message: toApiError(error).message }));
     } finally {
       setLoading(false);
     }
@@ -649,21 +656,6 @@ export default function SalesHistory() {
     return currency === "FC" ? formatFc(amount) : formatCurrency(amount);
   };
 
-  const compactDualUnit = (item: SaleItem, saleRate?: number) => {
-    const fc = getItemFcUnitPrice(item, saleRate);
-    return `${getItemUsdUnitPrice(item).toFixed(2)}$${fc === undefined ? "" : ` / ${formatFc(fc)}`}`;
-  };
-
-  const compactDualTotal = (item: SaleItem, saleRate?: number) => {
-    const fc = getItemFcTotal(item, saleRate);
-    return `${getItemUsdTotal(item).toFixed(2)}$${fc === undefined ? "" : ` / ${formatFc(fc)}`}`;
-  };
-
-  const compactDualSaleTotal = (total: number, items: SaleItem[], saleRate?: number) => {
-    const fc = getSaleFcTotal(total, items, saleRate);
-    return `${total.toFixed(2)}$${fc === undefined ? "" : ` / ${formatFc(fc)}`}`;
-  };
-
   const formatOriginalItemUnitPrice = (item: SaleItem) =>
     getItemOriginalCurrency(item) === "FC"
       ? formatFc(getItemOriginalUnitPrice(item))
@@ -682,17 +674,17 @@ export default function SalesHistory() {
 
     switch(timeframeType) {
       case "day":
-        return queryParams.date ? describeTimeframeFr(`Day: ${queryParams.date}`) : "Aujourd'hui";
+        return queryParams.date ? describeTimeframeFr(`Day: ${queryParams.date}`) : t("dates.today");
       case "month":
         return queryParams.year && queryParams.month
           ? describeTimeframeFr(`Month: ${queryParams.year}-${queryParams.month.padStart(2, '0')}`)
-          : "Ce mois-ci";
+          : t("salesHistory.thisMonth");
       case "year":
-        return queryParams.year ? describeTimeframeFr(`Year: ${queryParams.year}`) : "Cette année";
+        return queryParams.year ? describeTimeframeFr(`Year: ${queryParams.year}`) : t("salesHistory.thisYear");
       case "custom":
         return describeTimeframeFr(`Custom range: ${queryParams.from || "Beginning"} to ${queryParams.to || "Now"}`);
       default:
-        return "Aujourd'hui";
+        return t("dates.today");
     }
   };
 
@@ -713,28 +705,28 @@ export default function SalesHistory() {
       <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
         <h4 className="font-medium text-yellow-800 mb-2 flex items-center gap-2">
           <History className="w-4 h-4" />
-          Dernière modification
+          {t("salesHistory.lastEdit")}
         </h4>
         
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-yellow-700">Modifié par:</span>
-            <span className="font-medium">{latestEdit.editedBy || sale.editedBy || "Non renseigné"}</span>
+            <span className="text-yellow-700">{t("salesHistory.editedBy")}:</span>
+            <span className="font-medium">{latestEdit.editedBy || sale.editedBy || t("salesHistory.notProvided")}</span>
           </div>
           
           <div className="flex justify-between">
-            <span className="text-yellow-700">Date de modification:</span>
+            <span className="text-yellow-700">{t("salesHistory.editDate")}:</span>
             <span className="font-medium">{formatDate(latestEdit.editedAt || sale.editedAt || sale.updatedAt)}</span>
           </div>
           
           <div className="flex justify-between">
-            <span className="text-yellow-700">Raison:</span>
+            <span className="text-yellow-700">{t("salesHistory.reason")}:</span>
             <span className="font-medium text-right">{latestEdit.reason}</span>
           </div>
 
           {changes && Object.keys(changes).length > 0 && (
             <div className="mt-3 pt-3 border-t border-yellow-200">
-              <h5 className="font-medium text-yellow-800 mb-2">Changements:</h5>
+              <h5 className="font-medium text-yellow-800 mb-2">{t("salesHistory.changes")}:</h5>
               {changeEntries(changes).map(([field, changeData]) => (
                 <div key={field} className="mb-2 last:mb-0">
                   <div className="font-medium text-yellow-700 capitalize">
@@ -742,11 +734,11 @@ export default function SalesHistory() {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div className="bg-red-50 p-2 rounded">
-                      <div className="text-red-600 font-medium">Avant:</div>
+                      <div className="text-red-600 font-medium">{t("salesHistory.before")}:</div>
                       <div className="truncate">{JSON.stringify(changeData.from)}</div>
                     </div>
                     <div className="bg-green-50 p-2 rounded">
-                      <div className="text-green-600 font-medium">Après:</div>
+                      <div className="text-green-600 font-medium">{t("salesHistory.after")}:</div>
                       <div className="truncate">{JSON.stringify(changeData.to)}</div>
                     </div>
                   </div>
@@ -759,464 +751,105 @@ export default function SalesHistory() {
     );
   };
 
-  // Print function for ESC/POS receipt - opens print dialog
+  // Customer receipt of a stored sale (reprint and PDF), in the interface
+  // language. Every amount is FC from the sale's own snapshots, so an old
+  // sale reprints with the francs it was sold for, whatever today's rate.
+  const saleReceiptDocument = (sale: Sale) => buildSaleReceipt({
+    ...shopSettings,
+    receiptNumber: sale.saleId,
+    date: formatDate(sale.createdAt),
+    customerName: sale.isWalkIn ? translate("pos.walkIn") : sale.customer?.name || "",
+    customerPhone: sale.customer?.phone || "",
+    customerEmail: sale.customer?.email || "",
+    items: sale.items,
+    exchangeRate: sale.exchangeRate,
+    paymentMethod: sale.paymentMethod,
+    salesPerson: sale.salesPerson || translate("salesHistory.notSpecified"),
+  });
+
+  // Reprint in the 80mm browser print dialog (same template as a new sale).
   const printESC_POSReceipt = async (sale: Sale) => {
-    const printWindow = window.open("", "_blank", "width=320,height=600");
-    if (printWindow) {
-      printWindow.document.write(`
-<html>
-  <head>
-    <title>Reçu de vente</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
-      body {
-        font-family: 'Courier New', Courier, monospace;
-        margin: 0;
-        padding: 0;
-        font-size: 12px;
-        font-weight: bold;
-        line-height: 1.2;
-        width: 80mm;
-        background-color: white;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-      }
-      .receipt-container {
-        width: 78mm;
-        margin: 0 auto;
-        padding: 1mm 2mm;
-        border: none;
-        text-align: center;
-        position: relative;
-      }
-      .logo-watermark {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image: url('${window.location.origin}/newlogo.png');
-        background-repeat: no-repeat;
-        background-position: center;
-        background-size: 65%;
-        opacity: 0.18;
-        pointer-events: none;
-        z-index: 0;
-      }
-      .content-wrapper {
-        position: relative;
-        z-index: 1;
-      }
-      .header {
-        text-align: center;
-        margin-bottom: 2mm;
-        padding-bottom: 1mm;
-        border-bottom: 2px double #000;
-      }
-      .shop-name {
-        font-size: 15px;
-        font-weight: bold;
-        margin-bottom: 0.5mm;
-        text-transform: uppercase;
-      }
-      .shop-details {
-        font-size: 11px;
-        margin-bottom: 0.3mm;
-        line-height: 1;
-        font-weight: bold;
-      }
-      .receipt-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        background-color: #f8f8f8;
-        border-left: 3px solid #000;
-        text-align: left;
-      }
-      .receipt-title {
-        font-size: 11px;
-        font-weight: bold;
-        margin: 1mm 0;
-        text-transform: uppercase;
-        background-color: #000;
-        color: white;
-        padding: 1mm 2mm;
-        border-radius: 2px;
-        text-align: center;
-      }
-      .items-section {
-        margin: 0;
-        padding: 0;
-        background-color: #fafafa;
-        border: none;
-        border-top: none;
-      }
-      .items-col-header {
-        display: flex;
-        justify-content: space-between;
-        background-color: #e0e0e0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-transform: uppercase;
-        font-size: 10px;
-        margin: 0;
-        border-bottom: 1px solid #999;
-      }
-      .col-article {
-        flex: 2;
-        text-align: left;
-      }
-      .col-qte {
-        width: 10mm;
-        text-align: center;
-      }
-      .col-pu {
-        width: 18mm;
-        text-align: right;
-      }
-      .col-pt {
-        width: 18mm;
-        text-align: right;
-      }
-      .item-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        padding: 0.5mm 2mm;
-        border-bottom: 1px dotted #ddd;
-        font-size: 10px;
-      }
-      .item-name {
-        flex: 2;
-        text-align: left;
-        font-weight: bold;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        padding-right: 1mm;
-      }
-      .item-quantity {
-        width: 10mm;
-        text-align: center;
-        font-weight: bold;
-      }
-      .item-unit-price {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .item-line-total {
-        width: 18mm;
-        text-align: right;
-        font-weight: bold;
-      }
-      .total-section {
-        font-weight: bold;
-        margin-top: 2mm;
-        padding: 1mm 2mm;
-        background-color: #f0f0f0;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-      }
-      .total-row {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.5mm;
-        font-size: 11px;
-        padding: 0 1mm;
-      }
-      .payment-method {
-        text-transform: uppercase;
-        font-weight: bold;
-        font-size: 11px;
-        color: #000;
-      }
-      .footer {
-        text-align: center;
-        margin-top: 2mm;
-        font-size: 10px;
-        font-weight: bold;
-        padding: 1mm 2mm;
-        background-color: #f8f8f8;
-        border-top: 1px dashed #000;
-      }
-      .sales-person {
-        margin-top: 2mm;
-        text-align: center;
-        font-weight: bold;
-        font-size: 10px;
-        padding: 1mm 2mm;
-        background-color: #e8e8e8;
-        border: 1px solid #ccc;
-        border-radius: 2px;
-      }
-      .customer-info {
-        margin: 2mm 0;
-        padding: 1mm 2mm;
-        font-weight: bold;
-        text-align: left;
-        background-color: #f5f5f5;
-        border: 1px solid #ddd;
-        border-radius: 3px;
-        font-size: 10px;
-      }
-      .customer-field {
-        margin-bottom: 0.3mm;
-        font-size: 10px;
-      }
-      .separator {
-        border-top: 1px dashed #000;
-        margin: 1mm 0;
-      }
-      .cut-line {
-        text-align: center;
-        margin: 1mm 0;
-        font-weight: bold;
-        font-size: 11px;
-        color: #000;
-        letter-spacing: 1px;
-      }
-      .thank-you {
-        font-weight: bold;
-        margin: 0.5mm 0;
-        font-size: 12px;
-      }
-      .warning {
-        font-size: 10px;
-        color: #000;
-        margin: 0.3mm 0;
-        font-weight: bold;
-      }
-      .section-divider {
-        height: 2px;
-        background: linear-gradient(to right, transparent, #000, transparent);
-        margin: 1mm 0;
-      }
-      @media print {
-        @page {
-          margin: 0 !important;
-          size: 80mm auto !important;
-        }
-        body {
-          margin: 0 !important;
-          padding: 0 !important;
-          width: 80mm !important;
-          font-size: 12px !important;
-          background: white !important;
-          font-weight: bold !important;
-          height: auto !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        .receipt-container {
-          border: none !important;
-          box-shadow: none !important;
-          margin: 0 auto !important;
-          padding: 1mm 2mm !important;
-          width: 78mm !important;
-        }
-        .cut-line {
-          page-break-after: always !important;
-          margin-bottom: 0 !important;
-        }
-        body::after,
-        body::before {
-          display: none !important;
-          content: none !important;
-        }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="receipt-container">
-      <div class="logo-watermark"></div>
-      <div class="content-wrapper">
-      <div class="header">
-        <div class="shop-name"><strong>${shopSettings.shopName}</strong></div>
-        <div class="shop-details"><strong>${shopSettings.shopAddress}</strong></div>
-        <div class="shop-details">TEL: <strong>${shopSettings.shopNumber}</strong></div>
-        <div class="shop-details"><strong>${shopSettings.shopRegistration}</strong></div>
-      </div>
-      
-      <div class="section-divider"></div>
-      
-      <div class="receipt-info">
-        <div class="shop-details">DATE: <strong>${formatDate(sale.createdAt)}</strong></div>
-        <div class="shop-details">RECU #: <strong>${sale.saleId}</strong></div>
-      </div>
-      
-      <div class="customer-info">
-        <div class="customer-field">CLIENT: <strong>${sale.customer.name.toUpperCase()}</strong></div>
-        ${
-          sale.customer.phone
-            ? `<div class="customer-field">TELEPHONE: <strong>${sale.customer.phone}</strong></div>`
-            : ""
-        }
-        ${
-          sale.customer.email
-            ? `<div class="customer-field">EMAIL: <strong>${sale.customer.email}</strong></div>`
-            : ""
-        }
-      </div>
-      
-      <div class="receipt-title">ARTICLES ACHETES</div>
-
-      <div class="items-col-header">
-        <span class="col-article">Article</span>
-        <span class="col-qte">Qte</span>
-      </div>
-
-      <div class="items-section">
-      ${sale.items
-        .map(
-          (item) => `
-        <div class="item-row" style="flex-wrap:wrap">
-          <div class="item-name"><strong>${item.name}</strong></div>
-          <div class="item-quantity"><strong>${item.quantity}</strong></div>
-          <div style="width:100%;text-align:left;padding-left:2mm"><strong>${item.quantity} x ${compactDualUnit(item, sale.exchangeRate)} = ${compactDualTotal(item, sale.exchangeRate)}</strong></div>
-        </div>
-      `
-        )
-        .join("")}
-      </div>
-      
-      <div class="total-section">
-        <div class="total-row">
-          <div><strong>SOUS-TOTAL:</strong></div>
-          <div><strong>${compactDualSaleTotal(sale.subtotal, sale.items, sale.exchangeRate)}</strong></div>
-        </div>
-        <div class="total-row">
-          <div><strong>TOTAL:</strong></div>
-          <div><strong>${compactDualSaleTotal(sale.total, sale.items, sale.exchangeRate)}</strong></div>
-        </div>
-        <div class="total-row">
-          <div><strong>PAIEMENT:</strong></div>
-          <div class="payment-method"><strong>${sale.paymentMethod.toUpperCase()}</strong></div>
-        </div>
-      </div>
-      
-      <div class="sales-person">
-        Agent: <strong>${(sale.salesPerson || 'Non spécifié').toUpperCase()}</strong>
-      </div>
-      
-      <div class="footer">
-        <div class="thank-you"><strong>${shopSettings.receiptFooter || "MERCI POUR VOTRE ACHAT !"}</strong></div>
-        <div class="warning"><strong>Article non echangeable</strong></div>
-        <div class="warning"><strong>Non remboursable</strong></div>
-      </div>
-
-      <!-- PAPER CUT INDICATOR -->
-      <div class="cut-line">
-        ✄ ────────────────────────── ✄
-      </div>
-      </div>
-    </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
-  </body>
-</html>
-`);
-      printWindow.document.close();
-    }
+    openReceiptPrintWindow(renderSaleReceiptHtml(saleReceiptDocument(sale), "receipt"));
   };
 
   const generateReceiptPDF = async (sale: Sale) => {
+    const receipt = saleReceiptDocument(sale);
+    const { labels } = receipt;
     const doc = new jsPDF();
 
     // Header
     doc.setFontSize(20);
-    doc.text("ETS DOUBLE M CLASSIC BOUTIQUE", 105, 10, { align: "center" });
+    doc.text(receipt.shopName, 105, 10, { align: "center" });
     doc.setFontSize(10);
-    doc.text("Vêtements & Chaussures", 105, 15, { align: "center" });
+    doc.text(labels.tagline.replace(/_/g, ""), 105, 15, { align: "center" });
     doc.setFontSize(12);
-    doc.text("LSH/RCCM/22-A-01266", 105, 20, { align: "center" });
-    doc.text("Tél: +243 836 017 031", 105, 25, {
-      align: "center",
-    });
-    doc.text("780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi", 105, 30, {
-      align: "center",
-    });
+    doc.text(receipt.shopRegistration, 105, 20, { align: "center" });
+    doc.text(`${labels.tel}: ${receipt.shopNumber}`, 105, 25, { align: "center" });
+    doc.text(receipt.shopAddress, 105, 30, { align: "center" });
 
     doc.setFontSize(16);
-    doc.text("Reçu de vente", 105, 35, { align: "center" });
+    doc.text(labels.title, 105, 37, { align: "center" });
 
     // Sale Info
     doc.setFontSize(10);
-    doc.text(`Date: ${formatDate(sale.createdAt)}`, 20, 45);
-    doc.text(`Reçu #: ${sale.saleId}`, 20, 52);
-    doc.text(`Payement: ${sale.paymentMethod.toUpperCase()}`, 20, 59);
-    doc.text(`Statut: ${sale.status.toUpperCase()}`, 20, 66);
-
-    // Sales Person Info
-    doc.text(`Agent: ${sale.salesPerson || "Non spécifié"}`, 20, 73);
+    doc.text(`${labels.dateShort}: ${receipt.date}`, 20, 47);
+    doc.text(`${labels.receiptNoShort}: ${receipt.receiptNumber}`, 20, 53);
+    doc.text(`${labels.payment}: ${receipt.paymentLabel}`, 20, 59);
+    doc.text(`${translate("saleReceipt.status")}: ${saleStatusLabel(sale.status).toUpperCase()}`, 20, 65);
+    doc.text(`${labels.agent}: ${receipt.salesPerson}`, 20, 71);
 
     // Customer Info
-    doc.setFontSize(12);
-    doc.text("Information sur le client:", 20, 85);
-    doc.setFontSize(10);
-    doc.text(`Nom: ${sale.customer.name}`, 20, 92);
-    if (sale.customer.phone) {
-      doc.text(`Phone: ${sale.customer.phone}`, 20, 99);
+    doc.text(`${labels.customer}: ${receipt.customerName}`, 20, 81);
+    let yPos = 87;
+    if (receipt.customerPhone) {
+      doc.text(`${labels.phone}: ${receipt.customerPhone}`, 20, yPos);
+      yPos += 6;
     }
-    if (sale.customer.email) {
-      doc.text(`Email: ${sale.customer.email}`, 20, 106);
+    if (receipt.customerEmail) {
+      doc.text(`${labels.email}: ${receipt.customerEmail}`, 20, yPos);
+      yPos += 6;
     }
 
-    // Items
-    doc.setFontSize(12);
-    doc.text("Articles:", 20, 113);
-    doc.setFontSize(10);
-    let yPos = 120;
+    // Items: ARTICLE | PU | QTE | TOTAL, FC only
+    const columns = { article: 20, unit: 138, qty: 152, total: 190 };
+    const tableHeader = (y: number) => {
+      doc.setFont("helvetica", "bold");
+      doc.text(labels.item, columns.article, y);
+      doc.text(labels.unitPrice, columns.unit, y, { align: "right" });
+      doc.text(labels.qty, columns.qty, y, { align: "center" });
+      doc.text(labels.total, columns.total, y, { align: "right" });
+      doc.setFont("helvetica", "normal");
+      doc.line(20, y + 2, 190, y + 2);
+      return y + 7;
+    };
+    yPos = tableHeader(yPos + 6);
 
-    sale.items.forEach((item, index) => {
-      if (yPos > 250) {
+    receipt.lines.forEach((line) => {
+      const nameRows: string[] = doc.splitTextToSize(line.name, 88);
+      if (yPos + nameRows.length * 5 > 270) {
         doc.addPage();
-        yPos = 20;
+        yPos = tableHeader(20);
       }
-
-      doc.text(`${index + 1}. ${item.name}`, 20, yPos);
-      doc.text(
-        `Qté: ${item.quantity} x ${compactDualUnit(item, sale.exchangeRate)} = ${compactDualTotal(item, sale.exchangeRate)}`,
-        25,
-        yPos + 6
-      );
-      yPos += 15;
+      doc.text(nameRows, columns.article, yPos);
+      doc.text(formatReceiptFC(line.unitFC), columns.unit, yPos, { align: "right" });
+      doc.text(String(line.quantity), columns.qty, yPos, { align: "center" });
+      doc.text(formatReceiptFC(line.totalFC), columns.total, yPos, { align: "right" });
+      yPos += nameRows.length * 5 + 2;
     });
 
     // Totals
-    yPos += 7;
-    doc.text(`Sous-total: ${compactDualSaleTotal(sale.subtotal, sale.items, sale.exchangeRate)}`, 20, yPos);
-    doc.text(`Total: ${compactDualSaleTotal(sale.total, sale.items, sale.exchangeRate)}`, 20, yPos + 5);
+    doc.line(20, yPos - 2, 190, yPos - 2);
+    yPos += 4;
+    doc.text(`${labels.subtotal}:`, 20, yPos);
+    doc.text(formatReceiptFC(receipt.subtotalFC), columns.total, yPos, { align: "right" });
+    doc.setFont("helvetica", "bold");
+    doc.text(`${labels.total}:`, 20, yPos + 6);
+    doc.text(formatReceiptFC(receipt.totalFC), columns.total, yPos + 6, { align: "right" });
+    doc.setFont("helvetica", "normal");
+
     // Footer
-    doc.setFontSize(10);
-    doc.text("Merci pour votre achat !", 105, yPos + 20, {
-      align: "center",
-    });
-    doc.text(
-      "Les marchandises vendues ne sont ni reprises ni échangées.",
-      105,
-      yPos + 30,
-      {
-        align: "center",
-      }
-    );
-    doc.text("À bientôt", 105, yPos + 40, {
-      align: "center",
-    });
+    doc.text(receipt.receiptFooter || labels.thanks, 105, yPos + 20, { align: "center" });
+    doc.text(`${labels.noExchange} - ${labels.noRefund}`, 105, yPos + 28, { align: "center" });
 
     doc.save(`receipt-${sale.saleId}.pdf`);
   };
@@ -1229,7 +862,7 @@ export default function SalesHistory() {
 
   const openEditModal = async (sale: Sale) => {
     if (sale.status === "voided" || sale.status === "corrected") {
-      setError("Une vente annulée ou corrigée ne peut plus être modifiée.");
+      setError(t("salesHistory.notEditable"));
       return;
     }
 
@@ -1304,7 +937,7 @@ export default function SalesHistory() {
     const product = products.find((p) => p._id === current.productId);
 
     if (product && newQuantity > product.stock + current.quantity) {
-      setError(`Stock insuffisant (disponible : ${product.stock}).`);
+      setError(t("salesHistory.insufficientStock", { stock: product.stock }));
       return;
     }
 
@@ -1358,7 +991,7 @@ export default function SalesHistory() {
 
   const addNewItem = () => {
     if (products.length === 0) {
-      setError("Aucun article disponible. Actualisez la liste des articles.");
+      setError(t("salesHistory.noProductsAvailable"));
       return;
     }
 
@@ -1377,7 +1010,7 @@ export default function SalesHistory() {
   const updateItemProduct = (index: number, productId: string) => {
     const product = products.find((p) => p._id === productId);
     if (!product) {
-      setError("Article introuvable. Actualisez la liste des articles.");
+      setError(t("salesHistory.productNotFound"));
       return;
     }
 
@@ -1401,7 +1034,7 @@ export default function SalesHistory() {
     if (sale.status === "voided") return;
     confirmAction.request({
       ...voidSaleCopy(sale),
-      reason: { label: "Motif de l'annulation", placeholder: "Ex. : client remboursé, erreur de saisie…" },
+      reason: { label: t("salesHistory.voidReasonLabel"), placeholder: t("salesHistory.voidReasonPlaceholder") },
       action: (reason) => requestJson(`${serverUrl}/sales/${sale._id}/void`, { method: "PATCH", body: { reason: reason || "Vente annulée" } }),
       onSuccess: async () => {
         setShowModal(false);
@@ -1416,17 +1049,17 @@ export default function SalesHistory() {
     if (!editingSale) return;
 
     if (editForm.items.length === 0) {
-      setError("La vente doit contenir au moins un article.");
+      setError(t("salesHistory.needsItem"));
       return;
     }
 
     if (!editForm.isWalkIn && (!editForm.customer.name || !editForm.customer.phone)) {
-      setError("Le nom et le téléphone du client sont obligatoires.");
+      setError(t("salesHistory.customerRequired"));
       return;
     }
 
     if (!editForm.reason) {
-      setError("Indiquez le motif de la correction.");
+      setError(t("salesHistory.reasonRequired"));
       return;
     }
 
@@ -1479,8 +1112,8 @@ export default function SalesHistory() {
 
       if (response.ok) {
         await response.json();
-        setMessage("✅ Modification enregistrée avec succès.");
-        notifySuccess("Modification enregistrée avec succès.");
+        setMessage(`✅ ${t("salesHistory.editSaved")}`);
+        notifySuccess(t("salesHistory.editSaved"));
 
         // Refresh the sales list immediately
         await fetchSales();
@@ -1530,7 +1163,7 @@ export default function SalesHistory() {
             }`}
           >
             <Filter className="w-4 h-4" />
-            {showEditedSales ? "Toutes les ventes" : "Ventes modifiées"}
+            {showEditedSales ? t("salesHistory.allSales") : t("salesHistory.editedSales")}
             {showEditedSales && (
               <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
                 {editedSales.length}
@@ -1542,8 +1175,8 @@ export default function SalesHistory() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="Rechercher une vente…"
-              aria-label="Rechercher une vente"
+              placeholder={t("salesHistory.searchPlaceholder")}
+              aria-label={t("salesHistory.searchLabel")}
               className="pl-10 w-64 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -1558,7 +1191,7 @@ export default function SalesHistory() {
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold text-blue-900 flex items-center gap-2">
               <Shield className="w-5 h-5" />
-              Synthèse de la période
+              {t("salesHistory.summary.title")}
             </h3>
           </div>
           
@@ -1566,7 +1199,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Enregistrements</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.records")}</p>
                   <p className="text-2xl font-bold text-gray-900">{summaryStats.totalRecords}</p>
                 </div>
                 <FileText className="w-8 h-8 text-blue-500" />
@@ -1576,7 +1209,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Chiffre d'affaires</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.revenue")}</p>
                   <p className="text-2xl font-bold text-green-600">
                     {summaryStats.revenueFC !== undefined ? formatFc(summaryStats.revenueFC) : "—"}
                   </p>
@@ -1589,8 +1222,8 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Sorties historiques</p>
-                  <p className="text-[11px] text-gray-500">Anciennes sorties enregistrées avec les ventes</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.legacyExpenses")}</p>
+                  <p className="text-[11px] text-gray-500">{t("salesHistory.summary.legacyExpensesHint")}</p>
                   <p className="text-2xl font-bold text-red-600">—</p>
                   <p className="text-xs text-gray-500">{formatCurrency(summaryStats.expenses)}</p>
                 </div>
@@ -1601,7 +1234,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Chiffre d'affaires − sorties historiques</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.net")}</p>
                   <p className="text-2xl font-bold text-blue-600">
                     {summaryStats.netFC !== undefined ? formatFc(summaryStats.netFC) : "—"}
                   </p>
@@ -1617,7 +1250,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Nombre de ventes</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.salesCount")}</p>
                   <p className="text-xl font-bold text-green-700">{summaryStats.salesCount}</p>
                 </div>
                 <FileText className="w-6 h-6 text-green-500" />
@@ -1627,7 +1260,7 @@ export default function SalesHistory() {
             <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Nombre de sorties historiques</p>
+                  <p className="text-sm text-gray-600">{t("salesHistory.summary.legacyExpensesCount")}</p>
                   <p className="text-xl font-bold text-red-700">{summaryStats.expensesCount}</p>
                 </div>
                 <Minus className="w-6 h-6 text-red-500" />
@@ -1642,7 +1275,7 @@ export default function SalesHistory() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
-            {showEditedSales ? "Ventes modifiées" : "Toutes les ventes"} - {getTimeframeDescription()}
+            {showEditedSales ? t("salesHistory.editedSales") : t("salesHistory.allSales")} - {getTimeframeDescription()}
           </h3>
           
           <div className="flex flex-wrap gap-2">
@@ -1651,7 +1284,7 @@ export default function SalesHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <Filter className="w-4 h-4" />
-              {showFilters ? "Masquer les filtres" : "Afficher les filtres"}
+              {showFilters ? t("salesHistory.filters.hide") : t("salesHistory.filters.show")}
               <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
             </button>
             
@@ -1660,7 +1293,7 @@ export default function SalesHistory() {
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
-              Réinitialiser les filtres
+              {t("salesHistory.filters.reset")}
             </button>
           </div>
         </div>
@@ -1670,7 +1303,7 @@ export default function SalesHistory() {
           <div className="space-y-4">
             <div>
               <span id="sales-history-timeframe-type" className="block text-sm font-medium text-gray-700 mb-2">
-                Période
+                {t("salesHistory.filters.period")}
               </span>
               <div role="group" aria-labelledby="sales-history-timeframe-type" className="flex flex-wrap gap-2">
                 {(["today", "day", "month", "year", "custom"] as const).map((type) => (
@@ -1683,11 +1316,7 @@ export default function SalesHistory() {
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
-                    {type === "today" && "Aujourd'hui"}
-                    {type === "day" && "Un jour"}
-                    {type === "month" && "Un mois"}
-                    {type === "year" && "Une année"}
-                    {type === "custom" && "Intervalle"}
+                    {t(`salesHistory.filters.timeframes.${type}`)}
                   </button>
                 ))}
               </div>
@@ -1698,7 +1327,7 @@ export default function SalesHistory() {
               {timeframeType === "day" && (
                 <div>
                   <label htmlFor="sales-history-date" className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
+                    {t("common.date")}
                   </label>
                   <input
                     id="sales-history-date"
@@ -1714,7 +1343,7 @@ export default function SalesHistory() {
                 <>
                   <div>
                     <label htmlFor="sales-history-month-year" className="block text-sm font-medium text-gray-700 mb-1">
-                      Année
+                      {t("salesHistory.filters.year")}
                     </label>
                     <input
                       id="sales-history-month-year"
@@ -1728,7 +1357,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <label htmlFor="sales-history-month" className="block text-sm font-medium text-gray-700 mb-1">
-                      Mois
+                      {t("salesHistory.filters.month")}
                     </label>
                     <select
                       id="sales-history-month"
@@ -1752,7 +1381,7 @@ export default function SalesHistory() {
               {timeframeType === "year" && (
                 <div>
                   <label htmlFor="sales-history-year" className="block text-sm font-medium text-gray-700 mb-1">
-                    Année
+                    {t("salesHistory.filters.year")}
                   </label>
                   <input
                     id="sales-history-year"
@@ -1770,7 +1399,7 @@ export default function SalesHistory() {
                 <>
                   <div>
                     <label htmlFor="sales-history-from-date" className="block text-sm font-medium text-gray-700 mb-1">
-                      Du
+                      {t("salesHistory.filters.from")}
                     </label>
                     <input
                       id="sales-history-from-date"
@@ -1782,7 +1411,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <label htmlFor="sales-history-to-date" className="block text-sm font-medium text-gray-700 mb-1">
-                      Au
+                      {t("salesHistory.filters.to")}
                     </label>
                     <input
                       id="sales-history-to-date"
@@ -1802,7 +1431,7 @@ export default function SalesHistory() {
                 onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
                 className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
               >
-                {showAdvancedFilters ? "Masquer les filtres avancés" : "Filtres avancés"}
+                {showAdvancedFilters ? t("salesHistory.filters.hideAdvanced") : t("salesHistory.filters.advanced")}
                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
               </button>
 
@@ -1810,22 +1439,22 @@ export default function SalesHistory() {
                 <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
                   {isAdmin && (
                     <div>
-                      <label htmlFor="sales-history-categorie" className="block text-sm font-medium text-gray-700 mb-1">Catégorie</label>
+                      <label htmlFor="sales-history-categorie" className="block text-sm font-medium text-gray-700 mb-1">{t("salesHistory.filters.category")}</label>
                       <select
                         id="sales-history-categorie"
                         value={queryParams.category}
                         onChange={(e) => handleQueryParamChange("category", e.target.value)}
                         className="w-full p-2 border border-gray-300 rounded-lg"
                       >
-                        <option value="">Tous</option>
-                        <option value="CLOTHES">Vêtements</option>
-                        <option value="SHOES">Chaussures</option>
+                        <option value="">{t("salesHistory.filters.all")}</option>
+                        <option value="CLOTHES">{t("confirm.categories.CLOTHES")}</option>
+                        <option value="SHOES">{t("confirm.categories.SHOES")}</option>
                       </select>
                     </div>
                   )}
                   <div>
                     <label htmlFor="sales-history-sale-type" className="block text-sm font-medium text-gray-700 mb-1">
-                      Type d'opération
+                      {t("salesHistory.filters.operationType")}
                     </label>
                     <select
                       id="sales-history-sale-type"
@@ -1833,16 +1462,16 @@ export default function SalesHistory() {
                       onChange={(e) => handleQueryParamChange("type", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">Tous les types</option>
-                      <option value="sale">Vente</option>
-                      <option value="reservation">Réservation</option>
-                      <option value="expense">Sortie historique</option>
+                      <option value="">{t("salesHistory.filters.allTypes")}</option>
+                      {(["sale", "reservation", "expense"] as const).map((value) => (
+                        <option key={value} value={value}>{saleTypeLabel(value)}</option>
+                      ))}
                     </select>
                   </div>
                   
                   <div>
                     <label htmlFor="sales-history-status" className="block text-sm font-medium text-gray-700 mb-1">
-                      Statut
+                      {t("salesHistory.filters.status")}
                     </label>
                     <select
                       id="sales-history-status"
@@ -1850,23 +1479,23 @@ export default function SalesHistory() {
                       onChange={(e) => handleQueryParamChange("status", e.target.value)}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
-                      <option value="">Tous les statuts</option>
-                      <option value="completed">Terminée</option>
-                      <option value="pending">En attente</option>
-                      <option value="voided">Annulée</option>
+                      <option value="">{t("salesHistory.filters.allStatuses")}</option>
+                      {(["completed", "pending", "voided"] as const).map((value) => (
+                        <option key={value} value={value}>{saleStatusLabel(value)}</option>
+                      ))}
                     </select>
                   </div>
                   
                   <div>
                     <label htmlFor="sales-history-customer-phone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Téléphone du client
+                      {t("salesHistory.filters.customerPhone")}
                     </label>
                     <input
                       id="sales-history-customer-phone"
                       type="text"
                       value={queryParams.customerPhone}
                       onChange={(e) => handleQueryParamChange("customerPhone", e.target.value)}
-                      placeholder="Filtrer par téléphone…"
+                      placeholder={t("salesHistory.filters.phonePlaceholder")}
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     />
                   </div>
@@ -1879,10 +1508,10 @@ export default function SalesHistory() {
         {/* Applied Filters Summary */}
         {appliedFilters && (
           <div className="mt-4 text-sm text-gray-600">
-            <span className="font-medium">Filtres appliqués :</span>
+            <span className="font-medium">{t("salesHistory.filters.applied")}</span>
             <span className="ml-2">
-              Statut : {appliedFilters.status && appliedFilters.status !== "all" ? saleStatusLabel(appliedFilters.status) : "tous"}, Type : {appliedFilters.type && appliedFilters.type !== "all" ? saleTypeLabel(appliedFilters.type) : "tous"}
-              {appliedFilters.customerPhone && appliedFilters.customerPhone !== 'none' && `, Téléphone : ${appliedFilters.customerPhone}`}
+              {t("salesHistory.filters.appliedStatus", { value: appliedFilters.status && appliedFilters.status !== "all" ? saleStatusLabel(appliedFilters.status) : t("salesHistory.filters.any") })}, {t("salesHistory.filters.appliedType", { value: appliedFilters.type && appliedFilters.type !== "all" ? saleTypeLabel(appliedFilters.type) : t("salesHistory.filters.any") })}
+              {appliedFilters.customerPhone && appliedFilters.customerPhone !== 'none' && `, ${t("salesHistory.filters.appliedPhone", { value: appliedFilters.customerPhone })}`}
             </span>
           </div>
         )}
@@ -1916,7 +1545,7 @@ export default function SalesHistory() {
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />
-            {showEditedSales ? "Ventes modifiées" : "Transactions de vente"} ({filteredSales.length})
+            {showEditedSales ? t("salesHistory.editedSales") : t("salesHistory.transactions")} ({filteredSales.length})
           </h2>
         </div>
 
@@ -1924,18 +1553,18 @@ export default function SalesHistory() {
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="text-gray-500 mt-2">Chargement des ventes...</p>
+              <p className="text-gray-500 mt-2">{t("salesHistory.loading")}</p>
             </div>
           ) : filteredSales.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>
                 {showEditedSales 
-                  ? "Aucune vente modifiée trouvée" 
-                  : "Aucune vente trouvée"
+                  ? t("salesHistory.noEditedSales") 
+                  : t("salesHistory.noSales")
                 }
               </p>
-              <p className="text-sm">pour la période sélectionnée</p>
+              <p className="text-sm">{t("salesHistory.forPeriod")}</p>
             </div>
           ) : (
             <>
@@ -1943,34 +1572,34 @@ export default function SalesHistory() {
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Identifiant de vente
+                      {t("salesHistory.cols.saleId")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Client
+                      {t("salesHistory.cols.customer")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Agent
+                      {t("salesHistory.cols.agent")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Articles
+                      {t("salesHistory.cols.items")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Total
+                      {t("salesHistory.cols.total")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Payement
+                      {t("salesHistory.cols.payment")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Statut
+                      {t("salesHistory.cols.status")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
+                      {t("salesHistory.cols.date")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Modifié par
+                      {t("salesHistory.cols.editedBy")}
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
+                      {t("common.actions")}
                     </th>
                   </tr>
                 </thead>
@@ -1982,10 +1611,10 @@ export default function SalesHistory() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="text-sm text-gray-900 flex items-center gap-2">
-                          {sale.customer.name}
+                          {sale.isWalkIn ? t("pos.walkIn") : sale.customer.name}
                           {sale.isWalkIn && (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                              Passage
+                              {t("salesHistory.walkInBadge")}
                             </span>
                           )}
                         </div>
@@ -1994,10 +1623,10 @@ export default function SalesHistory() {
                         </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {sale.salesPerson || "Non spécifié"}
+                        {sale.salesPerson || t("salesHistory.notSpecified")}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {sale.items.length} Article(s)
+                        {t("salesHistory.itemCount", { count: sale.items.length })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {formatFc(getSaleFcTotal(sale.total, sale.items, sale.exchangeRate) ?? 0)}
@@ -2045,7 +1674,7 @@ export default function SalesHistory() {
                             <button
                               onClick={() => viewEditedSaleDetails(sale)}
                               className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                              title="Voir les détails des modifications"
+                              title={t("salesHistory.actions.viewEdits")}
                             >
                               <History className="w-4 h-4" />
                             </button>
@@ -2053,7 +1682,7 @@ export default function SalesHistory() {
                             <button
                               onClick={() => viewSaleDetails(sale)}
                               className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                              title="Voir les détails"
+                              title={t("salesHistory.actions.view")}
                             >
                               <Eye className="w-4 h-4" />
                             </button>
@@ -2072,7 +1701,7 @@ export default function SalesHistory() {
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-yellow-600 hover:text-yellow-900"
                                 }`}
-                                title="Corriger la vente"
+                                title={t("salesHistory.actions.correct")}
                               >
                                 <Edit className="w-4 h-4" />
                               </button>
@@ -2081,14 +1710,14 @@ export default function SalesHistory() {
                                   <button
                                     onClick={() => generateReceiptPDF(sale)}
                                     className="text-green-600 hover:text-green-900 p-1 rounded"
-                                    title="Télécharger le reçu (PDF)"
+                                    title={t("salesHistory.actions.downloadPdf")}
                                   >
                                     <Download className="w-4 h-4" />
                                   </button>
                                   <button
                                     onClick={() => printESC_POSReceipt(sale)}
                                     className="text-purple-600 hover:text-purple-900 p-1 rounded"
-                                    title="Réimprimer le reçu"
+                                    title={t("salesHistory.actions.reprint")}
                                   >
                                     <Printer className="w-4 h-4" />
                                   </button>
@@ -2102,8 +1731,8 @@ export default function SalesHistory() {
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-red-600 hover:text-red-900"
                                 }`}
-                                title="Annuler la vente"
-                                aria-label={`Annuler la vente ${sale.saleId}`}
+                                title={t("salesHistory.actions.void")}
+                                aria-label={t("salesHistory.actions.voidSale", { id: sale.saleId })}
                               >
                                 <Trash2 className="w-4 h-4" />
                               </button>}
@@ -2123,7 +1752,7 @@ export default function SalesHistory() {
       {pagination && pagination.totalPages > 1 && (
         <div className="flex items-center justify-between rounded-lg border bg-white px-4 py-3">
           <span className="text-sm text-gray-600">
-            Page {pagination.page} sur {pagination.totalPages} · {pagination.totalRecords} ventes
+            {t("salesHistory.pagination", { page: pagination.page, pages: pagination.totalPages, count: pagination.totalRecords })}
           </span>
           <div className="flex gap-2">
             <button
@@ -2132,7 +1761,7 @@ export default function SalesHistory() {
               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-40"
             >
-              Précédent
+              {t("salesHistory.previous")}
             </button>
             <button
               type="button"
@@ -2140,7 +1769,7 @@ export default function SalesHistory() {
               onClick={() => setCurrentPage((page) => page + 1)}
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-40"
             >
-              Suivant
+              {t("salesHistory.next")}
             </button>
           </div>
         </div>
@@ -2152,7 +1781,7 @@ export default function SalesHistory() {
           <div className="bg-white rounded-lg max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Détails de la vente
+                {t("salesHistory.details.title")}
               </h3>
               <button
                 onClick={() => setShowModal(false)}
@@ -2179,13 +1808,13 @@ export default function SalesHistory() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Identifiant de vente
+                    {t("salesHistory.cols.saleId")}
                   </span>
                   <p className="text-sm text-gray-900">{selectedSale.saleId}</p>
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Date
+                    {t("common.date")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {formatDate(selectedSale.createdAt)}
@@ -2193,7 +1822,7 @@ export default function SalesHistory() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Méthode de paiement
+                    {t("salesHistory.details.paymentMethod")}
                   </span>
                   <p className="text-sm text-gray-900">
                     {paymentMethodLabel(selectedSale.paymentMethod)}
@@ -2201,7 +1830,7 @@ export default function SalesHistory() {
                 </div>
                 <div>
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Statut
+                    {t("salesHistory.cols.status")}
                   </span>
                   <span
                     className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
@@ -2217,20 +1846,21 @@ export default function SalesHistory() {
                 </div>
                 <div className="col-span-2">
                   <span className="block text-sm font-medium text-gray-700 mb-1">
-                    Agent
+                    {t("salesHistory.cols.agent")}
                   </span>
                   <p className="text-sm text-gray-900">
-                    {selectedSale.salesPerson || "Non spécifié"}
+                    {selectedSale.salesPerson || t("salesHistory.notSpecified")}
                   </p>
                 </div>
                 {selectedSale.editedBy && (
                   <div className="col-span-2">
                     <span className="block text-sm font-medium text-gray-700 mb-1">
-                      Dernière modification
+                      {t("salesHistory.lastEdit")}
                     </span>
                     <p className="text-sm text-gray-900">
-                      Par {selectedSale.editedBy}
-                      {selectedSale.editedAt ? `, le ${formatDate(selectedSale.editedAt)}` : ""}
+                      {selectedSale.editedAt
+                        ? t("salesHistory.details.editedByOn", { user: selectedSale.editedBy, date: formatDate(selectedSale.editedAt) })
+                        : t("salesHistory.details.editedByOnly", { user: selectedSale.editedBy })}
                     </p>
                   </div>
                 )}
@@ -2240,10 +1870,10 @@ export default function SalesHistory() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <User className="w-4 h-4" />
-                  Information sur le client
+                  {t("salesHistory.details.customerInfo")}
                   {selectedSale.isWalkIn && (
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
-                      Client de passage
+                      {t("pos.walkIn")}
                     </span>
                   )}
                 </h4>
@@ -2251,15 +1881,15 @@ export default function SalesHistory() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Nom
+                        {t("salesHistory.details.name")}
                       </span>
                       <p className="text-sm text-gray-900">
-                        {selectedSale.customer.name}
+                        {selectedSale.isWalkIn ? t("pos.walkIn") : selectedSale.customer.name}
                       </p>
                     </div>
                     <div>
                       <span className="block text-sm font-medium text-gray-700 mb-1">
-                        Phone
+                        {t("common.phone")}
                       </span>
                       <p className="text-sm text-gray-900">
                         {selectedSale.customer.phone}
@@ -2268,7 +1898,7 @@ export default function SalesHistory() {
                     {selectedSale.customer.email && (
                       <div className="col-span-2">
                         <span className="block text-sm font-medium text-gray-700 mb-1">
-                          Email
+                          {t("common.email")}
                         </span>
                         <p className="text-sm text-gray-900">
                           {selectedSale.customer.email}
@@ -2283,7 +1913,7 @@ export default function SalesHistory() {
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 flex items-center gap-2">
                   <Package className="w-4 h-4" />
-                  Articles ({selectedSale.items.length})
+                  {t("salesHistory.details.items", { count: selectedSale.items.length })}
                 </h4>
                 <div className="space-y-3">
                   {selectedSale.items.map((item, index) => (
@@ -2294,7 +1924,7 @@ export default function SalesHistory() {
                             {item.name}
                           </h5>
                           <p className="text-sm text-gray-600">
-                            Nombre de pieces: {item.quantity} ×{" "}
+                            {t("salesHistory.details.pieces", { count: item.quantity })} ×{" "}
                             {formatOriginalItemUnitPrice(item)}
                           </p>
                         </div>
@@ -2303,7 +1933,7 @@ export default function SalesHistory() {
                             {formatOriginalItemTotal(item)}
                             {item.enteredCurrency === "FC" ? (
                               <span className="block text-xs font-normal text-gray-500">
-                                Reçu: {formatCurrency(getItemUsdTotal(item))}
+                                {t("salesHistory.details.received")}: {formatCurrency(getItemUsdTotal(item))}
                               </span>
                             ) : (
                               (() => {
@@ -2331,7 +1961,7 @@ export default function SalesHistory() {
               {/* Totals */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">Sous-total:</span>
+                  <span className="text-sm text-gray-600">{t("salesHistory.details.subtotal")}:</span>
                   <span className="text-sm text-gray-900 text-right">
                     <span className="block">
                       {formatFc(getSaleFcTotal(selectedSale.subtotal, selectedSale.items, selectedSale.exchangeRate) ?? 0)}
@@ -2340,7 +1970,7 @@ export default function SalesHistory() {
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span className="text-gray-900">Total:</span>
+                  <span className="text-gray-900">{t("salesHistory.details.total")}:</span>
                   <span className="text-gray-900 text-right">
                     <span className="block">
                       {formatFc(getSaleFcTotal(selectedSale.total, selectedSale.items, selectedSale.exchangeRate) ?? 0)}
@@ -2357,14 +1987,14 @@ export default function SalesHistory() {
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Download className="w-4 h-4" />
-                  Télécharger PDF
+                  {t("salesHistory.actions.downloadPdfShort")}
                 </button>}
                 {canReprint && <button
                   onClick={() => printESC_POSReceipt(selectedSale)}
                   className="flex-1 bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <Printer className="w-4 h-4" />
-                  Imprimer Reçu
+                  {t("salesHistory.actions.printReceipt")}
                 </button>}
                 <button
                   onClick={() => openEditModal(selectedSale)}
@@ -2380,13 +2010,13 @@ export default function SalesHistory() {
                   }`}
                 >
                   <Edit className="w-4 h-4" />
-                  Modifier la vente
+                  {t("salesHistory.actions.edit")}
                 </button>
                 <button
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>
@@ -2400,7 +2030,7 @@ export default function SalesHistory() {
           <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Détails des modifications - {selectedEditedSale.saleId}
+                {t("salesHistory.edits.title", { id: selectedEditedSale.saleId })}
               </h3>
               <button
                 onClick={() => setShowEditedDetailsModal(false)}
@@ -2426,20 +2056,20 @@ export default function SalesHistory() {
               {/* Current Sale Info */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3 bg-blue-50 p-3 rounded-lg">
-                  État actuel de la vente
+                  {t("salesHistory.edits.currentState")}
                 </h4>
                 <div className="grid grid-cols-2 gap-4 mb-4">
                   <div>
                     <span className="block text-sm font-medium text-gray-700 mb-1">
-                      Client
+                      {t("salesHistory.cols.customer")}
                     </span>
                     <p className="text-sm text-gray-900">
-                      {selectedEditedSale.customer.name} ({selectedEditedSale.customer.phone})
+                      {selectedEditedSale.isWalkIn ? t("pos.walkIn") : selectedEditedSale.customer.name} ({selectedEditedSale.customer.phone})
                     </p>
                   </div>
                   <div>
                     <span className="block text-sm font-medium text-gray-700 mb-1">
-                      Total actuel
+                      {t("salesHistory.edits.currentTotal")}
                     </span>
                     <p className="text-sm font-medium text-gray-900">
                       {formatFc(getSaleFcTotal(selectedEditedSale.total, selectedEditedSale.items, selectedEditedSale.exchangeRate) ?? 0)}
@@ -2448,7 +2078,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <span className="block text-sm font-medium text-gray-700 mb-1">
-                      Méthode de paiement
+                      {t("salesHistory.details.paymentMethod")}
                     </span>
                     <p className="text-sm text-gray-900">
                       {paymentMethodLabel(selectedEditedSale.paymentMethod)}
@@ -2456,10 +2086,10 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <span className="block text-sm font-medium text-gray-700 mb-1">
-                      Articles
+                      {t("salesHistory.cols.items")}
                     </span>
                     <p className="text-sm text-gray-900">
-                      {selectedEditedSale.items.length} article(s)
+                      {t("salesHistory.itemCount", { count: selectedEditedSale.items.length })}
                     </p>
                   </div>
                 </div>
@@ -2468,7 +2098,7 @@ export default function SalesHistory() {
               {/* Edit History */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Historique des modifications
+                  {t("salesHistory.edits.history")}
                 </h4>
                 <div className="space-y-4">
                   {selectedEditedSale.editHistory && selectedEditedSale.editHistory.length > 0 ? (
@@ -2477,7 +2107,7 @@ export default function SalesHistory() {
                         <div className="flex justify-between items-start mb-3">
                           <div>
                             <h5 className="font-medium text-gray-900">
-                              Modification #{selectedEditedSale.editHistory!.length - index}
+                              {t("salesHistory.edits.number", { number: selectedEditedSale.editHistory!.length - index })}
                             </h5>
                             <p className="text-sm text-gray-600">
                               {formatDate(edit.editedAt)}
@@ -2485,17 +2115,17 @@ export default function SalesHistory() {
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-medium text-gray-900">
-                              Par: {edit.editedBy}
+                              {t("salesHistory.edits.by")}: {edit.editedBy}
                             </p>
                             <p className="text-sm text-gray-600">
-                              Raison: {edit.reason}
+                              {t("salesHistory.reason")}: {edit.reason}
                             </p>
                           </div>
                         </div>
 
                         {edit.changes && Object.keys(edit.changes).length > 0 && (
                           <div className="space-y-3">
-                            <h6 className="font-medium text-gray-700 text-sm">Changements détaillés:</h6>
+                            <h6 className="font-medium text-gray-700 text-sm">{t("salesHistory.edits.detailedChanges")}:</h6>
                             {changeEntries(edit.changes).map(([field, changeData]) => (
                               <div key={field} className="border-l-4 border-blue-500 pl-3">
                                 <div className="font-medium text-gray-700 text-sm capitalize mb-2">
@@ -2503,20 +2133,20 @@ export default function SalesHistory() {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                                   <div className="bg-red-50 p-3 rounded border border-red-200">
-                                    <div className="text-red-700 font-medium mb-1">Avant:</div>
+                                    <div className="text-red-700 font-medium mb-1">{t("salesHistory.before")}:</div>
                                     <div className="text-red-600 break-words">
                                       {typeof changeData.from === 'object' 
                                         ? JSON.stringify(changeData.from, null, 2)
-                                        : String(changeData.from || 'N/A')
+                                        : String(changeData.from || t("common.notAvailable"))
                                       }
                                     </div>
                                   </div>
                                   <div className="bg-green-50 p-3 rounded border border-green-200">
-                                    <div className="text-green-700 font-medium mb-1">Après:</div>
+                                    <div className="text-green-700 font-medium mb-1">{t("salesHistory.after")}:</div>
                                     <div className="text-green-600 break-words">
                                       {typeof changeData.to === 'object' 
                                         ? JSON.stringify(changeData.to, null, 2)
-                                        : String(changeData.to || 'N/A')
+                                        : String(changeData.to || t("common.notAvailable"))
                                       }
                                     </div>
                                   </div>
@@ -2530,7 +2160,7 @@ export default function SalesHistory() {
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Aucun détail de modification disponible</p>
+                      <p>{t("salesHistory.edits.none")}</p>
                     </div>
                   )}
                 </div>
@@ -2542,7 +2172,7 @@ export default function SalesHistory() {
                   onClick={() => setShowEditedDetailsModal(false)}
                   className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Fermer
+                  {t("common.close")}
                 </button>
               </div>
             </div>
@@ -2556,7 +2186,7 @@ export default function SalesHistory() {
           <div className="bg-white rounded-lg max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-lg font-semibold text-gray-900">
-                Corriger la vente {editingSale.saleId}
+                {t("salesHistory.correction.title", { id: editingSale.saleId })}
               </h3>
               <button
                 onClick={closeEditModal}
@@ -2593,7 +2223,7 @@ export default function SalesHistory() {
               {/* Customer Information */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Information sur le client
+                  {t("salesHistory.details.customerInfo")}
                 </h4>
 
                 <label className="flex items-center gap-2 mb-3 p-2 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer select-none w-fit">
@@ -2604,14 +2234,14 @@ export default function SalesHistory() {
                     className="w-4 h-4"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    Client de passage (sans coordonnées)
+                    {t("salesHistory.correction.walkIn")}
                   </span>
                 </label>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label htmlFor="sales-edit-nom" className="block text-sm font-medium text-gray-700 mb-1">
-                      Nom
+                      {t("salesHistory.details.name")}
                     </label>
                     <input
                       id="sales-edit-nom"
@@ -2630,7 +2260,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <label htmlFor="sales-edit-telephone" className="block text-sm font-medium text-gray-700 mb-1">
-                      Numéro de téléphone
+                      {t("salesHistory.correction.phoneNumber")}
                     </label>
                     <input
                       id="sales-edit-telephone"
@@ -2649,7 +2279,7 @@ export default function SalesHistory() {
                   </div>
                   <div>
                     <label htmlFor="sales-edit-email" className="block text-sm font-medium text-gray-700 mb-1">
-                      Email
+                      {t("common.email")}
                     </label>
                     <input
                       id="sales-edit-email"
@@ -2671,7 +2301,7 @@ export default function SalesHistory() {
               {/* Payment Method */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Methode de payement
+                  {t("salesHistory.details.paymentMethod")}
                 </h4>
                 <select
                   value={editForm.paymentMethod}
@@ -2683,10 +2313,9 @@ export default function SalesHistory() {
                   }
                   className="w-full p-2 border rounded"
                 >
-                  <option value="cash">Espèces</option>
-                  <option value="card">Carte</option>
-                  <option value="transfer">Virement</option>
-                  <option value="other">Autre</option>
+                  {(["cash", "card", "transfer", "other"] as const).map((value) => (
+                    <option key={value} value={value}>{paymentMethodLabel(value)}</option>
+                  ))}
                 </select>
               </div>
 
@@ -2694,7 +2323,7 @@ export default function SalesHistory() {
               <div>
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="text-md font-medium text-gray-900">
-                    Articles
+                    {t("salesHistory.cols.items")}
                   </h4>
                   <div className="flex gap-2">
                     <button
@@ -2707,14 +2336,14 @@ export default function SalesHistory() {
                           loadingProducts ? "animate-spin" : ""
                         }`}
                       />{" "}
-                      Actualiser les articles
+                      {t("salesHistory.correction.refreshProducts")}
                     </button>
                     <button
                       onClick={addNewItem}
                       disabled={products.length === 0}
                       className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                     >
-                      <Plus className="w-3 h-3" /> Ajouter un article
+                      <Plus className="w-3 h-3" /> {t("salesHistory.correction.addItem")}
                     </button>
                   </div>
                 </div>
@@ -2722,8 +2351,7 @@ export default function SalesHistory() {
                 {products.length === 0 && !loadingProducts && (
                   <div className="p-3 bg-yellow-100 text-yellow-700 rounded-lg mb-4">
                     <p className="text-sm">
-                      Aucun article disponible. Veuillez vérifier si des
-                      articles existent dans votre base de données.
+                      {t("salesHistory.correction.noProducts")}
                     </p>
                   </div>
                 )}
@@ -2737,11 +2365,11 @@ export default function SalesHistory() {
                       <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
                           <label htmlFor={`sales-edit-item-${index}-article`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Article
+                            {t("salesHistory.correction.item")}
                           </label>
                           {loadingProducts ? (
                             <div className="p-2 border rounded bg-gray-200 text-gray-600 text-sm">
-                              Chargement des articles…
+                              {t("salesHistory.correction.loadingProducts")}
                             </div>
                           ) : products.length === 0 ? (
                             <input
@@ -2755,7 +2383,7 @@ export default function SalesHistory() {
                                   items: prev.items.map((line, i) => (i === index ? { ...line, name } : line)),
                                 }));
                               }}
-                              placeholder="Nom de l'article"
+                              placeholder={t("salesHistory.correction.itemName")}
                               className="w-full p-2 border rounded"
                             />
                           ) : (
@@ -2770,8 +2398,7 @@ export default function SalesHistory() {
                               {products.map((product) => (
                                 <option key={product._id} value={product._id}>
                                   {product.name} -{" "}
-                                  {formatProductPrice(product)} (Stock:{" "}
-                                  {product.stock})
+                                  {formatProductPrice(product)} ({t("salesHistory.correction.stock", { count: product.stock })})
                                 </option>
                               ))}
                             </select>
@@ -2808,7 +2435,7 @@ export default function SalesHistory() {
 
                         <div className="md:col-span-2">
                           <label htmlFor={`sales-edit-item-${index}-quantity`} className="block text-sm font-medium text-gray-700 mb-1">
-                            Nombre de pièces{" "}
+                            {t("salesHistory.correction.quantity")}{" "}
                           </label>
                           <div className="flex items-center border rounded">
                             <button
@@ -2848,7 +2475,7 @@ export default function SalesHistory() {
 
                         <div className="md:col-span-2">
                           <span className="block text-sm font-medium text-gray-700 mb-1">
-                            Total
+                            {t("salesHistory.cols.total")}
                           </span>
                           <div className="p-2 bg-white border rounded font-medium">
                             {formatOriginalItemTotal(item)}
@@ -2864,7 +2491,7 @@ export default function SalesHistory() {
                             onClick={() => removeItem(index)}
                             className="w-full p-2 bg-red-600 text-white rounded hover:bg-red-700 flex items-center justify-center gap-1"
                           >
-                            <Trash2 className="w-3 h-3" /> Supprimer
+                            <Trash2 className="w-3 h-3" /> {t("salesHistory.correction.remove")}
                           </button>
                         </div>
                       </div>
@@ -2876,13 +2503,13 @@ export default function SalesHistory() {
               {/* Totals */}
               <div className="border-t border-gray-200 pt-4">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">Sous-total:</span>
+                  <span className="text-sm text-gray-600">{t("salesHistory.details.subtotal")}:</span>
                   <span className="text-sm text-gray-900">
                     {formatCurrency(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold">
-                  <span className="text-gray-900">Total:</span>
+                  <span className="text-gray-900">{t("salesHistory.details.total")}:</span>
                   <span className="text-gray-900">{formatCurrency(total)}</span>
                 </div>
               </div>
@@ -2890,14 +2517,14 @@ export default function SalesHistory() {
               {/* Edit Reason */}
               <div>
                 <h4 className="text-md font-medium text-gray-900 mb-3">
-                  Raison de modification
+                  {t("salesHistory.correction.reason")}
                 </h4>
                 <textarea
                   value={editForm.reason}
                   onChange={(e) =>
                     setEditForm((prev) => ({ ...prev, reason: e.target.value }))
                   }
-                  placeholder="Veuillez indiquer une raison pour la modification de cette vente...."
+                  placeholder={t("salesHistory.correction.reasonPlaceholder")}
                   className="w-full p-2 border rounded h-20"
                   required
                 />
@@ -2912,11 +2539,11 @@ export default function SalesHistory() {
                 >
                   {loading ? (
                     <>
-                      <RefreshCw className="w-4 h-4 animate-spin" /> Enregistrement…
+                      <RefreshCw className="w-4 h-4 animate-spin" /> {t("salesHistory.correction.saving")}
                     </>
                   ) : (
                     <>
-                      <Edit className="w-4 h-4" /> Mettre à jour la vente
+                      <Edit className="w-4 h-4" /> {t("salesHistory.correction.save")}
                     </>
                   )}
                 </button>
@@ -2924,7 +2551,7 @@ export default function SalesHistory() {
                   onClick={closeEditModal}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Annuler
+                  {t("common.cancel")}
                 </button>
               </div>
             </div>
