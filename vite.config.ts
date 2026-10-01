@@ -26,7 +26,7 @@ export default defineConfig(({ mode }) => {
     VitePWA({
       registerType: 'prompt',
       injectRegister: false,
-      includeAssets: ['newlogo.png'],
+      includeAssets: ['newlogo.png', 'apple-touch-icon.png'],
       manifest: {
         name: 'ETS DOUBLE M CLASSIC BOUTIQUE',
         short_name: 'DOUBLE M',
@@ -40,18 +40,32 @@ export default defineConfig(({ mode }) => {
         theme_color: '#3b102b',
         icons: [
           {
-            src: '/newlogo.png',
-            sizes: '1254x1254',
+            src: '/pwa-192x192.png',
+            sizes: '192x192',
             type: 'image/png',
-            purpose: 'any maskable',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/pwa-maskable-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
           },
         ],
       },
       workbox: {
+        cleanupOutdatedCaches: true,
         globPatterns: [
           '**/*.{js,css,html,ico,png,jpg,jpeg,svg,webp,woff,woff2}',
         ],
         navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {
             urlPattern: ({ request }) => request.destination === 'image',

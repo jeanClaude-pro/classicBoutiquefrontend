@@ -9,7 +9,9 @@ import {
   getTokenExpiry,
   invalidateSession,
   isTokenExpired,
+  OFFLINE_SESSION_KEY,
 } from "../lib/sessionManager";
+import { renewOfflineAuthorization } from "../offline/offlineAuth";
 
 // setTimeout's delay is a 32-bit signed int; clamp defensively so a
 // misconfigured/longer-lived token can never overflow into an immediate fire.
@@ -21,6 +23,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
   const [state, setState] = React.useState<AuthState>({
     token: null,
     user: null,
+    offline: false,
     loading: true,
   });
 
@@ -58,7 +61,16 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     const userRaw = localStorage.getItem(AUTH_USER_KEY);
 
     if (!token) {
-      setState({ token: null, user: null, loading: false });
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(OFFLINE_SESSION_KEY) || "null") as { user?: User; expiresAt?: string } | null;
+        // A reload never extends an offline session past its authorization.
+        if (saved?.user && saved.expiresAt && new Date(saved.expiresAt).getTime() > Date.now()) {
+          setState({ token: null, user: saved.user, offline: true, loading: false });
+          return;
+        }
+        sessionStorage.removeItem(OFFLINE_SESSION_KEY);
+      } catch { sessionStorage.removeItem(OFFLINE_SESSION_KEY); }
+      setState({ token: null, user: null, offline: false, loading: false });
       return;
     }
 
@@ -79,7 +91,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
       user = null;
     }
 
-    setState({ token, user, loading: false });
+    setState({ token, user, offline: false, loading: false });
     scheduleExpiryTimer(token);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -91,7 +103,7 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
       if (event.key !== AUTH_TOKEN_KEY) return;
       if (event.newValue) return; // token was set, not removed — ignore
       clearExpiryTimer();
-      setState({ token: null, user: null, loading: false });
+      setState({ token: null, user: null, offline: false, loading: false });
     };
 
     window.addEventListener("storage", handleStorage);
@@ -108,7 +120,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
       if (user) localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
       else localStorage.removeItem(AUTH_USER_KEY);
 
-      setState((s) => ({ ...s, token, user, loading: false }));
+      sessionStorage.removeItem(OFFLINE_SESSION_KEY);
+      setState((s) => ({ ...s, token, user, offline: false, loading: false }));
+
+      if (token && user) void renewOfflineAuthorization(user);
 
       if (token) scheduleExpiryTimer(token);
       else clearExpiryTimer();
@@ -116,13 +131,21 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
     [clearExpiryTimer, scheduleExpiryTimer]
   );
 
+  const setOfflineAuth = React.useCallback((user: User, expiresAt: string) => {
+    clearExpiryTimer();
+    clearAuthStorage();
+    sessionStorage.setItem(OFFLINE_SESSION_KEY, JSON.stringify({ user, startedAt: new Date().toISOString(), expiresAt }));
+    setState({ token: null, user, offline: true, loading: false });
+  }, [clearExpiryTimer]);
+
   const clearAuth = React.useCallback(() => {
     clearExpiryTimer();
     clearAuthStorage();
-    setState({ token: null, user: null, loading: false });
+    sessionStorage.removeItem(OFFLINE_SESSION_KEY);
+    setState({ token: null, user: null, offline: false, loading: false });
   }, [clearExpiryTimer]);
 
-  const value = { ...state, setAuth, clearAuth };
+  const value = { ...state, setAuth, setOfflineAuth, clearAuth };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };

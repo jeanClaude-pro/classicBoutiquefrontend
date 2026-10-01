@@ -11,6 +11,10 @@ import { LanguageToggle } from "../../components/LanguageToggle";
 import { useAuth } from "../../hooks/useAuth";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { login as loginApi, register as registerApi } from "../../services/authService";
+import { checkApiReachability } from "../../offline/connectivity";
+import { toApiError } from "../../lib/apiError";
+import { disableOfflineAccessForEmail, listOfflineProfiles, verifyOfflinePin } from "../../offline/offlineAuth";
+import type { OfflineAuthProfile } from "../../offline/types";
 
 const SESSION_EXPIRED_TOAST_ID = "session-expired";
 
@@ -30,7 +34,11 @@ const LoginPage = () => {
   const [username, setUsername] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
 
-  const { setAuth } = useAuth();
+  const { setAuth, setOfflineAuth } = useAuth();
+  const [offlineProfiles, setOfflineProfiles] = React.useState<OfflineAuthProfile[]>([]);
+  const [offlineAvailable, setOfflineAvailable] = React.useState(false);
+  const [offlineUserId, setOfflineUserId] = React.useState("");
+  const [offlinePin, setOfflinePin] = React.useState("");
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -44,6 +52,26 @@ const LoginPage = () => {
     // Only ever read on the initial mount of this page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  React.useEffect(() => {
+    void Promise.all([listOfflineProfiles(), checkApiReachability(true)]).then(([profiles, reachable]) => {
+      setOfflineProfiles(profiles);
+      setOfflineUserId(profiles[0]?.userId || "");
+      setOfflineAvailable(!reachable && profiles.length > 0);
+    });
+  }, []);
+
+  const handleOfflineLogin = async () => {
+    setError(""); setLoading(true);
+    try {
+      const profile = await verifyOfflinePin(offlineUserId, offlinePin);
+      setOfflineAuth(profile.user, profile.offlineAccessExpiresAt);
+      navigate(getReturnTo(), { replace: true });
+    } catch (failure) {
+      const code = failure instanceof Error ? failure.message : "PIN_INVALID";
+      setError(t(`offline.errors.${code}`));
+    } finally { setLoading(false); }
+  };
 
   // Only ever navigate to an internal path — never let a returnTo value
   // escape to an external origin.
@@ -67,7 +95,16 @@ const LoginPage = () => {
   };
 
   const handleLogin = async () => {
-    const { user, token } = await loginApi({ email, password });
+    let result: Awaited<ReturnType<typeof loginApi>>;
+    try {
+      result = await loginApi({ email, password });
+    } catch (failure) {
+      // The server says this account is disabled: this device must stop
+      // offering offline access to it (its queued sales are kept).
+      if (toApiError(failure).status === 403) await disableOfflineAccessForEmail(email).catch(() => undefined);
+      throw failure;
+    }
+    const { user, token } = result;
     setAuth({ token, user });
     toast.success(t("login.success"));
     const destination = user.role === "admin"
@@ -319,6 +356,12 @@ const LoginPage = () => {
                 </>
               )}
             </p>
+            {offlineAvailable && mode === "login" && <div className="mt-4 border-t pt-4 text-left">
+              <p className="mb-3 text-sm font-semibold text-slate-800">{t("offline.login")}</p>
+              <select className="mb-2 w-full rounded-lg border px-3 py-2" value={offlineUserId} onChange={(event) => setOfflineUserId(event.target.value)}>{offlineProfiles.map((profile) => <option key={profile.userId} value={profile.userId}>{profile.user.username}</option>)}</select>
+              <input className="mb-2 w-full rounded-lg border px-3 py-2" type="password" inputMode="numeric" placeholder={t("offline.pin")} value={offlinePin} onChange={(event) => setOfflinePin(event.target.value.replace(/\D/g, "").slice(0, 12))} />
+              <button type="button" disabled={loading || offlinePin.length < 6} onClick={() => void handleOfflineLogin()} className="w-full rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white disabled:opacity-50">{t("offline.login")}</button>
+            </div>}
           </div>
         </div>
       </div>

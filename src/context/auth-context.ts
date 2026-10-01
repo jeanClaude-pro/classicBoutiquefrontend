@@ -3,6 +3,7 @@ import type { AuthState, User } from "../types/auth";
 
 export type AuthContextValue = AuthState & {
   setAuth: (v: { token: string | null; user: User | null }) => void;
+  setOfflineAuth: (user: User, expiresAt: string) => void;
   clearAuth: () => void;
 };
 

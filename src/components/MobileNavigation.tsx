@@ -10,11 +10,11 @@ import { LanguageToggle } from "./LanguageToggle";
 export default function MobileNavigation() {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const location = useLocation();
-  const { token, user, clearAuth } = useAuth();
+  const { token, user, offline, clearAuth } = useAuth();
   const { t } = useTranslation();
   const accessibleSections = useMemo(() => navigationSections
-    .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user)) }))
-    .filter((section) => section.items.length > 0), [user]);
+    .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user) && (!offline || ["pos", "sales"].includes(item.id))) }))
+    .filter((section) => section.items.length > 0), [user, offline]);
   const primaryItems = accessibleSections.flatMap((section) => section.items).filter((item) => item.mobilePrimary).slice(0, 4);
   const primaryIds = new Set(primaryItems.map((item) => item.id));
 
@@ -26,7 +26,7 @@ export default function MobileNavigation() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isMoreOpen]);
 
-  if (!token || !user) return null;
+  if ((!token && !offline) || !user) return null;
   const logout = () => { clearAuth(); window.location.href = "/login"; };
 
   return <>

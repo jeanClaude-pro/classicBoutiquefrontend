@@ -8,6 +8,7 @@ import './index.css'
 import './design-system.css'
 import App from './App.tsx'
 import { reloadForNewVersion } from './lib/chunkRecovery'
+import { subscribeConnectivity } from './offline/connectivity'
 
 const updateToastId = 'pwa-update-available'
 const offlineToastId = 'network-offline'
@@ -55,16 +56,15 @@ window.addEventListener('vite:preloadError', (event) => {
   if (reloadForNewVersion()) event.preventDefault()
 })
 
-window.addEventListener('offline', showOfflineToast)
-
-window.addEventListener('online', () => {
-  toast.dismiss(offlineToastId)
-  toast.success(t('system.backOnline'))
+let previousConnectivity: string | null = null
+subscribeConnectivity((state) => {
+  if (state === 'offline') showOfflineToast()
+  if (state === 'online') {
+    toast.dismiss(offlineToastId)
+    if (previousConnectivity === 'offline') toast.success(t('system.backOnline'))
+  }
+  previousConnectivity = state
 })
-
-if (!navigator.onLine) {
-  showOfflineToast()
-}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

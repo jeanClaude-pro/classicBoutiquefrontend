@@ -35,6 +35,7 @@ function defineModule(id: string, path: string, hasShortLabel: boolean): ModuleD
 export const MODULES = {
   pos: defineModule("pos", "/", true),
   sales: defineModule("sales", "/sales", true),
+  offlineSales: defineModule("offlineSales", "/offline-sales", false),
   products: defineModule("products", "/products", true),
   entry: defineModule("entry", "/entry", true),
   sortie: defineModule("sortie", "/sortie", true),

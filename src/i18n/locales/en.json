@@ -270,6 +270,10 @@
       "short": "Sales",
       "description": "View, correct or void recorded sales."
     },
+    "offlineSales": {
+      "label": "Unsynchronized sales",
+      "description": "Inspect local sales awaiting server confirmation and safely retry synchronization."
+    },
     "products": {
       "label": "Items & Inventory",
       "short": "Inventory",
@@ -1605,6 +1609,54 @@
       "timeInfo": "Time information",
       "lastUpdate": "Last update",
       "filtered": "Filtered data"
+    }
+  },
+  "offline": {
+    "enablePrompt": "Enable secure offline access on this device?",
+    "enable": "Enable offline access",
+    "choosePin": "Choose a 6–12 digit offline PIN",
+    "pinLength": "The PIN must contain 6 to 12 digits.",
+    "login": "Offline sign-in",
+    "pin": "Offline PIN",
+    "session": "Offline session",
+    "checking": "Checking server…",
+    "pending_one": "{{count}} sale pending",
+    "pending_other": "{{count}} sales pending",
+    "cachedProducts": "Products are from the last trusted cache.",
+    "cachedRate": "Using the last trusted exchange rate.",
+    "dataUnavailable": "Offline sales require cached products and an exchange rate.",
+    "saleQueued": "Sale saved safely and awaiting synchronization. Receipt printing started.",
+    "queuedSales": "Unsynchronized sales",
+    "queuedSalesHint": "Local transactions remain here until the server confirms them.",
+    "retry": "Synchronize",
+    "receipt": "Receipt",
+    "customer": "Customer",
+    "amount": "Amount",
+    "occurred": "Occurred",
+    "status": "Status",
+    "attempts": "Attempts",
+    "error": "Error",
+    "none": "No local sales on this account.",
+    "restrictedTitle": "Unavailable offline",
+    "restricted": "This module requires a verified online session. Offline sessions are limited to the POS, receipts and queued sales.",
+    "errors": {
+      "PIN_INVALID": "Incorrect PIN.",
+      "PIN_LOCKED": "Too many attempts. Offline sign-in is temporarily locked.",
+      "OFFLINE_EXPIRED": "Offline authorization expired. Sign in online to renew it.",
+      "OFFLINE_DISABLED": "Offline access is disabled for this account."
+    },
+    "reconnected": "The server is reachable again. Sign in online to synchronize pending sales.",
+    "signInOnline": "Sign in online",
+    "syncNeedsOnline": "Synchronization requires a verified online sign-in.",
+    "syncing": "Synchronizing…",
+    "retryOne": "Retry",
+    "lastAttempt": "Last attempt",
+    "statuses": {
+      "PENDING": "Pending",
+      "SYNCING": "Synchronizing",
+      "SYNCED": "Synchronized",
+      "FAILED": "Failed",
+      "CONFLICT": "Needs review"
     }
   }
 }

@@ -22,6 +22,7 @@ export interface User {
 export interface AuthState {
   token: string | null;
   user: User | null;
+  offline: boolean;
   loading: boolean;
 }
 

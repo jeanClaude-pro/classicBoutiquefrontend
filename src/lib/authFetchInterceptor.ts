@@ -12,7 +12,7 @@
  * Import this module once (see main.tsx) before the app renders.
  */
 import { serverUrl } from "../utils/constants";
-import { invalidateSession } from "./sessionManager";
+import { AUTH_TOKEN_KEY, hasOfflineSession, invalidateSession } from "./sessionManager";
 
 const EXCLUDED_PATHS = ["/auth/login", "/auth/register"];
 
@@ -50,7 +50,10 @@ export function installAuthFetchInterceptor(): void {
       const isExcluded = EXCLUDED_PATHS.some((path) => url.includes(path));
       const isOwnApi = url.startsWith(serverUrl);
 
-      if (isOwnApi && !isExcluded && hasAuthorizationHeader(input, init)) {
+      // An offline (PIN) session holds no server token: a 401 there only
+      // means the API is reachable again, not that a session expired.
+      const offlineOnly = !localStorage.getItem(AUTH_TOKEN_KEY) && hasOfflineSession();
+      if (isOwnApi && !isExcluded && !offlineOnly && hasAuthorizationHeader(input, init)) {
         invalidateSession("unauthorized");
       }
     }

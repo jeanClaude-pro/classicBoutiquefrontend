@@ -270,6 +270,10 @@
       "short": "Ventes",
       "description": "Consultez, corrigez ou annulez les ventes enregistrées."
     },
+    "offlineSales": {
+      "label": "Ventes non synchronisées",
+      "description": "Consultez les ventes locales en attente du serveur et relancez leur synchronisation en sécurité."
+    },
     "products": {
       "label": "Articles & stock",
       "short": "Stock",
@@ -1605,6 +1609,54 @@
       "timeInfo": "Informations temporelles",
       "lastUpdate": "Dernière mise à jour",
       "filtered": "Données filtrées"
+    }
+  },
+  "offline": {
+    "enablePrompt": "Activer l’accès hors ligne sécurisé sur cet appareil ?",
+    "enable": "Activer l’accès hors ligne",
+    "choosePin": "Choisissez un PIN hors ligne de 6 à 12 chiffres",
+    "pinLength": "Le PIN doit contenir entre 6 et 12 chiffres.",
+    "login": "Connexion hors ligne",
+    "pin": "PIN hors ligne",
+    "session": "Session hors ligne",
+    "checking": "Vérification du serveur…",
+    "pending_one": "{{count}} vente en attente",
+    "pending_other": "{{count}} ventes en attente",
+    "cachedProducts": "Les produits proviennent du dernier cache fiable.",
+    "cachedRate": "Utilisation du dernier taux de change fiable.",
+    "dataUnavailable": "Les ventes hors ligne nécessitent des produits et un taux de change en cache.",
+    "saleQueued": "Vente enregistrée en sécurité et en attente de synchronisation. Impression lancée.",
+    "queuedSales": "Ventes non synchronisées",
+    "queuedSalesHint": "Les transactions locales restent ici jusqu’à leur confirmation par le serveur.",
+    "retry": "Synchroniser",
+    "receipt": "Reçu",
+    "customer": "Client",
+    "amount": "Montant",
+    "occurred": "Effectuée le",
+    "status": "Statut",
+    "attempts": "Tentatives",
+    "error": "Erreur",
+    "none": "Aucune vente locale pour ce compte.",
+    "restrictedTitle": "Indisponible hors ligne",
+    "restricted": "Ce module exige une session en ligne vérifiée. La session hors ligne est limitée au point de vente, aux reçus et aux ventes en attente.",
+    "errors": {
+      "PIN_INVALID": "PIN incorrect.",
+      "PIN_LOCKED": "Trop de tentatives. La connexion hors ligne est temporairement verrouillée.",
+      "OFFLINE_EXPIRED": "L’autorisation hors ligne a expiré. Reconnectez-vous en ligne pour la renouveler.",
+      "OFFLINE_DISABLED": "L’accès hors ligne est désactivé pour ce compte."
+    },
+    "reconnected": "Le serveur est de nouveau joignable. Connectez-vous en ligne pour synchroniser les ventes en attente.",
+    "signInOnline": "Se connecter en ligne",
+    "syncNeedsOnline": "La synchronisation nécessite une connexion en ligne vérifiée.",
+    "syncing": "Synchronisation…",
+    "retryOne": "Réessayer",
+    "lastAttempt": "Dernière tentative",
+    "statuses": {
+      "PENDING": "En attente",
+      "SYNCING": "Synchronisation",
+      "SYNCED": "Synchronisée",
+      "FAILED": "Échec",
+      "CONFLICT": "À vérifier"
     }
   }
 }

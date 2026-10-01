@@ -42,15 +42,17 @@ test("historical surfaces prefer saved sale snapshots and analytics never fetche
   assert.doesNotMatch(analytics, /exchange-rates\/current/);
 });
 
-test("the installable PWA has no offline sale queue that could bypass server validation", () => {
+test("the financial queue is application-managed and still submits through server validation", () => {
   const vite = readFileSync(new URL("../vite.config.ts", import.meta.url), "utf8");
-  const sourceFiles = [
-    "../src/main.tsx",
-    "../src/pages/NewSale.tsx",
-    "../src/utils/saleCart.ts",
-    "../src/lib/api.ts",
-  ].map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+  const pos = readFileSync(new URL("../src/pages/NewSale.tsx", import.meta.url), "utf8");
+  const sync = readFileSync(new URL("../src/offline/syncManager.ts", import.meta.url), "utf8");
+  const model = readFileSync(new URL("../../server/models/Sale.js", import.meta.url), "utf8");
   assert.doesNotMatch(vite, /BackgroundSyncPlugin|Queue\(/);
-  assert.doesNotMatch(sourceFiles, /indexedDB|Dexie|BackgroundSyncPlugin|unsynchronized sales/i);
+  // Checkout goes through the outbox, which persists before any network call.
+  assert.match(pos, /submitNewSale\(localSale, token\)/);
+  assert.match(sync, /await addLocalSale\(sale\);\s*\n\s*if \(!canReachServer/);
+  assert.match(sync, /fetch\(`\$\{serverUrl\}\/sales`/);
+  assert.match(sync, /Authorization: `Bearer/);
+  assert.match(model, /requestKey_unique_when_set/);
 });
 

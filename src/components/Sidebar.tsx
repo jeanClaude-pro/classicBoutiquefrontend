@@ -14,7 +14,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1180);
   const [now, setNow] = useState(new Date());
   const location = useLocation();
-  const { token, user, clearAuth } = useAuth();
+  const { token, user, offline, clearAuth } = useAuth();
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -23,10 +23,10 @@ export default function Sidebar() {
   }, []);
 
   const sections = useMemo(() => navigationSections
-    .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user)) }))
-    .filter((section) => section.items.length), [user]);
+    .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user) && (!offline || ["pos", "sales"].includes(item.id))) }))
+    .filter((section) => section.items.length), [user, offline]);
 
-  if (!token || !user) return null;
+  if ((!token && !offline) || !user) return null;
   const logout = () => { clearAuth(); window.location.href = "/login"; };
 
   return (

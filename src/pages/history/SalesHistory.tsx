@@ -64,6 +64,8 @@ import {
   restoreCorrectionDiscounts,
   withCorrectionPrice,
 } from "../../utils/saleCorrection";
+import { getUserSales } from "../../offline/repositories/sales";
+import type { LocalSale } from "../../offline/types";
 
 interface SaleItem {
   productId: string;
@@ -137,6 +139,8 @@ interface Sale {
   type?: string;
   isWalkIn?: boolean;
   exchangeRate?: number;
+  clientSaleId?: string;
+  localSyncStatus?: string;
 }
 
 interface Product extends ProductPricing {
@@ -226,9 +230,44 @@ const getCurrentYear = (): number => {
   return new Date().getFullYear();
 };
 
+function localSaleToHistory(local: LocalSale): Sale {
+  return {
+    _id: local.clientSaleId,
+    saleId: local.receiptNumber,
+    clientSaleId: local.clientSaleId,
+    localSyncStatus: local.syncStatus,
+    customer: local.payload.isWalkIn
+      ? { name: "Client de passage", phone: "", email: "" }
+      : local.payload.customer || { name: "", phone: "", email: "" },
+    items: local.payload.items.map((item, index) => ({
+      _id: `${local.clientSaleId}-${index}`,
+      productId: item.productId,
+      name: String(item.name || ""),
+      quantity: item.quantity,
+      price: Number(item.price || 0),
+      total: Number(item.price || 0) * item.quantity,
+      enteredPrice: Number(item.enteredPrice || item.price || 0),
+      enteredCurrency: item.enteredCurrency as SaleCurrency | undefined,
+      priceUSD: Number(item.priceUSD || item.price || 0),
+      priceFC: item.priceFC === undefined ? undefined : Number(item.priceFC),
+      exchangeRate: local.payload.exchangeRate,
+    })),
+    subtotal: local.payload.subtotal,
+    total: local.payload.total,
+    paymentMethod: local.payload.paymentMethod,
+    status: "pending",
+    createdAt: local.occurredAt,
+    updatedAt: local.updatedAt,
+    salesPerson: local.ownerName,
+    type: "sale",
+    isWalkIn: local.payload.isWalkIn,
+    exchangeRate: local.payload.exchangeRate,
+  };
+}
+
 export default function SalesHistory() {
   const { t } = useTranslation();
-  const { token: authToken } = useAuth();
+  const { token: authToken, user: authUser } = useAuth();
 
   // Always prefer the React auth context token; fall back to localStorage
   const getToken = useCallback(
@@ -361,6 +400,11 @@ export default function SalesHistory() {
   // Fetch current user from localStorage (with API fallback)
   const fetchCurrentUser = async () => {
     try {
+      if (authUser) {
+        setCurrentUser(authUser);
+        setIsAdmin(authUser.role === "superadmin");
+        return;
+      }
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         const userData = JSON.parse(storedUser);
@@ -443,6 +487,8 @@ export default function SalesHistory() {
   };
 
   const fetchSales = async () => {
+    const localRows = authUser ? await getUserSales(authUser.id) : [];
+    const localPending = localRows.filter((row) => row.syncStatus !== "SYNCED").map(localSaleToHistory);
     try {
       setLoading(true);
       setError(null);
@@ -470,7 +516,8 @@ export default function SalesHistory() {
           console.log("Summary stats:", data.summary);
           
           // Filter out expenses and invalid sales
-          const validSales = filterValidSales(fetchedSales);
+          const serverIds = new Set(fetchedSales.map((sale) => sale.clientSaleId).filter(Boolean));
+          const validSales = filterValidSales([...localPending.filter((sale) => !serverIds.has(sale.clientSaleId)), ...fetchedSales]);
           console.log(`After filtering: ${validSales.length} valid sales`);
           
           // Update sales state
@@ -492,7 +539,10 @@ export default function SalesHistory() {
         setError(t("salesHistory.loadFailed", { message: (await apiErrorFromResponse(res)).message }));
       }
     } catch (error) {
-      setError(t("salesHistory.loadFailed", { message: toApiError(error).message }));
+      if (localPending.length) {
+        setSales(localPending);
+        setError(null);
+      } else setError(t("salesHistory.loadFailed", { message: toApiError(error).message }));
     } finally {
       setLoading(false);
     }
@@ -1648,6 +1698,7 @@ export default function SalesHistory() {
                           }`}
                         >
                           {saleStatusLabel(sale.status)}
+                          {sale.localSyncStatus ? ` · ${sale.localSyncStatus}` : ""}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -1692,10 +1743,12 @@ export default function SalesHistory() {
                               <button
                                 onClick={() => openEditModal(sale)}
                                 disabled={
+                                  Boolean(sale.localSyncStatus) ||
                                   sale.status === "voided" ||
                                   sale.status === "corrected"
                                 }
                                 className={`p-1 rounded ${
+                                  sale.localSyncStatus ||
                                   sale.status === "voided" ||
                                   sale.status === "corrected"
                                     ? "text-gray-400 cursor-not-allowed"
@@ -1725,9 +1778,9 @@ export default function SalesHistory() {
                               )}
                               {isAdmin && <button
                                 onClick={() => requestVoid(sale)}
-                                disabled={sale.status === "voided" || confirmAction.busy}
+                                disabled={Boolean(sale.localSyncStatus) || sale.status === "voided" || confirmAction.busy}
                                 className={`p-1 rounded ${
-                                  sale.status === "voided"
+                                  sale.localSyncStatus || sale.status === "voided"
                                     ? "text-gray-400 cursor-not-allowed"
                                     : "text-red-600 hover:text-red-900"
                                 }`}

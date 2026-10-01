@@ -21,7 +21,6 @@ import {
   productReferencePrice,
   totalCartQuantity,
   type PriceSnapshot,
-  type ProductPricing,
   type SaleCurrency,
 } from "../utils/salePricing";
 import {
@@ -42,6 +41,13 @@ import {
   renderSaleReceiptHtml,
   type SaleReceiptDocument,
 } from "../lib/saleReceipt";
+import type { Product as DomainProduct } from "../types";
+import { scopeForUser } from "../offline/db";
+import { cacheProducts, getCachedProducts, getProductCacheTime } from "../offline/repositories/products";
+import { cacheExchangeRate, getCachedExchangeRate } from "../offline/repositories/exchangeRates";
+import { pendingQuantityByProduct } from "../offline/repositories/sales";
+import { submitNewSale, type SubmitOutcome } from "../offline/syncManager";
+import type { LocalSale, OfflineSalePayload } from "../offline/types";
 
 // One key per checkout: a retry after a lost response replays the recorded
 // sale instead of creating a second one (see POST /api/sales requestKey).
@@ -50,12 +56,7 @@ const newRequestKey = () =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-interface Product extends ProductPricing {
-  _id: string;
-  name: string;
-  sku?: string;
-  stock: number;
-}
+type Product = DomainProduct & { sku?: string };
 
 type CartItem = SaleCartLine;
 
@@ -113,7 +114,8 @@ export default function NewSale() {
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Get the current user from your auth context
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, token } = useAuth();
+  const scopeKey = currentUser ? scopeForUser(currentUser) : "anonymous";
 
   // Can this user override product prices?
   const canEditPrice =
@@ -188,11 +190,15 @@ export default function NewSale() {
       if (response.ok) {
         const data = await response.json();
         setExchangeRate(data);
+        try { await cacheExchangeRate(scopeKey, data); } catch (cacheError) { console.warn("Exchange-rate cache unavailable:", cacheError); }
       } else {
-        console.warn('Failed to load exchange rate');
+        const cached = await getCachedExchangeRate(scopeKey).catch(() => undefined);
+        if (cached) { setExchangeRate(cached); setNotice(t("offline.cachedRate")); }
       }
     } catch (error) {
       console.error('Error loading exchange rate:', error);
+      const cached = await getCachedExchangeRate(scopeKey).catch(() => undefined);
+      if (cached) { setExchangeRate(cached); setNotice(t("offline.cachedRate")); }
     } finally {
       setLoadingRate(false);
     }
@@ -236,9 +242,19 @@ export default function NewSale() {
           : Array.isArray(data) && !(data as any).__nonJson
           ? (data as any)
           : [];
-        if (!cancelled) setProducts(list);
+        try { await cacheProducts(scopeKey, list); } catch (cacheError) { console.warn("Product cache unavailable:", cacheError); }
+        const pending = await pendingQuantityByProduct().catch(() => new Map<string, number>());
+        if (!cancelled) setProducts(list.map((product) => ({ ...product, stock: Math.max(0, product.stock - (pending.get(product._id) || 0)) })));
       } catch (e: any) {
-        if (!cancelled) setError(toApiError(e).message);
+        // Offline stock = last authoritative snapshot minus what this device
+        // sold since (queued sales and sales synced after the snapshot).
+        const cached = await getCachedProducts(scopeKey).catch(() => []) as Product[];
+        const snapshotAt = await getProductCacheTime(scopeKey).catch(() => undefined);
+        const pending = await pendingQuantityByProduct(snapshotAt).catch(() => new Map<string, number>());
+        if (!cancelled && cached.length) {
+          setProducts(cached.map((product) => ({ ...product, stock: Math.max(0, product.stock - (pending.get(product._id) || 0)) })));
+          setNotice(t("offline.cachedProducts"));
+        } else if (!cancelled) setError(toApiError(e).message);
       }
     }
 
@@ -246,7 +262,7 @@ export default function NewSale() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [scopeKey, currentUser?.id, t]);
 
   const product = useMemo(
     () => products.find((p) => p._id === form.productId),
@@ -289,6 +305,7 @@ export default function NewSale() {
 
   const isFormValid =
     cart.length > 0 &&
+    exchangeRate !== null &&
     (form.isWalkIn ||
       (form.customerName.trim() !== "" && form.customerPhone.trim() !== ""));
 
@@ -586,12 +603,6 @@ export default function NewSale() {
     }
   }
 
-  function authHeader(): Record<string, string> {
-    const token =
-      localStorage.getItem("authToken") || localStorage.getItem("token") || "";
-    return token ? { Authorization: `Bearer ${token}` } : {};
-  }
-
   // Browser printing (fallback when the thermal printer is unavailable):
   // the same FC-only receipt and stub as the thermal printer.
   const printReceiptOnly = (doc: SaleReceiptDocument) =>
@@ -665,7 +676,11 @@ export default function NewSale() {
     const submittedCart = cart;
 
     try {
-      const body = {
+      if (!currentUser || !exchangeRate) throw new Error(t("offline.dataUnavailable"));
+      const occurredAt = new Date().toISOString();
+      const clientSaleId = requestKey.current;
+      const receiptNumber = `POS-${clientSaleId}`;
+      const body: OfflineSalePayload = {
         customer: form.isWalkIn
           ? undefined
           : {
@@ -680,26 +695,48 @@ export default function NewSale() {
         paymentMethod: uiToModelPayment(form.paymentMethod),
         salesPerson: currentUser?.username || "unknown",
         // The rate the cart was priced at; the server refuses it if stale.
-        exchangeRate: exchangeRate?.rate,
-        requestKey: requestKey.current,
+        exchangeRate: exchangeRate.rate,
+        requestKey: clientSaleId,
+        clientSaleId,
+        receiptNumber,
+        occurredAt,
+        offline: true,
       };
 
-      const res = await fetch(`${API_BASE}/sales`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeader(),
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await readJsonSafe(res);
-      if (!res.ok) {
-        throw apiErrorFromPayload(res.status, data);
+      const now = new Date().toISOString();
+      const localSale: LocalSale = {
+        clientSaleId, idempotencyKey: clientSaleId, receiptNumber,
+        ownerUserId: currentUser.id, ownerName: currentUser.username, scopeKey,
+        occurredAt, queuedAt: now, updatedAt: now, syncStatus: "PENDING", retryCount: 0, payload: body,
+      };
+      let data: Record<string, unknown> = {};
+      let synced = false;
+      let outcome: SubmitOutcome | null = null;
+      try {
+        outcome = await submitNewSale(localSale, token);
+      } catch (storageError) {
+        // IndexedDB can be disabled by browser policy/private mode. Preserve
+        // the established online path, but never pretend an offline sale was
+        // saved when durable local storage is unavailable.
+        console.warn("Offline storage unavailable; using online submission:", storageError);
+        const response = await fetch(`${API_BASE}/sales`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify(body),
+        });
+        data = await readJsonSafe(response);
+        if (!response.ok) throw apiErrorFromPayload(response.status, data);
+        synced = true;
+      }
+      // A refusal at the till (stock, rate, discount floor) keeps the cart and
+      // goes through the established error handling below: nothing was sold.
+      if (outcome?.kind === "rejected") throw outcome.error;
+      if (outcome) {
+        data = outcome.sale.serverSale || {};
+        synced = outcome.kind === "synced";
       }
 
       // Get the sale ID from the API response
-      const saleId = data.saleId || data._id;
+      const saleId = receiptNumber;
       
       // Receipt of the recorded sale: the server's stored items carry the FC
       // snapshots printed on the receipt and stub.
@@ -712,7 +749,7 @@ export default function NewSale() {
         customerName: form.isWalkIn ? t("pos.walkIn") : form.customerName,
         customerPhone: form.isWalkIn ? "" : form.customerPhone,
         items: Array.isArray(data.items) ? data.items : cart,
-        exchangeRate: data.exchangeRate ?? body.exchangeRate,
+        exchangeRate: typeof data.exchangeRate === "number" ? data.exchangeRate : body.exchangeRate,
         paymentMethod: form.paymentMethod,
         salesPerson: currentUser?.username || t("pos.agent"),
         date: formatNowGMT2(),
@@ -722,6 +759,9 @@ export default function NewSale() {
 
       setReceiptData(newReceiptData);
       requestKey.current = newRequestKey();
+      const soldByProduct = new Map<string, number>();
+      submittedCart.forEach((item) => soldByProduct.set(item.productId, (soldByProduct.get(item.productId) || 0) + item.quantity));
+      setProducts((current) => current.map((product) => ({ ...product, stock: Math.max(0, product.stock - (soldByProduct.get(product._id) || 0)) })));
 
       // Reset form and cart
       setForm({
@@ -739,10 +779,9 @@ export default function NewSale() {
       setCart([]);
       setSearchTerm("");
 
-      setMessage(
-        t("pos.saleDonePrinting")
-      );
-      notifySuccess(t("pos.saleRecorded"));
+      setMessage(synced ? t("pos.saleDonePrinting") : t("offline.saleQueued"));
+      notifySuccess(synced ? t("pos.saleRecorded") : t("offline.saleQueued"));
+      window.dispatchEvent(new Event("offline-sales:changed"));
     } catch (e: any) {
       const failure = toApiError(e);
       // After a network failure the sale may have been recorded: the retry

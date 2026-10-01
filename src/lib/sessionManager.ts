@@ -7,6 +7,16 @@
 
 export const AUTH_TOKEN_KEY = "token";
 export const AUTH_USER_KEY = "user";
+/** sessionStorage key of a PIN-verified offline session (no server token). */
+export const OFFLINE_SESSION_KEY = "offlineSession";
+
+export function hasOfflineSession(): boolean {
+  try {
+    return Boolean(sessionStorage.getItem(OFFLINE_SESSION_KEY));
+  } catch {
+    return false;
+  }
+}
 
 export type SessionInvalidationReason = "expired" | "unauthorized";
 

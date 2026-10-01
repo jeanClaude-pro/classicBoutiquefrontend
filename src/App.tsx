@@ -22,6 +22,8 @@ import { AuthProvider } from "./context/AuthProvider";
 import { RequireRole } from "./components/RequireRole";
 import { useAuth } from "./hooks/useAuth";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
+import { OfflineRuntime } from "./components/OfflineRuntime";
+import { OfflineAccessSetup } from "./components/OfflineAccessSetup";
 
 const Products = lazy(() => import("./pages/products/products"));
 const SalesHistory = lazy(() => import("./pages/history/SalesHistory"));
@@ -35,6 +37,7 @@ const Entry = lazy(() => import("./pages/Entry"));
 const EntryHistory = lazy(() => import("./pages/EntryHistory"));
 const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
 const Remboursements = lazy(() => import("./pages/Remboursements"));
+const OfflineSales = lazy(() => import("./pages/offline/OfflineSales"));
 
 function RouteLoading() {
   const { t } = useTranslation();
@@ -50,6 +53,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       {!isLogin && <Sidebar />}
       <main className="app-main flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {!isLogin && <NetworkStatus />}
+        {!isLogin && <OfflineAccessSetup />}
         <div className="app-content min-h-full min-w-0">
           {/* A page that fails to render (or whose chunk is outdated) shows a
               fallback here while the navigation stays usable. */}
@@ -62,9 +66,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function LoginRoute() {
-  const { token, user, loading } = useAuth();
+  const { token, user, offline, loading } = useAuth();
   if (loading) return <RouteLoading />;
-  if (!token) return <LoginPage />;
+  if (!token && !offline) return <LoginPage />;
   const destination = user?.role === "admin"
     ? (user.permissions?.find((path) => ["/sales", "/reports", "/products"].includes(path)) || "/sales")
     : "/";
@@ -75,11 +79,16 @@ export default function App() {
   return (
     <AppErrorBoundary scope="app">
     <AuthProvider>
+      <OfflineRuntime />
       <ToastContainer position="top-right" autoClose={3000} newestOnTop />
 
       <Router>
         <AppLayout>
           <Suspense fallback={<RouteLoading />}><Routes>
+                <Route
+                  path="/offline-sales"
+                  element={<RequireAuth><OfflineSales /></RequireAuth>}
+                />
                 <Route
                   path="/products"
                   element={
