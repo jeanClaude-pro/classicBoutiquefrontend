@@ -11,6 +11,7 @@ import { apiErrorFromResponse, requestJson, toApiError, type ApiError } from "..
 import { notifyInfo, notifySuccess } from "../lib/notify";
 import { useConfirmAction } from "../hooks/useConfirmAction";
 import { MODULES } from "../config/modules";
+import { escapeHtmlDeep, printAndClose } from "../lib/saleReceipt";
 import {
   expenseDeletionCopy,
   expenseRejectionCopy,
@@ -709,6 +710,7 @@ export default function SortieHistory() {
         ? formatDateTimeGMT2(expense.validatedAt)
         : formattedDate;
 
+      const safeExpense = escapeHtmlDeep(expense);
       printWindow.document.write(`
 <html lang="${currentLocale().slice(0, 2)}">
   <head>
@@ -907,7 +909,7 @@ export default function SortieHistory() {
       <div class="receipt-info">
         <div class="shop-details">${t("receipt.date")}: <strong>${formattedDate}</strong></div>
         <div class="shop-details">${t("receipt.receiptNo")}: <strong>${
-          expense.expenseId
+          safeExpense.expenseId
         }</strong></div>
       </div>
       
@@ -916,16 +918,16 @@ export default function SortieHistory() {
       <div class="expense-details">
         <div class="detail-row">
           <div class="detail-label"><strong>${t("expenseVoucher.reason")}:</strong></div>
-          <div class="detail-value"><strong>${expense.reason.toUpperCase()}</strong></div>
+          <div class="detail-value"><strong>${safeExpense.reason.toUpperCase()}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("expenseVoucher.beneficiary")}:</strong></div>
-          <div class="detail-value"><strong>${expense.recipientName.toUpperCase()}</strong></div>
+          <div class="detail-value"><strong>${safeExpense.recipientName.toUpperCase()}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.phone")}:</strong></div>
           <div class="detail-value"><strong>${
-            expense.recipientPhone
+            safeExpense.recipientPhone
           }</strong></div>
         </div>
         <div class="detail-row">
@@ -934,7 +936,7 @@ export default function SortieHistory() {
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("saleReceipt.payment")}:</strong></div>
-          <div class="detail-value"><strong>${paymentMethodLabel(expense.paymentMethod).toUpperCase()}</strong></div>
+          <div class="detail-value"><strong>${paymentMethodLabel(safeExpense.paymentMethod).toUpperCase()}</strong></div>
         </div>
       </div>
       
@@ -946,7 +948,7 @@ export default function SortieHistory() {
       </div>
       
       <div class="validation-info">
-        ${t("expenseVoucher.validatedBy")}: <strong>${expense.validatedBy || "ADMIN"}</strong><br>
+        ${t("expenseVoucher.validatedBy")}: <strong>${safeExpense.validatedBy || "ADMIN"}</strong><br>
         ${t("expenseVoucher.on")}: <strong>${validatedDate}</strong>
       </div>
       
@@ -954,7 +956,7 @@ export default function SortieHistory() {
         <div class="thank-you"><strong>${t("expenseVoucher.stub")}</strong></div>
         <div class="warning"><strong>${t("saleReceipt.keepStub")}</strong></div>
         <div class="warning">${t("entryReceipt.receiptNo")}: <strong>${
-          expense.expenseId
+          safeExpense.expenseId
         }</strong></div>
         <div class="warning">${t("entryReceipt.date")}: <strong>${formattedDate}</strong></div>
       </div>
@@ -964,22 +966,11 @@ export default function SortieHistory() {
         ✄ ────────────────────────── ✄
       </div>
     </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
   </body>
 </html>
 `);
       printWindow.document.close();
+      printAndClose(printWindow);
     }
   };
 

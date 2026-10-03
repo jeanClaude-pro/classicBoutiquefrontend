@@ -314,6 +314,9 @@ export default function SalesHistory() {
   // Reprinting an existing receipt is available to every authenticated user.
   // This flag is intentionally independent from all edit/void/override rights.
   const canReprint = Boolean(currentUser);
+  // Correcting a completed sale is reserved to superadmin and manager; the
+  // API refuses every other role (routes/sales.js).
+  const canCorrectSales = currentUser?.role === "superadmin" || currentUser?.role === "manager";
   const confirmAction = useConfirmAction();
 
   // Timeframe state - Updated to match backend query parameters
@@ -1740,7 +1743,7 @@ export default function SalesHistory() {
                           )}
                           {!showEditedSales && (
                             <>
-                              <button
+                              {canCorrectSales && <button
                                 onClick={() => openEditModal(sale)}
                                 disabled={
                                   Boolean(sale.localSyncStatus) ||
@@ -1757,7 +1760,7 @@ export default function SalesHistory() {
                                 title={t("salesHistory.actions.correct")}
                               >
                                 <Edit className="w-4 h-4" />
-                              </button>
+                              </button>}
                               {canReprint && (
                                 <>
                                   <button
@@ -2049,7 +2052,7 @@ export default function SalesHistory() {
                   <Printer className="w-4 h-4" />
                   {t("salesHistory.actions.printReceipt")}
                 </button>}
-                <button
+                {canCorrectSales && <button
                   onClick={() => openEditModal(selectedSale)}
                   disabled={
                     selectedSale.status === "voided" ||
@@ -2064,7 +2067,7 @@ export default function SalesHistory() {
                 >
                   <Edit className="w-4 h-4" />
                   {t("salesHistory.actions.edit")}
-                </button>
+                </button>}
                 <button
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"

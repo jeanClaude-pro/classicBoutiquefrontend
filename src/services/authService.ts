@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { LoginPayload, RegisterPayload, LoginResponse, User } from "../types/auth";
+import type { LoginPayload, RegisterPayload, RegisterResponse, LoginResponse, User } from "../types/auth";
 import { serverUrl } from "../utils/constants";
 import { ApiError, apiErrorFromPayload, toApiError } from "../lib/apiError";
 import { t } from "../i18n";
@@ -39,8 +39,28 @@ export function login(payload: LoginPayload) {
   });
 }
 
+/** Ends this session on the server (best effort; never blocks sign-out). */
+export async function logoutSession(): Promise<void> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  if (!token) return;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 3000);
+  try {
+    await fetch(`${serverUrl}/auth/logout`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      keepalive: true,
+      signal: controller.signal,
+    });
+  } catch {
+    // Offline or already expired: the local sign-out still happens.
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function register(payload: RegisterPayload) {
-  return apiFetch<LoginResponse>("/auth/register", {
+  return apiFetch<RegisterResponse>("/auth/register", {
     method: "POST",
     body: JSON.stringify(payload)
   });

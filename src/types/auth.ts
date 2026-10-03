@@ -41,3 +41,9 @@ export interface LoginResponse {
   user: User;
   token: string;
 }
+
+/** Public sign-up never opens a session: the account awaits activation. */
+export interface RegisterResponse {
+  pendingActivation: true;
+  message: string;
+}

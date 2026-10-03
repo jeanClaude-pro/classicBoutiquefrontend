@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Clock3, Languages, LogOut, UserRound } from 
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
+import { logoutSession } from "../services/authService";
 import { formatDayGMT2, formatTimeGMT2 } from "../utils/dateUtils";
 import { canAccessNavigationItem, isNavigationItemActive, navigationSections } from "../config/navigation";
 import { roleLabel } from "../config/roles";
@@ -27,7 +28,7 @@ export default function Sidebar() {
     .filter((section) => section.items.length), [user, offline]);
 
   if ((!token && !offline) || !user) return null;
-  const logout = () => { clearAuth(); window.location.href = "/login"; };
+  const logout = async () => { await logoutSession(); clearAuth(); window.location.href = "/login"; };
 
   return (
     <aside className={`desktop-tablet-sidebar app-sidebar ${collapsed ? "is-collapsed" : ""}`}>

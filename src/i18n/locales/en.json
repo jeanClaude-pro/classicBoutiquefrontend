@@ -680,7 +680,9 @@
     "submitSignIn": "Sign in",
     "submitSignup": "Create my account",
     "noAccount": "Don't have an account yet?",
-    "haveAccount": "Already have an account?"
+    "haveAccount": "Already have an account?",
+    "accountPendingActivation": "Account created. An administrator must activate it before your first sign-in.",
+    "sessionIdle": "You were signed out after a period of inactivity. Please sign in again."
   },
   "products": {
     "saved": "Changes saved.",
@@ -952,7 +954,10 @@
       "signup": "Sign-up is public through the sign-in page, but every new account automatically receives the “{{role}}” role; only administrators can then change roles and permissions."
     },
     "availableActions": "Available action permissions",
-    "signedInAs": "Signed in as"
+    "signedInAs": "Signed in as",
+    "unlockLogin": "Unlock sign-in",
+    "unlockLoginNamed": "Unlock sign-in for {{name}}",
+    "loginUnlocked": "Sign-in unlocked for {{name}}"
   },
   "reports": {
     "notEnoughData": "Not enough data",

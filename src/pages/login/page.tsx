@@ -44,8 +44,13 @@ const LoginPage = () => {
   const [searchParams] = useSearchParams();
 
   React.useEffect(() => {
-    if (searchParams.get("reason") === "session-expired") {
+    const reason = searchParams.get("reason");
+    if (reason === "session-expired") {
       toast.error(t("login.sessionExpired"), {
+        toastId: SESSION_EXPIRED_TOAST_ID,
+      });
+    } else if (reason === "idle") {
+      toast.info(t("login.sessionIdle"), {
         toastId: SESSION_EXPIRED_TOAST_ID,
       });
     }
@@ -124,14 +129,15 @@ const LoginPage = () => {
       throw new Error(t("login.passwordMismatch"));
     }
 
-    const { user, token } = await registerApi({
+    await registerApi({
       username: username.trim(),
       email,
       password,
     });
-    setAuth({ token, user });
-    toast.success(t("login.accountCreated"));
-    navigate(getReturnTo(), { replace: true });
+    // No session is opened: a superadministrator must activate the account.
+    toast.success(t("login.accountPendingActivation"), { autoClose: 8000 });
+    setUsername("");
+    switchMode("login");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -214,7 +220,10 @@ const LoginPage = () => {
                 : t("login.signupHint")}
             </p>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {/* autoComplete="off" discourages browsers from saving or
+                pre-filling credentials on this shared terminal; a browser's
+                own password manager may still ignore it. */}
+            <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
               {mode === "signup" && (
                 <div>
                   <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -246,7 +255,7 @@ const LoginPage = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition text-sm"
                   required
-                  autoComplete="email"
+                  autoComplete="off"
                 />
               </div>
 
@@ -265,7 +274,7 @@ const LoginPage = () => {
                     required
                     minLength={mode === "signup" ? 10 : undefined}
                     maxLength={128}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    autoComplete={mode === "login" ? "off" : "new-password"}
                   />
                   <button
                     type="button"

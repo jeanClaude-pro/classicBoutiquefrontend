@@ -12,6 +12,8 @@ import {
   OFFLINE_SESSION_KEY,
 } from "../lib/sessionManager";
 import { renewOfflineAuthorization } from "../offline/offlineAuth";
+import { startIdleTimer } from "../lib/idleTimeout";
+import { logoutSession } from "../services/authService";
 
 // setTimeout's delay is a 32-bit signed int; clamp defensively so a
 // misconfigured/longer-lived token can never overflow into an immediate fire.
@@ -111,6 +113,17 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
   }, [clearExpiryTimer]);
 
   React.useEffect(() => clearExpiryTimer, [clearExpiryTimer]);
+
+  // Shared POS terminals: an unattended session (online or offline PIN) ends
+  // after the configured idle time. A sale in progress defers it (see
+  // lib/idleTimeout.ts).
+  const signedIn = Boolean(state.token || (state.offline && state.user));
+  React.useEffect(() => {
+    if (!signedIn) return undefined;
+    return startIdleTimer(() => {
+      void logoutSession().finally(() => invalidateSession("idle"));
+    });
+  }, [signedIn]);
 
   const setAuth = React.useCallback(
     ({ token, user }: { token: string | null; user: User | null }) => {

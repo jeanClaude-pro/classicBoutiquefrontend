@@ -3,6 +3,7 @@ import { Languages, LogOut, MoreHorizontal, User as UserIcon, X } from "lucide-r
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
+import { logoutSession } from "../services/authService";
 import { canAccessNavigationItem, isNavigationItemActive, navigationSections } from "../config/navigation";
 import { roleLabel } from "../config/roles";
 import { LanguageToggle } from "./LanguageToggle";
@@ -27,7 +28,7 @@ export default function MobileNavigation() {
   }, [isMoreOpen]);
 
   if ((!token && !offline) || !user) return null;
-  const logout = () => { clearAuth(); window.location.href = "/login"; };
+  const logout = async () => { await logoutSession(); clearAuth(); window.location.href = "/login"; };
 
   return <>
     {isMoreOpen && <div className="mobile-more-layer">

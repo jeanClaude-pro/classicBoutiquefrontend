@@ -680,7 +680,9 @@
     "submitSignIn": "Se connecter",
     "submitSignup": "Créer mon compte",
     "noAccount": "Pas encore de compte ?",
-    "haveAccount": "Vous avez déjà un compte ?"
+    "haveAccount": "Vous avez déjà un compte ?",
+    "accountPendingActivation": "Compte créé. Un administrateur doit l'activer avant votre première connexion.",
+    "sessionIdle": "Session fermée après une période d'inactivité. Veuillez vous reconnecter."
   },
   "products": {
     "saved": "Modification enregistrée avec succès.",
@@ -952,7 +954,10 @@
       "signup": "L'inscription est publique via la page de connexion, mais chaque nouveau compte reçoit automatiquement le rôle « {{role}} » ; seuls les administrateurs peuvent ensuite changer les rôles et permissions."
     },
     "availableActions": "Permissions d'actions disponibles",
-    "signedInAs": "Connecté en tant que"
+    "signedInAs": "Connecté en tant que",
+    "unlockLogin": "Débloquer la connexion",
+    "unlockLoginNamed": "Débloquer la connexion de {{name}}",
+    "loginUnlocked": "Connexion de {{name}} débloquée"
   },
   "reports": {
     "notEnoughData": "Pas assez de données",

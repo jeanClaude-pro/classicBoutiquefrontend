@@ -25,6 +25,7 @@ import {
   ToggleLeft,
   ToggleRight,
   Lock,
+  LockOpen,
   ChevronDown,
   Store,
   BookOpen,
@@ -286,6 +287,16 @@ export default function AdminPanel() {
         setUsers((prev) => prev.map((u) => (u._id === user._id ? { ...u, isActive } : u)));
       },
     });
+  };
+
+  // Clears the brute-force lock of an account (5 failed sign-ins).
+  const handleUnlockLogin = async (user: AppUser) => {
+    try {
+      await requestJson(`${API_BASE}/users/${user._id}/login-lock`, { method: "DELETE" });
+      toast.success(t("admin.loginUnlocked", { name: user.username }));
+    } catch (err: any) {
+      notifyError(err);
+    }
   };
 
   const handleDeleteUser = (user: AppUser) => {
@@ -726,6 +737,14 @@ export default function AdminPanel() {
                               aria-label={t("admin.managePermissions")}
                             >
                               <Shield className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => void handleUnlockLogin(user)}
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                              title={t("admin.unlockLogin")}
+                              aria-label={t("admin.unlockLoginNamed", { name: user.username })}
+                            >
+                              <LockOpen className="w-4 h-4" />
                             </button>
                             {!isSelf(user) && <button
                               onClick={() => handleDeleteUser(user)}

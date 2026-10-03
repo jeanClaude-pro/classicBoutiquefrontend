@@ -220,6 +220,58 @@ export function escapeHtml(value: unknown): string {
   ));
 }
 
+/**
+ * A copy of a record whose every string, at any depth, is HTML-escaped.
+ * Print templates read user data (names, descriptions, shop settings) from
+ * this copy, so a value such as `<img onerror=…>` prints as text instead of
+ * running in the same-origin print window. Numbers, booleans and dates are
+ * kept as they are.
+ */
+export function escapeHtmlDeep<T>(value: T): T {
+  if (typeof value === "string") return escapeHtml(value) as T;
+  if (Array.isArray(value)) return value.map((item) => escapeHtmlDeep(item)) as T;
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, escapeHtmlDeep(nested)]),
+    ) as T;
+  }
+  return value;
+}
+
+/**
+ * Prints a document already written into a popup, then closes it. Driven from
+ * the opener instead of an inline <script> in the popup, so printing keeps
+ * working under a Content-Security-Policy that forbids inline scripts (an
+ * about:blank popup inherits the opener's policy).
+ */
+export function printAndClose(printWindow: Window): void {
+  let started = false;
+  const run = () => {
+    if (started) return;
+    started = true;
+    try {
+      printWindow.focus();
+      printWindow.print();
+    } catch (error) {
+      console.error("Print error:", error);
+    }
+    window.setTimeout(() => {
+      try { printWindow.close(); } catch { /* already closed */ }
+    }, 1000);
+  };
+  if (printWindow.document?.readyState === "complete") {
+    window.setTimeout(run, 50);
+    return;
+  }
+  try {
+    printWindow.addEventListener?.("load", run, { once: true });
+  } catch {
+    // Some embedded browsers expose a reduced window object: rely on the timer.
+  }
+  // Fallback when the load event already fired or never fires.
+  window.setTimeout(run, 1500);
+}
+
 const RECEIPT_STYLES = (origin: string) => `
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body {
@@ -396,18 +448,6 @@ export function renderSaleReceiptHtml(
       </div>
       </div>
     </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
   </body>
 </html>
 `;
@@ -419,5 +459,6 @@ export function openReceiptPrintWindow(html: string): boolean {
   if (!printWindow) return false;
   printWindow.document.write(html);
   printWindow.document.close();
+  printAndClose(printWindow);
   return true;
 }

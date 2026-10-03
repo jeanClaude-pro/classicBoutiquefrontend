@@ -18,7 +18,7 @@ export function hasOfflineSession(): boolean {
   }
 }
 
-export type SessionInvalidationReason = "expired" | "unauthorized";
+export type SessionInvalidationReason = "expired" | "unauthorized" | "idle";
 
 /**
  * Dispatched on `window` synchronously from invalidateSession(), before the
@@ -71,6 +71,11 @@ export function isTokenExpired(token: string | null | undefined): boolean {
 export function clearAuthStorage(): void {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   localStorage.removeItem(AUTH_USER_KEY);
+  try {
+    sessionStorage.removeItem(OFFLINE_SESSION_KEY);
+  } catch {
+    // sessionStorage unavailable: nothing to clear.
+  }
 }
 
 // Reset on every hard navigation (module re-evaluates on page load), so this
@@ -114,7 +119,7 @@ export function invalidateSession(reason: SessionInvalidationReason): void {
     const returnTo = pathname === "/login" ? "" : `${pathname}${search}`;
 
     const params = new URLSearchParams();
-    params.set("reason", "session-expired");
+    params.set("reason", reason === "idle" ? "idle" : "session-expired");
     if (returnTo) params.set("returnTo", returnTo);
 
     window.location.href = `/login?${params.toString()}`;

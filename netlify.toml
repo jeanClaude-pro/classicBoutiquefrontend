@@ -11,3 +11,22 @@ status = 404
 from = "/*"
 to = "/index.html"
 status = 200
+
+# Security headers for every page and asset served by Netlify. The API's own
+# headers (Helmet) do not protect these pages, which are served from here.
+# CSP notes:
+# - script-src 'self': no inline or third-party scripts (print popups are
+#   driven from the opener, see src/lib/saleReceipt.ts printAndClose).
+# - style-src 'unsafe-inline': React style attributes and the receipt
+#   templates' <style> blocks need it.
+# - connect-src https:: the API lives on another origin (VITE_API_URL). Narrow
+#   it to that exact origin once the production API URL is final.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"

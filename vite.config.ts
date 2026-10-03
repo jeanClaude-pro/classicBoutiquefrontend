@@ -20,6 +20,9 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
+    // Production bundles never publish source maps (they would expose the
+    // original source to anyone).
+    build: { sourcemap: false },
     plugins: [
     react(),
     tailwindcss(),

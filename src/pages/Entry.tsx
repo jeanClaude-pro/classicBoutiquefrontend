@@ -11,6 +11,7 @@ import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, FileText, User, Calculator } from "lucide-react";
 import { serverUrl } from "../utils/constants";
 import { createAmountSnapshot, formatFC, formatUSD } from "../utils/salePricing";
+import { escapeHtmlDeep, printAndClose } from "../lib/saleReceipt";
 
 interface Entry {
   _id: string;
@@ -177,6 +178,7 @@ export default function Entry() {
   const printReceiptOnly = () => {
     const printWindow = window.open("", "_blank", "width=320,height=600");
     if (printWindow && receiptData) {
+      const safeReceipt = escapeHtmlDeep(receiptData);
       printWindow.document.write(`
 <html>
   <head>
@@ -411,17 +413,17 @@ export default function Entry() {
   <body>
     <div class="receipt-container">
       <div class="header">
-        <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">${t("receipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopRegistration}</strong></div>
+        <div class="shop-name"><strong>${safeReceipt.shopName}</strong></div>
+        <div class="shop-details"><strong>${safeReceipt.shopAddress}</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>${safeReceipt.shopNumber}</strong></div>
+        <div class="shop-details"><strong>${safeReceipt.shopRegistration}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">${t("receipt.date")}: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("receipt.date")}: <strong>${safeReceipt.date}</strong></div>
+        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${safeReceipt.receiptNumber}</strong></div>
       </div>
       
       <div class="entry-badge">
@@ -429,18 +431,18 @@ export default function Entry() {
       </div>
       
       <div class="sender-info">
-        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
-        <div class="sender-field">${t("receipt.phone")}: <strong>${receiptData.receivedFrom.phone}</strong></div>
+        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${safeReceipt.receivedFrom.name.toUpperCase()}</strong></div>
+        <div class="sender-field">${t("receipt.phone")}: <strong>${safeReceipt.receivedFrom.phone}</strong></div>
         ${
-          receiptData.receivedFrom.email
-            ? `<div class="sender-field">${t("receipt.email")}: <strong>${receiptData.receivedFrom.email}</strong></div>`
+          safeReceipt.receivedFrom.email
+            ? `<div class="sender-field">${t("receipt.email")}: <strong>${safeReceipt.receivedFrom.email}</strong></div>`
             : ""
         }
       </div>
       
-      ${receiptData.description ? `
+      ${safeReceipt.description ? `
         <div class="description">
-          <strong>${t("receipt.description")}:</strong> <strong>${receiptData.description}</strong>
+          <strong>${t("receipt.description")}:</strong> <strong>${safeReceipt.description}</strong>
         </div>
       ` : ''}
       
@@ -449,11 +451,11 @@ export default function Entry() {
       <div class="details-section">
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.source")}:</strong></div>
-          <div class="detail-value"><strong>${entrySourceLabel(receiptData.source)}</strong></div>
+          <div class="detail-value"><strong>${entrySourceLabel(safeReceipt.source)}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.category")}:</strong></div>
-          <div class="detail-value"><strong>${entryCategoryLabel(receiptData.category)}</strong></div>
+          <div class="detail-value"><strong>${entryCategoryLabel(safeReceipt.category)}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.paymentMethod")}:</strong></div>
@@ -467,17 +469,17 @@ export default function Entry() {
           <div><strong>${receiptAmount(receiptData)}</strong></div>
         </div>
         ${
-          receiptData.enteredCurrency === "FC"
+          safeReceipt.enteredCurrency === "FC"
             ? `<div class="amount-row">
                  <div><strong>${t("entryReceipt.usdEquivalent")}:</strong></div>
-                 <div><strong>$${receiptData.amountUSD.toFixed(2)}</strong></div>
+                 <div><strong>$${safeReceipt.amountUSD.toFixed(2)}</strong></div>
                </div>`
             : ''
         }
       </div>
       
       <div class="agent-info">
-        ${t("receipt.recordedBy")}: <strong>${receiptData.agent.toUpperCase()}</strong>
+        ${t("receipt.recordedBy")}: <strong>${safeReceipt.agent.toUpperCase()}</strong>
       </div>
       
       <div class="footer">
@@ -492,22 +494,11 @@ export default function Entry() {
         ✄ ────────────────────────── ✄
       </div>
     </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
   </body>
 </html>
 `);
       printWindow.document.close();
+      printAndClose(printWindow);
     }
   };
 
@@ -515,6 +506,7 @@ export default function Entry() {
   const printStubOnly = () => {
     const printWindow = window.open("", "_blank", "width=320,height=600");
     if (printWindow && receiptData) {
+      const safeReceipt = escapeHtmlDeep(receiptData);
       printWindow.document.write(`
 <html>
   <head>
@@ -749,30 +741,30 @@ export default function Entry() {
   <body>
     <div class="stub-container">
       <div class="header">
-        <div class="shop-name"><strong>${receiptData.shopName}</strong></div>
-        <div class="shop-details"><strong>${receiptData.shopAddress}</strong></div>
-        <div class="shop-details">${t("receipt.tel")}: <strong>${receiptData.shopNumber}</strong></div>
+        <div class="shop-name"><strong>${safeReceipt.shopName}</strong></div>
+        <div class="shop-details"><strong>${safeReceipt.shopAddress}</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>${safeReceipt.shopNumber}</strong></div>
       </div>
       
       <div class="section-divider"></div>
       
       <div class="receipt-info">
-        <div class="shop-details">${t("receipt.date")}: <strong>${receiptData.date}</strong></div>
-        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
+        <div class="shop-details">${t("receipt.date")}: <strong>${safeReceipt.date}</strong></div>
+        <div class="shop-details">${t("receipt.receiptNo")}: <strong>${safeReceipt.receiptNumber}</strong></div>
       </div>
       
       <div class="stub-number">
-        <strong>${t("entryReceipt.stubNumber", { number: receiptData.stubNumber })}</strong>
+        <strong>${t("entryReceipt.stubNumber", { number: safeReceipt.stubNumber })}</strong>
       </div>
       
       <div class="sender-info">
-        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${receiptData.receivedFrom.name.toUpperCase()}</strong></div>
-        <div class="sender-field">${t("receipt.phone")}: <strong>${receiptData.receivedFrom.phone}</strong></div>
+        <div class="sender-field">${t("receipt.receivedFrom")}: <strong>${safeReceipt.receivedFrom.name.toUpperCase()}</strong></div>
+        <div class="sender-field">${t("receipt.phone")}: <strong>${safeReceipt.receivedFrom.phone}</strong></div>
       </div>
       
-      ${receiptData.description ? `
+      ${safeReceipt.description ? `
         <div class="description">
-          <strong>${t("receipt.description")}:</strong> <strong>${receiptData.description}</strong>
+          <strong>${t("receipt.description")}:</strong> <strong>${safeReceipt.description}</strong>
         </div>
       ` : ''}
       
@@ -781,11 +773,11 @@ export default function Entry() {
       <div class="details-section">
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.source")}:</strong></div>
-          <div class="detail-value"><strong>${entrySourceLabel(receiptData.source)}</strong></div>
+          <div class="detail-value"><strong>${entrySourceLabel(safeReceipt.source)}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.category")}:</strong></div>
-          <div class="detail-value"><strong>${entryCategoryLabel(receiptData.category)}</strong></div>
+          <div class="detail-value"><strong>${entryCategoryLabel(safeReceipt.category)}</strong></div>
         </div>
         <div class="detail-row">
           <div class="detail-label"><strong>${t("receipt.paymentMethod")}:</strong></div>
@@ -801,16 +793,16 @@ export default function Entry() {
       </div>
       
       <div class="agent-info">
-        ${t("receipt.recordedBy")}: <strong>${receiptData.agent.toUpperCase()}</strong>
+        ${t("receipt.recordedBy")}: <strong>${safeReceipt.agent.toUpperCase()}</strong>
       </div>
       
       <div class="stub-footer">
         <div class="thank-you"><strong>${t("entryReceipt.stubFooter")}</strong></div>
-        <div class="warning"><strong>${receiptData.shopName}</strong></div>
+        <div class="warning"><strong>${safeReceipt.shopName}</strong></div>
         <div class="warning"><strong>${t("entryReceipt.keepStub")}</strong></div>
-        <div class="warning">${t("entryReceipt.receiptNo")}: <strong>${receiptData.receiptNumber}</strong></div>
-        <div class="warning">${t("entryReceipt.date")}: <strong>${receiptData.date}</strong></div>
-        <div class="warning">${t("entryReceipt.source")}: <strong>${entrySourceLabel(receiptData.source)}</strong></div>
+        <div class="warning">${t("entryReceipt.receiptNo")}: <strong>${safeReceipt.receiptNumber}</strong></div>
+        <div class="warning">${t("entryReceipt.date")}: <strong>${safeReceipt.date}</strong></div>
+        <div class="warning">${t("entryReceipt.source")}: <strong>${entrySourceLabel(safeReceipt.source)}</strong></div>
         <div class="warning">${t("entryReceipt.amount")}: <strong>${receiptAmount(receiptData)}</strong></div>
       </div>
       
@@ -819,22 +811,11 @@ export default function Entry() {
         ✄ ────────────────────────── ✄
       </div>
     </div>
-    <script>
-      window.onload = function() {
-        try {
-          window.print();
-        } catch(e) {
-          console.error('Print error:', e);
-        }
-        setTimeout(() => {
-          window.close();
-        }, 1000);
-      };
-    </script>
   </body>
 </html>
 `);
       printWindow.document.close();
+      printAndClose(printWindow);
     }
   };
 

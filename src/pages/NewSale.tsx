@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useMemo, useState, useRef } from "react";
+import { setActivityHold } from "../lib/idleTimeout";
 import { useTranslation } from "react-i18next";
 import { currentLocale, t as translate } from "../i18n";
 import { apiErrorFromPayload, toApiError } from "../lib/apiError";
@@ -100,6 +101,11 @@ export default function NewSale() {
   const requestKey = useRef(newRequestKey());
   const nextCartLineId = useRef(0);
   const [cart, setCart] = useState<CartItem[]>([]);
+  // A sale in progress defers the idle sign-out (lib/idleTimeout.ts).
+  useEffect(() => {
+    setActivityHold("new-sale-cart", cart.length > 0);
+    return () => setActivityHold("new-sale-cart", false);
+  }, [cart.length]);
   // Server refusals attached to a cart line (lineId -> message).
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);

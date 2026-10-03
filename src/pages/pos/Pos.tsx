@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { setActivityHold } from "../../lib/idleTimeout";
 import { serverUrl } from "../../utils/constants";
 import {
   Search,
@@ -71,6 +72,11 @@ async function readJsonSafe(res: Response) {
 export default function Pos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
+  // A sale in progress defers the idle sign-out (lib/idleTimeout.ts).
+  useEffect(() => {
+    setActivityHold("pos-cart", cart.length > 0);
+    return () => setActivityHold("pos-cart", false);
+  }, [cart.length]);
   const [customer, setCustomer] = useState<Customer>({ name: "", phone: "" });
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
