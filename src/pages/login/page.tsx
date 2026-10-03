@@ -157,23 +157,22 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_18%,rgba(56,189,248,0.18),transparent_30rem),linear-gradient(135deg,#020617_0%,#0f2942_48%,#0f172a_100%)]" />
-      <div className="absolute inset-x-0 bottom-0 h-56 bg-gradient-to-t from-black/40 to-transparent" />
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
       <LanguageToggle className="login-language" />
       <div className="w-full max-w-md relative z-10">
         {/* Logo / Brand */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl shadow-2xl shadow-black/30 mb-5 overflow-hidden ring-1 ring-white/20">
+          <div className="inline-flex items-center justify-center w-20 h-20 bg-white rounded-2xl mb-5 overflow-hidden border border-gray-200">
             <img src="/newlogo.png" alt="DOUBLE M" className="h-full w-full object-contain" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-wide">DOUBLE M</h1>
-          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.24em] text-amber-200">Classic Boutique</p>
-          <p className="text-amber-100/75 text-sm mt-2">{t("login.tagline")}</p>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-wide">DOUBLE M</h1>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-[0.24em] text-accent">Classic Boutique</p>
+          <span className="mx-auto mt-3 block h-0.5 w-10 bg-accent" aria-hidden="true" />
+          <p className="text-gray-600 text-sm mt-3">{t("login.tagline")}</p>
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-xl shadow-2xl shadow-black/25 overflow-hidden border border-white/80">
+        <div className="bg-white rounded-xl overflow-hidden border border-gray-200">
           {/* Mode tabs */}
           <div className="flex border-b border-gray-100">
             <button
@@ -181,8 +180,8 @@ const LoginPage = () => {
               onClick={() => switchMode("login")}
               className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
                 mode === "login"
-                  ? "text-blue-700 border-b-2 border-blue-600 bg-blue-50/40"
-                  : "text-gray-400 hover:text-gray-600"
+                  ? "text-primary border-b-2 border-primary bg-primary-soft/40"
+                  : "text-gray-500 hover:text-gray-800"
               }`}
             >
               {t("login.signIn")}
@@ -192,8 +191,8 @@ const LoginPage = () => {
               onClick={() => switchMode("signup")}
               className={`flex-1 py-3.5 text-sm font-semibold transition-colors ${
                 mode === "signup"
-                  ? "text-blue-700 border-b-2 border-blue-600 bg-blue-50/40"
-                  : "text-gray-400 hover:text-gray-600"
+                  ? "text-primary border-b-2 border-primary bg-primary-soft/40"
+                  : "text-gray-500 hover:text-gray-800"
               }`}
             >
               {t("login.createAccount")}
@@ -202,7 +201,7 @@ const LoginPage = () => {
 
           <div className="p-8">
             <div className="flex items-center gap-3 mb-2">
-              <div className="h-9 w-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
+              <div className="h-9 w-9 rounded-lg bg-primary-soft text-primary flex items-center justify-center">
                 {mode === "login" ? <LockKeyhole className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}
               </div>
               <h2 className="text-xl font-semibold text-gray-900">
@@ -311,7 +310,7 @@ const LoginPage = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-sm"
+                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg font-semibold hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition disabled:opacity-50 disabled:cursor-not-allowed text-sm"
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
@@ -358,8 +357,8 @@ const LoginPage = () => {
             </p>
             {offlineAvailable && mode === "login" && <div className="mt-4 border-t pt-4 text-left">
               <p className="mb-3 text-sm font-semibold text-slate-800">{t("offline.login")}</p>
-              <select className="mb-2 w-full rounded-lg border px-3 py-2" value={offlineUserId} onChange={(event) => setOfflineUserId(event.target.value)}>{offlineProfiles.map((profile) => <option key={profile.userId} value={profile.userId}>{profile.user.username}</option>)}</select>
-              <input className="mb-2 w-full rounded-lg border px-3 py-2" type="password" inputMode="numeric" placeholder={t("offline.pin")} value={offlinePin} onChange={(event) => setOfflinePin(event.target.value.replace(/\D/g, "").slice(0, 12))} />
+              <select aria-label={t("offline.login")} className="mb-2 w-full rounded-lg border px-3 py-2" value={offlineUserId} onChange={(event) => setOfflineUserId(event.target.value)}>{offlineProfiles.map((profile) => <option key={profile.userId} value={profile.userId}>{profile.user.username}</option>)}</select>
+              <input aria-label={t("offline.pin")} className="mb-2 w-full rounded-lg border px-3 py-2" type="password" inputMode="numeric" placeholder={t("offline.pin")} value={offlinePin} onChange={(event) => setOfflinePin(event.target.value.replace(/\D/g, "").slice(0, 12))} />
               <button type="button" disabled={loading || offlinePin.length < 6} onClick={() => void handleOfflineLogin()} className="w-full rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white disabled:opacity-50">{t("offline.login")}</button>
             </div>}
           </div>

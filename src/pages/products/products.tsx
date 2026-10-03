@@ -3,7 +3,7 @@
 import type React from "react";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Package, Plus, Search, Edit, Trash2, Eye, X, Calculator } from "lucide-react";
+import { Package, Plus, Search, Edit, Trash2, Eye, X, Calculator, ClipboardList } from "lucide-react";
 import { productStatusLabel } from "../../lib/labels";
 import type { Product } from "../../types";
 import { units, serverUrl } from "../../utils/constants";
@@ -14,6 +14,10 @@ import { deleteProductCopy } from "../../lib/confirmationCopy";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
 import { MODULES } from "../../config/modules";
 import { createPriceSnapshot, formatFC, formatUSD, productReferencePrice } from "../../utils/salePricing";
+import { ActionMenu, type ActionMenuItem } from "../../components/ActionMenu";
+import { Button, PageHeader, StatusBadge } from "../../components/ui";
+import { COMPACT_LAYOUT_QUERY, useMediaQuery } from "../../hooks/useMediaQuery";
+import { StockReportDownload } from "./StockReportDownload";
 
 interface ExchangeRateInfo {
   rate: number;
@@ -169,6 +173,7 @@ export default function Products() {
   }, []);
 
   const isAdmin = currentUser?.role === "superadmin";
+  const isPhone = useMediaQuery(COMPACT_LAYOUT_QUERY);
   const confirmAction = useConfirmAction();
   // One submission at a time: a double click must not create two articles.
   const [saving, setSaving] = useState(false);
@@ -331,37 +336,20 @@ export default function Products() {
     return matchesSearch && matchesCategory;
   });
 
-  // Function to display stock information based on user role
+  // Stock: the superadmin sees exact quantities, other roles a status only.
   const renderStockInfo = (product: Product) => {
     if (isAdmin) {
-      // Admin sees exact stock numbers
+      const low = product.stock <= product.minStock;
       return (
-        <span
-          className={`text-sm ${
-            product.stock <= product.minStock
-              ? "text-red-600 font-medium"
-              : "text-gray-900"
-          }`}
-        >
-          {product.stock} {product.unit}
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <span className={`text-sm tabular-nums ${low ? "font-semibold text-red-700" : "text-gray-900"}`}>{product.stock} {product.unit}</span>
+          {product.stock === 0 ? <StatusBadge tone="danger">{t("products.outOfStock")}</StatusBadge> : low ? <StatusBadge tone="warning">{t("products.lowStock")}</StatusBadge> : null}
         </span>
       );
-    } else {
-      // Staff sees stock status instead of exact numbers
-      if (product.stock === 0) {
-        return (
-          <span className="text-sm text-red-600 font-medium">{t("products.outOfStock")}</span>
-        );
-      } else if (product.stock <= product.minStock) {
-        return (
-          <span className="text-sm text-orange-600 font-medium">{t("products.lowStock")}</span>
-        );
-      } else {
-        return (
-          <span className="text-sm text-green-600 font-medium">{t("products.inStock")}</span>
-        );
-      }
     }
+    if (product.stock === 0) return <StatusBadge tone="danger">{t("products.outOfStock")}</StatusBadge>;
+    if (product.stock <= product.minStock) return <StatusBadge tone="warning">{t("products.lowStock")}</StatusBadge>;
+    return <StatusBadge tone="success">{t("products.inStock")}</StatusBadge>;
   };
 
   // Function to display stock details in view modal based on user role
@@ -407,41 +395,61 @@ export default function Products() {
     }
   };
 
+  // Selling price in the currency that defines it, the other currency below.
+  const sellingPriceOf = (product: Product) => {
+    const reference = productReferencePrice(product, exchangeRate?.rate);
+    const fc = reference.priceFC !== undefined ? formatFC(reference.priceFC) : null;
+    const usd = formatUSD(reference.priceUSD);
+    return reference.currency === "FC" ? { primary: fc ?? usd, secondary: fc ? usd : null } : { primary: usd, secondary: fc };
+  };
+
+  const rowActions = (product: Product): ActionMenuItem[] => [
+    { key: "view", label: t("products.view"), icon: <Eye aria-hidden="true" />, onSelect: () => openViewModal(product) },
+    ...(product._id ? [{
+      key: "stock-sheet", label: t("operationalReports.openFiche"), icon: <ClipboardList aria-hidden="true" />,
+      to: `/products/${product._id}/stock-sheet`, ariaLabel: t("operationalReports.openFicheNamed", { name: product.name }),
+    }] : []),
+    ...(isAdmin ? [
+      { key: "edit", label: t("products.edit"), icon: <Edit aria-hidden="true" />, onSelect: () => openEditModal(product) },
+      { key: "delete", label: t("products.delete"), icon: <Trash2 aria-hidden="true" />, danger: true, onSelect: () => deleteProduct(product), ariaLabel: t("products.deleteNamed", { name: product.name }) },
+    ] : []),
+  ];
+
+  const statusBadge = (product: Product) => (
+    <StatusBadge tone={product.status === "active" ? "success" : "neutral"}>{productStatusLabel(product.status)}</StatusBadge>
+  );
+
   return (
     <div className="space-y-6 p-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{MODULES.products.label}</h1>
-          <p className="text-gray-600">{MODULES.products.description}</p>
-          {!isAdmin && (
-            <p className="text-sm text-blue-600 mt-1">
-              {t("products.staff")}
-            </p>
-          )}
-        </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2 transition-colors"
-        >
-          <Plus className="w-4 h-4 " />
-          {t("products.addNew")}
-        </button>
-      </div>
+      <PageHeader
+        title={MODULES.products.label}
+        description={MODULES.products.description}
+        actions={(
+          <>
+            <StockReportDownload />
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus aria-hidden="true" />
+              {t("products.addNew")}
+            </Button>
+          </>
+        )}
+      >
+        {!isAdmin && <p className="mt-1 text-sm text-gray-600">{t("products.staff")}</p>}
+      </PageHeader>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-300">
+      <div className="bg-white p-4 rounded-lg border border-gray-200">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <div className="relative">
-              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              <Search className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" aria-hidden="true" />
               <input
-                type="text"
+                type="search"
                 placeholder={t("products.searchPlaceholder")}
                 aria-label={t("products.searchLabel")}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none focus:border-transparent"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg outline-none"
               />
             </div>
           </div>
@@ -454,116 +462,101 @@ export default function Products() {
         </div>
       </div>
 
-      {/* Products Grid */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-300">
+      {/* Products */}
+      <div className="bg-white rounded-lg border border-gray-200">
         {loading ? (
-          <div className="p-8 text-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <div className="p-8 text-center" role="status">
+            <div className="route-loading-spinner mx-auto" aria-hidden="true" />
             <p className="mt-2 text-gray-600">{t("products.loading")}</p>
           </div>
         ) : filteredProducts.length === 0 ? (
           <div className="p-8 text-center">
-            <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+            <Package className="w-10 h-10 mx-auto mb-3 text-gray-400" aria-hidden="true" />
             <p className="text-gray-600">{t("products.noneFound")}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    #
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t("products.columns.item")}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t("products.columns.category")}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t("products.columns.stock")}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t("products.columns.status")}
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    {t("common.actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredProducts.map((product, idx) => (
-                  <tr key={product._id ?? idx} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {idx + 1}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center">
-                        <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
-                            {product.name}
-                          </div>
-                          <div className="text-sm text-gray-500">
-                            {product.brand}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      <span className="font-semibold">{product.mainCategory || t("products.unclassified")}</span>
-                      {product.subcategory && <span className="block text-xs text-gray-500">{product.subcategory}</span>}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {renderStockInfo(product)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          product.status === "active"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                      >
-                        {productStatusLabel(product.status)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => openViewModal(product)}
-                          className="text-blue-600 hover:text-blue-900 p-1 rounded"
-                          title={t("products.view")}
-                          aria-label={t("products.view")}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        {isAdmin && (
-                          <>
-                            <button
-                              onClick={() => openEditModal(product)}
-                              className="text-green-600 hover:text-green-900 p-1 rounded"
-                              title={t("products.edit")}
-                              aria-label={t("products.edit")}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteProduct(product)}
-                              className="text-red-600 hover:text-red-900 p-1 rounded"
-                              title={t("products.delete")}
-                              aria-label={t("products.deleteNamed", { name: product.name })}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
+          <>
+            {!isPhone ? (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.item")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.category")}</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.price")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.stock")}</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.status")}</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t("common.actions")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="bg-white">
+                  {filteredProducts.map((product, idx) => {
+                    const price = sellingPriceOf(product);
+                    return (
+                      <tr key={product._id ?? idx}>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
+                        <td className="px-4 py-3">
+                          <div className="font-semibold text-gray-900">{product.name}</div>
+                          {product.brand && <div className="text-sm text-gray-500">{product.brand}</div>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          <span className="font-medium">{product.mainCategory || t("products.unclassified")}</span>
+                          {product.subcategory && <span className="block text-xs text-gray-500">{product.subcategory}</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right tabular-nums">
+                          <span className="block font-semibold text-gray-900">{price.primary}</span>
+                          {price.secondary && <span className="block text-xs text-gray-500">≈ {price.secondary}</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">{renderStockInfo(product)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap">{statusBadge(product)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                          <ActionMenu items={rowActions(product)} label={t("common.actionsFor", { name: product.name })} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            ) : (
+            /* Phones: one card per product, same actions. */
+            <ul className="divide-y divide-gray-200" aria-label={MODULES.products.label}>
+              {filteredProducts.map((product, idx) => {
+                const price = sellingPriceOf(product);
+                return (
+                  <li key={product._id ?? idx} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="break-words font-semibold text-gray-900">{product.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {product.mainCategory || t("products.unclassified")}
+                          {product.subcategory ? ` · ${product.subcategory}` : ""}
+                        </p>
+                      </div>
+                      <ActionMenu items={rowActions(product)} label={t("common.actionsFor", { name: product.name })} />
+                    </div>
+                    <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                      <div>
+                        <dt className="text-xs text-gray-500">{t("products.columns.price")}</dt>
+                        <dd className="font-semibold tabular-nums text-gray-900">{price.primary}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">{t("products.columns.stock")}</dt>
+                        <dd>{renderStockInfo(product)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">{t("products.columns.status")}</dt>
+                        <dd>{statusBadge(product)}</dd>
+                      </div>
+                    </dl>
+                  </li>
+                );
+              })}
+            </ul>
+            )}
+          </>
         )}
       </div>
 

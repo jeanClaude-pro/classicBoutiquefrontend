@@ -51,7 +51,7 @@ export default function Sidebar() {
       </nav>
       <div className="sidebar-language">
         {!collapsed && <span><Languages aria-hidden="true" />{t("language.short")}</span>}
-        <LanguageToggle tone="dark" />
+        <LanguageToggle />
       </div>
       <div className="sidebar-account">
         <div className="sidebar-avatar"><UserRound aria-hidden="true" /></div>

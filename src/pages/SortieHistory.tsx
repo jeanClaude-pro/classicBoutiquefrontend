@@ -1043,7 +1043,7 @@ export default function SortieHistory() {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.total")}</p>
@@ -1054,7 +1054,7 @@ export default function SortieHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.validated")}</p>
@@ -1065,7 +1065,7 @@ export default function SortieHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.pending")}</p>
@@ -1076,7 +1076,7 @@ export default function SortieHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.rejected")}</p>
@@ -1205,7 +1205,7 @@ export default function SortieHistory() {
       <SummaryStats />
 
       {/* Timeframe Filter Section */}
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+      <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1247,7 +1247,7 @@ export default function SortieHistory() {
                     disabled={!userPermissions.isAdmin && type !== "day"}
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                       timeframeType === type
-                        ? "bg-blue-500 text-white shadow-sm"
+                        ? "bg-blue-500 text-white"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     } ${!userPermissions.isAdmin && type !== "day" ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
@@ -1467,7 +1467,7 @@ export default function SortieHistory() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { generateCompanyReport, type ReportSections } from "./reportGenerator";
 import { categoryPresentation, type AccountingCategory, type AccountingMetric, type CategoryAccountingDTO } from "./accountingPresentation";
+import { Link } from "react-router-dom";
 import { serverUrl } from "../../utils/constants";
 import { formatFC, formatUSD } from "../../utils/salePricing";
 import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
@@ -598,7 +599,7 @@ export default function Analytics() {
   if (!isReportViewer()) {
     return (
       <div className="min-h-screen analytics-page flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg border border-red-200 p-8 max-w-md w-full text-center">
+        <div className="bg-white rounded-xl border border-red-200 p-8 max-w-md w-full text-center">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <Shield className="w-8 h-8 text-red-600" />
           </div>
@@ -615,7 +616,7 @@ export default function Analytics() {
   if (isAdmin() && !accessVerified) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl border border-gray-200 p-8 max-w-sm w-full">
+        <div className="bg-white rounded-xl border border-gray-200 p-8 max-w-sm w-full">
           <div className="text-center mb-6">
             <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Shield className="w-7 h-7 text-blue-600" />
@@ -764,7 +765,7 @@ export default function Analytics() {
         </div>
 
         {/* Timeframe Selection */}
-        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -773,7 +774,7 @@ export default function Analytics() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
               {/* Date Picker for Day View */}
               {timeframe === "day" && (
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 shadow-sm w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
                   <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
                   <label
                     htmlFor="date-picker"
@@ -793,7 +794,7 @@ export default function Analytics() {
               )}
 
               {timeframe === "year" && availableYears.length > 1 && (
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 shadow-sm w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
                   <button
                     onClick={() => navigateYear("prev")}
                     aria-label={t("reports.previousYear")}
@@ -823,7 +824,7 @@ export default function Analytics() {
                     onClick={() => handleTimeframeChange(period)}
                     className={`px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 flex-1 sm:flex-none ${
                       timeframe === period
-                        ? "bg-blue-500 text-white shadow-sm"
+                        ? "bg-blue-500 text-white"
                         : shouldSeeOnlyTodayData() && period !== "day"
                         ? "text-gray-400 cursor-not-allowed opacity-50"
                         : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
@@ -840,7 +841,7 @@ export default function Analytics() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
-          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -857,7 +858,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">{t("reports.salesReceipts")}</p>
@@ -873,7 +874,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -888,13 +889,13 @@ export default function Analytics() {
                 <FileText className="w-4 h-4 sm:w-6 sm:h-6 text-yellow-600" />
               </div>
             </div>
-          </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-amber-200">
+          </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-amber-200">
             <p className="text-xs sm:text-sm text-gray-600">{t("reports.assignedCategory")}</p>
             <p className="mt-2 text-xl font-bold text-gray-900">{t(`accounting.categoryTitles.${analytics.assignedCategory === "SHOES" ? "SHOES" : "CLOTHES"}`)}</p>
             <p className="mt-1 text-xs text-gray-500">{t("reports.scopeLimited")}</p>
           </div>}
 
-          {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -909,14 +910,14 @@ export default function Analytics() {
                 <Receipt className="w-4 h-4 sm:w-6 sm:h-6 text-red-600" />
               </div>
             </div>
-          </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-emerald-200">
+          </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-emerald-200">
             <p className="text-xs sm:text-sm text-gray-600">{t("reports.shareholderShare")}</p>
             <p className="mt-2 text-xl font-bold text-emerald-800">{formatFC(analytics.shareholderEntitlementFC || 0)}</p>
             <p className="mt-1 text-xs text-gray-500">≈ {formatUSD(analytics.shareholderEntitlement || 0)}</p>
           </div>}
         </div>
 
-        <section className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+        <section className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
           <div className="mb-4">
             <h2 className="text-lg font-semibold text-gray-900">{t("reports.profitability")}</h2>
             <p className="text-xs text-gray-500 mt-1">{t("reports.profitabilityHint")}</p>
@@ -927,22 +928,22 @@ export default function Analytics() {
               <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.costOfGoodsSoldFC || 0)}</p>
               <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.costOfGoodsSold || 0)}</p>
             </div>
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+            <div className="rounded-xl bg-white border border-gray-200 p-4">
               <p className="text-xs text-gray-600">{t("reports.grossProfit")}</p>
-              <p className="text-xl font-bold text-amber-800 mt-1">{formatFC(analytics.grossProfitFC || 0)}</p>
-              <p className="text-xs text-amber-700/70 mt-0.5">≈ {formatUSD(analytics.grossProfit || 0)}</p>
+              <p className="text-xl font-bold text-primary mt-1">{formatFC(analytics.grossProfitFC || 0)}</p>
+              <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.grossProfit || 0)}</p>
             </div>
             {isAdmin() ? (
               <>
-                <div className="rounded-xl bg-purple-50 border border-purple-200 p-4">
+                <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.clothesShareholder")}</p>
-                  <p className="text-xl font-bold text-purple-800 mt-1">{formatFC(analytics.clothesShareholderProfitFC || 0)}</p>
-                  <p className="text-xs text-purple-700/70 mt-0.5">≈ {formatUSD(analytics.clothesShareholderProfit || 0)}</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.clothesShareholderProfitFC || 0)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.clothesShareholderProfit || 0)}</p>
                 </div>
-                <div className="rounded-xl bg-rose-50 border border-rose-200 p-4">
+                <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.shoesShareholder")}</p>
-                  <p className="text-xl font-bold text-rose-800 mt-1">{formatFC(analytics.shoeShareholder1ProfitFC || 0)}</p>
-                  <p className="text-xs text-rose-700/70 mt-0.5">≈ {formatUSD(analytics.shoeShareholder1Profit || 0)}</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.shoeShareholder1ProfitFC || 0)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.shoeShareholder1Profit || 0)}</p>
                 </div>
               </>
             ) : (
@@ -963,7 +964,7 @@ export default function Analytics() {
                   if (!cat) return null;
                   const view = categoryPresentation(key, cat);
                   return (
-                    <div key={key} className="rounded-xl bg-gradient-to-br from-white to-slate-50 border border-gray-200 p-4 shadow-sm">
+                    <div key={key} className="rounded-xl bg-white border border-gray-200 p-4">
                       <p className="text-sm font-semibold text-gray-800">{view.title}</p>
                       <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-3 mb-2">{t("reports.periodPerformance")}</p>
                       <div className="grid grid-cols-2 gap-3 text-sm">
@@ -987,7 +988,7 @@ export default function Analytics() {
         </section>
 
         {analytics.reimbursement && (
-          <section className="bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <section className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <h2 className="font-bold text-lg mb-4">{t("reports.debts")}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="rounded-lg bg-blue-50 p-4"><p className="text-sm text-gray-600">{t("reports.borrowedPeriod")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.borrowedDuringPeriod)}</p></div>
@@ -999,7 +1000,7 @@ export default function Analytics() {
 
         {/* Additional Metrics */}
         {isAdmin() && <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">{t("reports.netCash")}</p>
@@ -1014,7 +1015,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -1031,7 +1032,7 @@ export default function Analytics() {
             </div>
           </div>
 
-          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -1050,7 +1051,7 @@ export default function Analytics() {
         </div>}
 
         {/* Sales Chart */}
-        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
               <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1157,7 +1158,7 @@ export default function Analytics() {
 
         {/* Top Products and Customers */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Package className="w-4 h-4 sm:w-5 sm:h-5" />
               {t("reports.itemsSold", { period: getTimeframeLabel() })}
@@ -1197,7 +1198,7 @@ export default function Analytics() {
           </div>
 
           {/* Customer data is never sent to shareholder accounts. */}
-          {analytics.topCustomers && <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+          {analytics.topCustomers && <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
               <Users className="w-4 h-4 sm:w-5 sm:h-5" />
               {t("reports.topCustomers", { period: getTimeframeLabel() })}
@@ -1210,8 +1211,8 @@ export default function Analytics() {
                     className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-sm flex-shrink-0">
-                        <span className="text-xs sm:text-sm font-medium text-white">
+                      <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-primary-soft border border-green-200 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs sm:text-sm font-semibold text-primary">
                           {(customer.name || "?").charAt(0).toUpperCase()}
                         </span>
                       </div>
@@ -1245,22 +1246,22 @@ export default function Analytics() {
         </div>
         {/* ── Report Generation — Admin Only ────────────────────────── */}
         {isAdmin() && (
-          <div className="report-builder bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+          <div className="report-builder bg-white rounded-lg border border-gray-200 overflow-hidden">
             {/* Card header */}
             <div className="report-builder-header px-4 sm:px-6 py-4 border-b border-gray-200">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <FileDown className="w-5 h-5" />
+                  <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <FileDown className="w-5 h-5 text-primary" aria-hidden="true" />
                     {t("reports.officialReport")}
                   </h3>
-                  <p className="text-sm text-blue-200 mt-0.5">
+                  <p className="text-sm text-gray-600 mt-0.5">
                     {t("reports.officialReportHint")}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 bg-white/10 border border-white/20 rounded-lg px-3 py-1.5 self-start sm:self-auto">
-                  <Shield className="w-4 h-4 text-blue-200" />
-                  <span className="text-sm text-white font-medium">{t("reports.adminAccess")}</span>
+                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 self-start sm:self-auto">
+                  <Shield className="w-4 h-4 text-primary" aria-hidden="true" />
+                  <span className="text-sm text-gray-800 font-medium">{t("reports.adminAccess")}</span>
                 </div>
               </div>
             </div>
@@ -1318,7 +1319,7 @@ export default function Analytics() {
                           key={key}
                           className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
                             checked
-                              ? "bg-blue-50 border-blue-300 shadow-sm"
+                              ? "bg-blue-50 border-blue-300"
                               : "bg-gray-50 border-gray-200 hover:bg-gray-100"
                           }`}
                         >
@@ -1436,7 +1437,7 @@ export default function Analytics() {
                       generatingReport ||
                       !Object.values(reportSections).some(Boolean)
                     }
-                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-700 text-white font-semibold rounded-lg hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm text-sm"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-700 text-white font-semibold rounded-lg hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                   >
                     {generatingReport ? (
                       <>
@@ -1462,13 +1463,23 @@ export default function Analytics() {
           </div>
         )}
 
+        <section className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">{t("operationalReports.sales.title")}</h2>
+            <p className="mt-1 text-sm text-gray-600">{t("operationalReports.sales.subtitle")}</p>
+          </div>
+          <Link to="/reports/products-sold" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">
+            {t("operationalReports.openSalesSheet")}
+          </Link>
+        </section>
+
       </div>
     </div>
 
     {/* ── Print password confirmation modal ───────────────────────── */}
     {showPrintPasswordModal && (
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-xl shadow-2xl border border-gray-200 p-6 max-w-sm w-full">
+      <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-sm w-full">
           <div className="text-center mb-5">
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
               <Shield className="w-6 h-6 text-blue-600" />

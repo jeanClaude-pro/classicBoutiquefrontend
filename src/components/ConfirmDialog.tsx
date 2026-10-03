@@ -37,9 +37,9 @@ export interface ConfirmDialogProps {
 }
 
 const VARIANT = {
-  primary: { icon: CheckCircle2, iconClass: "bg-emerald-100 text-emerald-700", button: "bg-emerald-600 hover:bg-emerald-700 focus-visible:ring-emerald-500" },
-  warning: { icon: Info, iconClass: "bg-amber-100 text-amber-700", button: "bg-amber-600 hover:bg-amber-700 focus-visible:ring-amber-500" },
-  danger: { icon: AlertTriangle, iconClass: "bg-red-100 text-red-700", button: "bg-red-600 hover:bg-red-700 focus-visible:ring-red-500" },
+  primary: { icon: CheckCircle2, iconClass: "bg-primary-soft text-primary", button: "bg-primary hover:bg-primary-hover" },
+  warning: { icon: Info, iconClass: "bg-warning-soft text-warning-strong", button: "bg-warning-strong hover:bg-amber-800" },
+  danger: { icon: AlertTriangle, iconClass: "bg-danger-soft text-danger-strong", button: "bg-danger hover:bg-danger-strong" },
 } as const;
 
 const FOCUSABLE = 'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';

@@ -1208,7 +1208,7 @@ export default function SalesHistory() {
             onClick={() => setShowEditedSales(!showEditedSales)}
             className={`px-4 py-2 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
               showEditedSales
-                ? "bg-blue-500 text-white border-blue-500 shadow-sm"
+                ? "bg-blue-500 text-white border-blue-500"
                 : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
             }`}
           >
@@ -1246,7 +1246,7 @@ export default function SalesHistory() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.records")}</p>
@@ -1256,7 +1256,7 @@ export default function SalesHistory() {
               </div>
             </div>
             
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.revenue")}</p>
@@ -1269,7 +1269,7 @@ export default function SalesHistory() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.legacyExpenses")}</p>
@@ -1281,7 +1281,7 @@ export default function SalesHistory() {
               </div>
             </div>
 
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.net")}</p>
@@ -1297,7 +1297,7 @@ export default function SalesHistory() {
           
           {/* Additional stats row */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.salesCount")}</p>
@@ -1307,7 +1307,7 @@ export default function SalesHistory() {
               </div>
             </div>
             
-            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+            <div className="bg-white p-4 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.legacyExpensesCount")}</p>
@@ -1321,7 +1321,7 @@ export default function SalesHistory() {
       )}
 
       {/* Timeframe Filter Section */}
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+      <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -1362,7 +1362,7 @@ export default function SalesHistory() {
                     onClick={() => handleTimeframeTypeChange(type)}
                     className={`px-3 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                       timeframeType === type
-                        ? "bg-blue-500 text-white shadow-sm"
+                        ? "bg-blue-500 text-white"
                         : "bg-gray-100 text-gray-700 hover:bg-gray-200"
                     }`}
                   >
@@ -1591,7 +1591,7 @@ export default function SalesHistory() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />

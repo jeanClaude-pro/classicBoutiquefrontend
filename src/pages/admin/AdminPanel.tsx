@@ -146,17 +146,8 @@ const ROLE_CAPABILITIES: Record<AppRole, { pages: string[]; actions: string[] }>
   },
 };
 
-const AVATAR_COLORS = [
-  "from-blue-500 to-indigo-600",
-  "from-purple-500 to-pink-600",
-  "from-green-500 to-teal-600",
-  "from-orange-500 to-red-600",
-  "from-teal-500 to-cyan-600",
-];
-
-function avatarColor(username: string) {
-  return AVATAR_COLORS[username.charCodeAt(0) % AVATAR_COLORS.length];
-}
+// Flat initials avatar: one neutral treatment for every user.
+const AVATAR_CLASS = "bg-primary-soft text-primary border border-green-200";
 
 type Tab = "users" | "permissions" | "receipt" | "roles";
 
@@ -450,8 +441,8 @@ export default function AdminPanel() {
         {/* ─── Header ─── */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-700 rounded-xl flex items-center justify-center shadow">
-              <Shield className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 bg-surface border border-gray-200 rounded-xl flex items-center justify-center">
+              <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">{MODULES.admin.label}</h1>
@@ -462,15 +453,15 @@ export default function AdminPanel() {
           </div>
 
           <div className="grid grid-cols-3 gap-4 mt-6">
-            <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-4 border border-gray-200">
               <p className="text-2xl font-bold text-gray-900">{users.length}</p>
               <p className="text-sm text-gray-500 mt-0.5">{t("admin.totalAccounts")}</p>
             </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-4 border border-gray-200">
               <p className="text-2xl font-bold text-emerald-600">{activeCount}</p>
               <p className="text-sm text-gray-500 mt-0.5">{t("admin.active")}</p>
             </div>
-            <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
+            <div className="bg-white rounded-xl p-4 border border-gray-200">
               <p className="text-2xl font-bold text-red-500">
                 {users.length - activeCount}
               </p>
@@ -480,14 +471,14 @@ export default function AdminPanel() {
         </div>
 
         {/* ─── Tabs ─── */}
-        <div className="flex gap-1 mb-6 bg-white rounded-xl p-1 border border-gray-200 shadow-sm flex-wrap">
+        <div className="flex gap-1 mb-6 bg-white rounded-xl p-1 border border-gray-200 flex-wrap">
           {TABS.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                 tab === key
-                  ? "bg-blue-600 text-white shadow-sm"
+                  ? "bg-blue-600 text-white"
                   : "text-gray-600 hover:bg-gray-100"
               }`}
             >
@@ -499,7 +490,7 @@ export default function AdminPanel() {
 
         {/* ══════════════ USERS TAB ══════════════ */}
         {tab === "users" && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-3 flex-wrap">
               <div className="relative flex-1 min-w-[220px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -559,7 +550,7 @@ export default function AdminPanel() {
                         <td className="px-5 py-3.5">
                           <div className="flex items-center gap-3">
                             <div
-                              className={`w-9 h-9 rounded-full bg-gradient-to-br ${avatarColor(user.username)} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}
+                              className={`w-9 h-9 rounded-full ${AVATAR_CLASS} flex items-center justify-center font-semibold text-sm flex-shrink-0`}
                             >
                               {user.username.charAt(0).toUpperCase()}
                             </div>
@@ -758,7 +749,7 @@ export default function AdminPanel() {
 
         {/* ══════════════ PERMISSIONS TAB ══════════════ */}
         {tab === "permissions" && (
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 bg-purple-100 rounded-xl flex items-center justify-center">
@@ -806,7 +797,7 @@ export default function AdminPanel() {
                 <div>
                   {/* Selected user card */}
                   <div className="flex items-center gap-3 mb-5 p-3 bg-gray-50 rounded-xl border border-gray-100">
-                    <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${avatarColor(selectedUser.username)} flex items-center justify-center text-white font-semibold text-sm flex-shrink-0`}>
+                    <div className={`w-10 h-10 rounded-full ${AVATAR_CLASS} flex items-center justify-center font-semibold text-sm flex-shrink-0`}>
                       {selectedUser.username.charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1">
@@ -848,7 +839,7 @@ export default function AdminPanel() {
                         aria-label={t("admin.customPermissions")}
                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${useCustomPerms ? "bg-amber-500" : "bg-gray-300"}`}
                       >
-                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${useCustomPerms ? "translate-x-6" : "translate-x-1"}`} />
+                        <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${useCustomPerms ? "translate-x-6" : "translate-x-1"}`} />
                       </button>
                     </div>
 
@@ -971,7 +962,7 @@ export default function AdminPanel() {
         {/* ══════════════ RECEIPT SETTINGS TAB ══════════════ */}
         {tab === "receipt" && (
           <div className="max-w-2xl mx-auto">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
               <div className="p-6 border-b border-gray-100">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-orange-100 rounded-xl flex items-center justify-center">
@@ -1120,7 +1111,7 @@ export default function AdminPanel() {
         {/* ══════════════ ROLES & RIGHTS TAB ══════════════ */}
         {tab === "roles" && (
           <div className="space-y-4">
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-2">
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-2">
               <div className="flex items-center gap-3 mb-1">
                 <div className="w-9 h-9 bg-indigo-100 rounded-xl flex items-center justify-center">
                   <BookOpen className="w-5 h-5 text-indigo-600" />
@@ -1137,7 +1128,7 @@ export default function AdminPanel() {
             {(Object.keys(ROLE_LABELS) as AppRole[]).map((role) => {
               const cap = ROLE_CAPABILITIES[role];
               return (
-                <div key={role} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                <div key={role} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                   <div className={`px-5 py-3 border-b border-gray-100 flex items-center gap-3`}>
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold border ${ROLE_COLORS[role]}`}>
                       {ROLE_LABELS[role]}
@@ -1209,7 +1200,7 @@ export default function AdminPanel() {
             </div>
 
             {/* Action permissions reference */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+            <div className="bg-white rounded-xl border border-gray-200 p-5">
               <p className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                 <Shield className="w-4 h-4 text-purple-500" />
                 {t("admin.availableActions")}

@@ -31,6 +31,7 @@ import {
   rebaseCartToRate,
   removeCartLine,
   repriceCartLine,
+  restoreIneligibleDiscounts,
   type SaleCartLine,
 } from "../utils/saleCart";
 import { PrintService } from "../services/printService";
@@ -46,6 +47,7 @@ import { scopeForUser } from "../offline/db";
 import { cacheProducts, getCachedProducts, getProductCacheTime } from "../offline/repositories/products";
 import { cacheExchangeRate, getCachedExchangeRate } from "../offline/repositories/exchangeRates";
 import { pendingQuantityByProduct } from "../offline/repositories/sales";
+import { checkApiReachability } from "../offline/connectivity";
 import { submitNewSale, type SubmitOutcome } from "../offline/syncManager";
 import type { LocalSale, OfflineSalePayload } from "../offline/types";
 
@@ -59,6 +61,9 @@ const newRequestKey = () =>
 type Product = DomainProduct & { sku?: string };
 
 type CartItem = SaleCartLine;
+// A client registered as a family member in the Clients module. The server
+// re-checks the status at checkout; this is only the selection.
+type FamilyMember = { _id: string; name: string; phone?: string; email?: string; isFamilyMember: true };
 
 interface ExchangeRate {
   rate: number;
@@ -116,6 +121,12 @@ export default function NewSale() {
   // Get the current user from your auth context
   const { user: currentUser, token } = useAuth();
   const scopeKey = currentUser ? scopeForUser(currentUser) : "anonymous";
+  const [familyMode, setFamilyMode] = useState(false);
+  const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
+  const [familySearch, setFamilySearch] = useState("");
+  const [selectedFamilyMember, setSelectedFamilyMember] = useState<FamilyMember | null>(null);
+  const [loadingFamilyMembers, setLoadingFamilyMembers] = useState(false);
+  const [familyError, setFamilyError] = useState<string | null>(null);
 
   // Can this user override product prices?
   const canEditPrice =
@@ -297,7 +308,7 @@ export default function NewSale() {
   const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
   const cartQuantity = totalCartQuantity(cart);
   const prospectiveCartQuantity = cartQuantity + quantity;
-  const discountEligible = cartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
+  const discountEligible = familyMode || cartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
   const canEditSelectedPrice = canEditPrice || prospectiveCartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
   const cartOriginalTotals = cartEnteredTotals(cart);
   // Cart unit prices are edited in the currency the cashier works in.
@@ -306,7 +317,8 @@ export default function NewSale() {
   const isFormValid =
     cart.length > 0 &&
     exchangeRate !== null &&
-    (form.isWalkIn ||
+    (!familyMode || selectedFamilyMember !== null) &&
+    (familyMode || form.isWalkIn ||
       (form.customerName.trim() !== "" && form.customerPhone.trim() !== ""));
 
   function handleChange(
@@ -316,12 +328,76 @@ export default function NewSale() {
   }
 
   function toggleWalkIn() {
+    if (familyMode) return;
     setForm((f) => ({
       ...f,
       isWalkIn: !f.isWalkIn,
       customerName: "",
       customerPhone: "",
     }));
+  }
+
+  // Family Sale is an online-only, superadmin-only checkout mode. Leaving it
+  // puts every discount the normal quantity rule no longer allows back to its
+  // normal price, exactly as removing a line from an ineligible cart does.
+  async function toggleFamilyMode() {
+    if (!isAdmin) return;
+    setSelectedFamilyMember(null);
+    setFamilySearch("");
+    setFamilyMembers([]);
+    setFamilyError(null);
+    if (familyMode) {
+      setFamilyMode(false);
+      setForm((current) => ({ ...current, customerName: "", customerPhone: "" }));
+      const { cart: next, restored } = restoreIneligibleDiscounts(cart);
+      setCart(next);
+      setNotice(restored ? t("pos.discountsRestored") : null);
+      return;
+    }
+    if (!(await checkApiReachability(true))) {
+      setError(t("familySale.onlineRequired"));
+      return;
+    }
+    setError(null);
+    setFamilyMode(true);
+    setForm((current) => ({ ...current, isWalkIn: false, customerName: "", customerPhone: "" }));
+  }
+
+  // Registered family members are searched on the server (name or phone), so
+  // the list is never limited to a first page of clients.
+  useEffect(() => {
+    if (!familyMode || selectedFamilyMember) return;
+    const query = familySearch.trim();
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLoadingFamilyMembers(true);
+      try {
+        const params = new URLSearchParams({ familyOnly: "true", limit: "20" });
+        if (query) params.set("search", query);
+        const response = await fetch(`${API_BASE}/customers?${params}`, {
+          headers: { Authorization: `Bearer ${token || ""}` },
+          signal: controller.signal,
+        });
+        const data = await readJsonSafe(response);
+        if (!response.ok) throw apiErrorFromPayload(response.status, data);
+        const found: FamilyMember[] = Array.isArray(data.customers) ? data.customers : [];
+        setFamilyMembers(found.filter((member) => member.isFamilyMember === true));
+        setFamilyError(null);
+      } catch (caught) {
+        if (controller.signal.aborted) return;
+        setFamilyMembers([]);
+        setFamilyError(toApiError(caught).message);
+      } finally {
+        if (!controller.signal.aborted) setLoadingFamilyMembers(false);
+      }
+    }, query ? 250 : 0);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [familyMode, familySearch, selectedFamilyMember, token]);
+
+  function selectFamilyMember(member: FamilyMember) {
+    setSelectedFamilyMember(member);
+    setFamilySearch(member.phone ? `${member.name} · ${member.phone}` : member.name);
+    setForm((current) => ({ ...current, isWalkIn: false, customerName: member.name, customerPhone: member.phone || "" }));
   }
 
   // Normal price fields for a product, entered in its authoritative currency:
@@ -542,7 +618,7 @@ export default function NewSale() {
     }
 
     const reference = productReferencePrice(product, exchangeRate?.rate);
-    if (isDiscountedPrice(currentPrice, reference) && prospectiveCartQuantity < DISCOUNT_QUANTITY_THRESHOLD) {
+    if (!familyMode && isDiscountedPrice(currentPrice, reference) && prospectiveCartQuantity < DISCOUNT_QUANTITY_THRESHOLD) {
       setError(t("pos.discountQuantityRequired"));
       return;
     }
@@ -586,6 +662,11 @@ export default function NewSale() {
     });
 
   function removeFromCart(lineId: string) {
+    if (familyMode) {
+      setCart(cart.filter((line) => line.lineId !== lineId));
+      clearLineError(lineId);
+      return;
+    }
     const { cart: next, restored } = removeCartLine(cart, lineId);
     setCart(next);
     clearLineError(lineId);
@@ -700,7 +781,9 @@ export default function NewSale() {
         clientSaleId,
         receiptNumber,
         occurredAt,
-        offline: true,
+        offline: !familyMode,
+        isFamilySale: familyMode,
+        familyMemberId: familyMode ? selectedFamilyMember?._id : undefined,
       };
 
       const now = new Date().toISOString();
@@ -712,7 +795,19 @@ export default function NewSale() {
       let data: Record<string, unknown> = {};
       let synced = false;
       let outcome: SubmitOutcome | null = null;
-      try {
+      if (familyMode) {
+        // Never queued in IndexedDB and never retried offline: the server must
+        // verify the role and the family status before anything is recorded.
+        // A refusal throws to the error handling below with the cart intact.
+        if (!(await checkApiReachability(true))) throw new Error(t("familySale.onlineRequired"));
+        const response = await fetch(`${API_BASE}/sales`, {
+          method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify(body),
+        });
+        data = await readJsonSafe(response);
+        if (!response.ok) throw apiErrorFromPayload(response.status, data);
+        synced = true;
+      } else try {
         outcome = await submitNewSale(localSale, token);
       } catch (storageError) {
         // IndexedDB can be disabled by browser policy/private mode. Preserve
@@ -778,6 +873,9 @@ export default function NewSale() {
       });
       setCart([]);
       setSearchTerm("");
+      setFamilyMode(false);
+      setSelectedFamilyMember(null);
+      setFamilySearch("");
 
       setMessage(synced ? t("pos.saleDonePrinting") : t("offline.saleQueued"));
       notifySuccess(synced ? t("pos.saleRecorded") : t("offline.saleQueued"));
@@ -829,20 +927,20 @@ export default function NewSale() {
             </div>
             
             {/* Exchange Rate Display */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
-              <div className="flex items-center justify-between">
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">{t("pos.todayRate")}</span>
+                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
+                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("pos.todayRate")}</span>
                 </div>
                 {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
                 ) : exchangeRate ? (
                   <div className="text-right">
-                    <div className="font-bold text-blue-800 text-lg">
+                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
                       1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
-                    <div className="text-xs text-blue-600">
+                    <div className="text-xs text-gray-500">
                       {t("pos.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
@@ -866,8 +964,25 @@ export default function NewSale() {
           <div role="status" className="mb-4 p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded">{notice}</div>
         )}
 
+        {isAdmin && (
+          <section aria-labelledby="family-sale-title" className={`mb-4 rounded-lg border px-4 py-3 ${familyMode ? "border-fuchsia-300 bg-fuchsia-50" : "border-gray-200 bg-white"}`}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <h3 id="family-sale-title" className="font-semibold text-gray-900">
+                  {t("familySale.title")}
+                  {familyMode && <span className="ml-2 rounded border border-fuchsia-300 bg-white px-2 py-0.5 text-xs font-medium text-fuchsia-800">{t("familySale.active")}</span>}
+                </h3>
+                <p className="text-sm text-gray-600">{familyMode ? t("familySale.activeDescription") : t("familySale.description")}</p>
+              </div>
+              <button type="button" onClick={() => void toggleFamilyMode()} aria-pressed={familyMode} className="min-h-11 shrink-0 rounded-lg border border-fuchsia-700 px-4 py-2 font-medium text-fuchsia-800 hover:bg-fuchsia-100 focus:outline-none focus:ring-2 focus:ring-fuchsia-500">
+                {familyMode ? t("familySale.useNormalSale") : t("familySale.start")}
+              </button>
+            </div>
+          </section>
+        )}
+
         <div className="pos-workspace">
-        <div className="pos-catalog-panel bg-white shadow-lg rounded-xl p-6 mb-6 border border-gray-200">
+        <div className="pos-catalog-panel bg-white rounded-xl p-6 mb-6 border border-gray-200">
           <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.addItems")}</h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -889,7 +1004,7 @@ export default function NewSale() {
               
               {/* Search Results Dropdown */}
               {showSearchResults && filteredProducts.length > 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg max-h-60 overflow-auto">
                   {filteredProducts.map((product) => (
                     <div
                       key={product._id}
@@ -910,7 +1025,7 @@ export default function NewSale() {
               
               {/* No Results Message */}
               {showSearchResults && searchTerm && filteredProducts.length === 0 && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-center text-gray-500">
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg p-4 text-center text-gray-500">
                   {t("pos.noItemFound")}
                 </div>
               )}
@@ -997,7 +1112,7 @@ export default function NewSale() {
             disabled={!canAddToCart}
             className={`w-full sm:w-auto px-6 py-3 rounded-lg font-medium flex items-center justify-center gap-2 ${
               canAddToCart
-                ? "bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                ? "bg-blue-600 hover:bg-blue-700 text-white"
                 : "bg-gray-400 cursor-not-allowed text-white"
             } transition-colors`}
           >
@@ -1010,7 +1125,9 @@ export default function NewSale() {
               <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.cartItems")}</h3>
               <div className={`mb-3 rounded-lg border px-3 py-2 text-sm ${discountEligible ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-gray-200 bg-gray-50 text-gray-600"}`}>
                 <p>
-                  {discountEligible
+                  {familyMode
+                    ? t("familySale.discountAvailable")
+                    : discountEligible
                     ? t("pos.discountAvailable")
                     : t("pos.discountProgress", { count: cartQuantity })}
                 </p>
@@ -1130,10 +1247,47 @@ export default function NewSale() {
           )}
         </div>
 
-        <div className="pos-checkout-panel bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+        <div className="pos-checkout-panel bg-white rounded-xl p-6 border border-gray-200">
           <h3 className="text-lg font-semibold mb-4 text-gray-900">{t("pos.customerInfo")}</h3>
 
-          <label className="flex items-center gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer select-none">
+          {familyMode && (
+            <div className="mb-5 rounded-lg border border-fuchsia-200 bg-fuchsia-50 p-4">
+              <label htmlFor="family-member-search" className="mb-2 block font-medium text-gray-800">{t("familySale.selectMember")}</label>
+              <input
+                id="family-member-search"
+                type="search"
+                value={familySearch}
+                onChange={(event) => { setFamilySearch(event.target.value); setSelectedFamilyMember(null); }}
+                placeholder={t("familySale.searchPlaceholder")}
+                className="min-h-11 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-fuchsia-500"
+                autoComplete="off"
+                aria-describedby="family-member-help"
+                aria-controls="family-member-results"
+              />
+              {selectedFamilyMember ? (
+                <p role="status" className="mt-2 rounded-lg border border-fuchsia-300 bg-white px-3 py-2 text-sm text-fuchsia-900">
+                  {t("familySale.selected", { name: selectedFamilyMember.name })}
+                </p>
+              ) : loadingFamilyMembers ? (
+                <p role="status" className="mt-2 text-sm text-gray-600">{t("common.loading")}</p>
+              ) : familyError ? (
+                <p role="alert" className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{familyError}</p>
+              ) : (
+                <div id="family-member-results" className="mt-2 max-h-48 overflow-y-auto overscroll-contain rounded-lg border border-gray-200 bg-white" role="listbox" aria-label={t("familySale.results")}>
+                  {familyMembers.map((member) => (
+                    <button key={member._id} type="button" role="option" aria-selected={false} onClick={() => selectFamilyMember(member)} className="block min-h-11 w-full border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-fuchsia-50 focus:bg-fuchsia-50 focus:outline-none">
+                      <span className="block font-medium text-gray-900">{member.name}</span>
+                      {member.phone && <span className="block text-sm text-gray-600">{member.phone}</span>}
+                    </button>
+                  ))}
+                  {!familyMembers.length && <p className="px-3 py-3 text-sm text-gray-600">{t("familySale.noMembers")}</p>}
+                </div>
+              )}
+              <p id="family-member-help" className="mt-2 text-xs text-fuchsia-800">{t("familySale.onlineOnly")}</p>
+            </div>
+          )}
+
+          {!familyMode && <label className="flex items-center gap-2 mb-4 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer select-none">
             <input
               type="checkbox"
               checked={form.isWalkIn}
@@ -1143,9 +1297,9 @@ export default function NewSale() {
             <span className="text-sm font-medium text-gray-700">
               {t("pos.walkInOption")}
             </span>
-          </label>
+          </label>}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div className="grid grid-cols-1 gap-4 mb-6 sm:grid-cols-2 lg:grid-cols-1">
             <div>
               <label htmlFor="new-sale-customer-name" className="block mb-2 font-medium text-gray-700">
                 {t("pos.customerName")} {!form.isWalkIn && "*"}
@@ -1158,7 +1312,7 @@ export default function NewSale() {
                 onChange={handleChange}
                 placeholder={form.isWalkIn ? t("pos.walkIn") : t("pos.customerNamePlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
-                disabled={form.isWalkIn}
+                disabled={form.isWalkIn || familyMode}
                 required={!form.isWalkIn}
               />
             </div>
@@ -1175,7 +1329,7 @@ export default function NewSale() {
                 onChange={handleChange}
                 placeholder={form.isWalkIn ? "—" : t("pos.customerPhonePlaceholder")}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:text-gray-400"
-                disabled={form.isWalkIn}
+                disabled={form.isWalkIn || familyMode}
               />
             </div>
 
@@ -1206,7 +1360,7 @@ export default function NewSale() {
             disabled={!isFormValid || submitting}
             className={`w-full sm:w-auto px-8 py-3 rounded-lg font-medium text-base sm:text-lg ${
               isFormValid && !submitting
-                ? "bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                ? "bg-green-600 hover:bg-green-700 text-white"
                 : "bg-gray-400 cursor-not-allowed text-white"
             } transition-colors`}
           >

@@ -38,6 +38,8 @@ const EntryHistory = lazy(() => import("./pages/EntryHistory"));
 const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
 const Remboursements = lazy(() => import("./pages/Remboursements"));
 const OfflineSales = lazy(() => import("./pages/offline/OfflineSales"));
+const ProductStockSheet = lazy(() => import("./pages/products/ProductStockSheet"));
+const ProductsSold = lazy(() => import("./pages/reports/ProductsSold"));
 
 function RouteLoading() {
   const { t } = useTranslation();
@@ -96,6 +98,10 @@ export default function App() {
                       <Products />
                     </RequireAuth>
                   }
+                />
+                <Route
+                  path="/products/:id/stock-sheet"
+                  element={<RequireAuth><ProductStockSheet /></RequireAuth>}
                 />
                 <Route
                   path="/new-sale"
@@ -169,6 +175,10 @@ export default function App() {
                       <Analytics />
                     </RequireAuth>
                   }
+                />
+                <Route
+                  path="/reports/products-sold"
+                  element={<RequireAuth><ProductsSold /></RequireAuth>}
                 />
                 <Route
                   path="/customers"

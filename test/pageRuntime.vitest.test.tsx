@@ -360,7 +360,8 @@ test("Articles & stock: deleting asks for confirmation and a failure keeps the a
   ]);
   const user = userEvent.setup();
   renderPage(<Products />, "/products");
-  await user.click(await screen.findByRole("button", { name: "Supprimer Chemise Oxford" }));
+  await user.click(await screen.findByRole("button", { name: "Actions pour Chemise Oxford" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Supprimer Chemise Oxford" }));
   const dialog = screen.getByRole("alertdialog", { name: "Supprimer définitivement cet article ?" });
   expect(dialog).toHaveTextContent("avec son stock de 4 pièce(s)");
   await user.click(within(dialog).getByRole("button", { name: "Supprimer définitivement" }));

@@ -33,7 +33,10 @@ export const RequireAuth: React.FC<React.PropsWithChildren> = ({
       </div>
     );
   }
-  if (user?.role === "admin" && !user.permissions?.includes(location.pathname)) {
+  // A shareholder's permissions name modules; a sub-page such as
+  // /products/:id/stock-sheet belongs to its first path segment's module.
+  const modulePath = `/${location.pathname.split("/")[1] || ""}`;
+  if (user?.role === "admin" && !user.permissions?.includes(modulePath)) {
     return (
       <div className="m-6 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
         <h1 className="text-xl font-bold">{t("system.moduleNotAllowedTitle")}</h1>

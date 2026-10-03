@@ -833,7 +833,7 @@ export default function EntryHistory() {
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.total")}</p>
@@ -843,7 +843,7 @@ export default function EntryHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.totalAmount")}</p>
@@ -853,7 +853,7 @@ export default function EntryHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.active")}</p>
@@ -864,7 +864,7 @@ export default function EntryHistory() {
             </div>
           </div>
           
-          <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+          <div className="bg-white p-4 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.paymentMethods")}</p>
@@ -938,7 +938,7 @@ export default function EntryHistory() {
             onClick={() => setShowEditedEntries(!showEditedEntries)}
             className={`px-4 py-2 rounded-lg border transition-all duration-200 flex items-center gap-2 ${
               showEditedEntries
-                ? "bg-blue-500 text-white border-blue-500 shadow-sm"
+                ? "bg-blue-500 text-white border-blue-500"
                 : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
             }`}
           >
@@ -966,7 +966,7 @@ export default function EntryHistory() {
       </div>
 
       {/* Timeframe Filter Section */}
-      <div className="bg-white p-4 sm:p-6 rounded-lg shadow border border-gray-200">
+      <div className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
           <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -975,7 +975,7 @@ export default function EntryHistory() {
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
             {/* Date Picker for Day View */}
             {timeframe === "day" && (
-              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 shadow-sm w-full sm:w-auto">
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
                 <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
                 <label htmlFor="date-picker" className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap">
                   {t("common.date")}:
@@ -991,7 +991,7 @@ export default function EntryHistory() {
             )}
             
             {timeframe === "year" && (
-              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 shadow-sm w-full sm:w-auto">
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
                 <button
                   onClick={() => navigateYear('prev')}
                   disabled={getAvailableYears().indexOf(selectedYear) === getAvailableYears().length - 1}
@@ -1017,7 +1017,7 @@ export default function EntryHistory() {
                   onClick={() => handleTimeframeChange(period)}
                   className={`px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 flex-1 sm:flex-none ${
                     timeframe === period
-                      ? "bg-blue-500 text-white shadow-sm"
+                      ? "bg-blue-500 text-white"
                       : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                   }`}
                 >
@@ -1067,7 +1067,7 @@ export default function EntryHistory() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg">
         <div className="px-6 py-4 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <FileText className="w-5 h-5" />

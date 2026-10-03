@@ -44,6 +44,7 @@ export const MODULES = {
   rate: defineModule("rate", "/rate", true),
   remboursements: defineModule("remboursements", "/remboursements", true),
   reports: defineModule("reports", "/reports", true),
+  productsSold: defineModule("productsSold", "/reports/products-sold", true),
   customers: defineModule("customers", "/customers", false),
   admin: defineModule("admin", "/admin", true),
 } satisfies Record<string, ModuleDefinition>;
@@ -56,6 +57,10 @@ export const PERMISSION_MODULE_IDS: ModuleId[] = [
   "entryhistory", "historicsortie", "rate", "reports", "customers",
 ];
 
+/** The module of a path; a sub-page (/products/:id/stock-sheet) belongs to
+ *  the module of its first segment, as for shareholder permissions. */
 export function moduleForPath(path: string): ModuleDefinition | undefined {
-  return Object.values(MODULES).find((module) => module.path === path);
+  const modules = Object.values(MODULES);
+  const parent = `/${path.split("/")[1] || ""}`;
+  return modules.find((module) => module.path === path) ?? modules.find((module) => module.path !== "/" && module.path === parent);
 }

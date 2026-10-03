@@ -35,6 +35,8 @@ export interface OfflineSalePayload {
   receiptNumber: string;
   occurredAt: string;
   offline: boolean;
+  isFamilySale?: boolean;
+  familyMemberId?: string;
 }
 
 export interface LocalSale {

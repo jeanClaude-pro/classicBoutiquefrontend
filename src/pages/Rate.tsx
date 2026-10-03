@@ -222,7 +222,7 @@ export default function TauxChange() {
           {/* Colonne de gauche - Taux actuel et formulaire */}
           <div className="lg:col-span-2 space-y-6">
             {/* Carte du taux actuel */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
                   <TrendingUp className="w-5 h-5 text-blue-600" />
@@ -281,7 +281,7 @@ export default function TauxChange() {
             </div>
 
             {/* Formulaire de mise à jour */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
               <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Edit className="w-5 h-5 text-orange-600" />
                 {t('rate.updateTitle')}
@@ -366,7 +366,7 @@ export default function TauxChange() {
           </div>
 
           {/* Colonne de droite - Historique */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="bg-white rounded-xl border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
                 <History className="w-5 h-5 text-purple-600" />

@@ -249,20 +249,20 @@ export default function Sortie() {
             </div>
             
             {/* Exchange Rate Display */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
-              <div className="flex items-center justify-between">
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">{t("expenses.todayRate")}</span>
+                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
+                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("expenses.todayRate")}</span>
                 </div>
                 {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
                 ) : exchangeRate ? (
                   <div className="text-right">
-                    <div className="font-bold text-blue-800 text-lg">
+                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
                       1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
-                    <div className="text-xs text-blue-600">
+                    <div className="text-xs text-gray-500">
                       {t("expenses.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
@@ -283,12 +283,12 @@ export default function Sortie() {
           <div className="mb-6 whitespace-pre-line p-4 bg-red-100 text-red-700 rounded-lg border border-red-200">{error}</div>
         )}
 
-        <div className="bg-white shadow-lg rounded-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6">
-            <h3 className="text-xl font-semibold text-white text-center">
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <div className="border-b border-gray-200 bg-white p-6">
+            <h3 className="text-xl font-semibold text-gray-900">
               {t("expenses.newExpense")}
             </h3>
-            <p className="text-blue-100 text-center mt-2">
+            <p className="text-gray-600 mt-1">
               {t("expenses.newExpenseHint")}
             </p>
           </div>
@@ -302,7 +302,7 @@ export default function Sortie() {
                   ["GOODS_PURCHASE", t("enums.expenseType.goodsPurchase"), t("expenses.types.goodsPurchaseHint")],
                   ["REPAYMENT", t("enums.expenseType.repayment"), t("expenses.types.repaymentHint")],
                 ] as const).map(([value, label, description]) => (
-                  <label key={value} className={`cursor-pointer rounded-xl border-2 p-4 transition ${form.expenseType === value ? "border-purple-600 bg-purple-50 shadow-sm" : "border-gray-200 hover:border-purple-300"}`}>
+                  <label key={value} className={`cursor-pointer rounded-xl border-2 p-4 transition ${form.expenseType === value ? "border-purple-600 bg-purple-50" : "border-gray-200 hover:border-purple-300"}`}>
                     <input type="radio" className="sr-only" checked={form.expenseType === value} onChange={() => setForm({ ...form, expenseType: value, creditorId: "" })} />
                     <span className="block font-semibold text-gray-900">{label}</span>
                     <span className="mt-1 block text-xs text-gray-600">{description}</span>
@@ -314,7 +314,7 @@ export default function Sortie() {
             {form.expenseType !== "REPAYMENT" && <fieldset>
               <legend className="mb-3 font-semibold text-gray-900">{t("expenses.category")}</legend>
               <div className="grid grid-cols-2 gap-3">
-                {(["CLOTHES", "SHOES"] as const).map((category) => <label key={category} className={`cursor-pointer rounded-xl border-2 p-4 text-center font-semibold ${form.category === category ? "border-blue-600 bg-blue-50 text-blue-900" : "border-gray-200 text-gray-700"}`}><input type="radio" className="sr-only" checked={form.category === category} onChange={() => setForm({...form, category})}/>{t(`accounting.categoryTitles.${category}`)}</label>)}
+                {(["CLOTHES", "SHOES"] as const).map((category) => <label key={category} className={`cursor-pointer rounded-xl border-2 p-4 text-center font-semibold ${form.category === category ? "border-primary bg-primary-soft text-primary" : "border-gray-200 text-gray-700"}`}><input type="radio" className="sr-only" checked={form.category === category} onChange={() => setForm({...form, category})}/>{t(`accounting.categoryTitles.${category}`)}</label>)}
               </div>
               <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 {form.expenseType === "COMPANY_EXPENSE"
@@ -520,7 +520,7 @@ export default function Sortie() {
               disabled={!isFormValid || isSubmitting}
               className={`w-full py-3 px-4 rounded-lg text-white font-semibold transition-all ${
                 isFormValid && !isSubmitting
-                  ? "bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                  ? "bg-primary hover:bg-primary-hover"
                   : "bg-gray-400 cursor-not-allowed"
               }`}
             >

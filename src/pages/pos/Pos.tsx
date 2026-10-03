@@ -377,7 +377,7 @@ export default function Pos() {
           {/* Left: Customer + Product selection */}
           <div className="lg:col-span-2 space-y-6">
             {/* Customer Details */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
+            <div className="bg-white rounded-lg border border-gray-300 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <User className="w-5 h-5" />
                 Détails du client
@@ -433,7 +433,7 @@ export default function Pos() {
             </div>
 
             {/* Product Search & Filter */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
+            <div className="bg-white rounded-lg border border-gray-300 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <Search className="w-5 h-5" />
                 Sélection de produits
@@ -479,7 +479,7 @@ export default function Pos() {
                   filteredProducts.map((product) => (
                     <div
                       key={product.id}
-                      className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
+                      className="border border-gray-200 rounded-lg p-4 transition-shadow cursor-pointer"
                       onClick={() => addToCart(product)}
                     >
                       <div className="aspect-square bg-gray-100 rounded-md mb-3 flex items-center justify-center">
@@ -509,7 +509,7 @@ export default function Pos() {
           {/* Right: Cart & Checkout */}
           <div className="space-y-6">
             {/* Cart */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
+            <div className="bg-white rounded-lg border border-gray-300 p-6">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <ShoppingCart className="w-5 h-5" />
@@ -597,7 +597,7 @@ export default function Pos() {
             </div>
 
             {/* Checkout */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-300 p-6">
+            <div className="bg-white rounded-lg border border-gray-300 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
                 <CreditCard className="w-5 h-5" />
                 Checkout

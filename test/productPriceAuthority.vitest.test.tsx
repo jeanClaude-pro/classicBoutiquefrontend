@@ -119,9 +119,11 @@ function productsApi() {
   ]);
 }
 
+// Row actions live in each product's "Actions" menu.
 const openEdit = async (user: ReturnType<typeof userEvent.setup>, index: number) => {
-  const buttons = await screen.findAllByRole("button", { name: "Modifier l'article" });
-  await user.click(buttons[index]);
+  const menus = await screen.findAllByRole("button", { name: /^Actions pour / });
+  await user.click(menus[index]);
+  await user.click(await screen.findByRole("menuitem", { name: "Modifier l'article" }));
 };
 const putBodies = (api: ReturnType<typeof mockApi>) =>
   api.calls.filter((call) => call.method === "PUT").map((call) => call.body as Record<string, unknown>);

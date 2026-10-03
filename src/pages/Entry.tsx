@@ -980,20 +980,20 @@ export default function Entry() {
             </div>
             
             {/* Exchange Rate Display */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 min-w-[280px]">
-              <div className="flex items-center justify-between">
+            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 min-w-[280px]">
+              <div className="flex items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-blue-600" />
-                  <span className="font-semibold text-blue-900">{t("entry.todayRate")}</span>
+                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
+                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("entry.todayRate")}</span>
                 </div>
                 {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-blue-600" />
+                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
                 ) : exchangeRate ? (
                   <div className="text-right">
-                    <div className="font-bold text-blue-800 text-lg">
+                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
                       1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
                     </div>
-                    <div className="text-xs text-blue-600">
+                    <div className="text-xs text-gray-500">
                       {t("entry.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
                     </div>
                   </div>
@@ -1016,7 +1016,7 @@ export default function Entry() {
 
         <form onSubmit={handleEntry} className="space-y-6">
           {/* Amount and Basic Info */}
-          <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
               <DollarSign className="w-5 h-5 text-green-600" />
               {t("entry.info")}
@@ -1158,7 +1158,7 @@ export default function Entry() {
           </div>
 
           {/* Received From Information */}
-          <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
             <h3 className="text-lg font-semibold mb-4 text-gray-900 flex items-center gap-2">
               <User className="w-5 h-5 text-blue-600" />
               {t("entry.sender")}
@@ -1215,13 +1215,13 @@ export default function Entry() {
           </div>
 
           {/* Submit Button */}
-          <div className="bg-white shadow-lg rounded-xl p-6 border border-gray-200">
+          <div className="bg-white rounded-xl p-6 border border-gray-200">
             <button
               type="submit"
               disabled={!isFormValid || submitting}
               className={`w-full px-8 py-4 rounded-lg font-medium text-lg flex items-center justify-center gap-2 ${
                 isFormValid && !submitting
-                  ? "bg-green-600 hover:bg-green-700 text-white shadow-sm"
+                  ? "bg-green-600 hover:bg-green-700 text-white"
                   : "bg-gray-400 cursor-not-allowed text-white"
               } transition-colors`}
             >

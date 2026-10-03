@@ -61,13 +61,15 @@ const FTR_TOP = PH - 24;
 const CT = HDR_BOTTOM + 12;
 const CB = FTR_TOP - 8;
 
+// Print-friendly palette of the visual system: near-black text, zinc lines,
+// forest-green accents, light fills only (no ink-heavy dark bands).
 const ink = {
-  navy: [15, 23, 42],
-  blue: [30, 64, 175],
-  muted: [100, 116, 139],
-  border: [203, 213, 225],
-  borderSoft: [226, 232, 240],
-  surface: [248, 250, 252],
+  navy: [24, 24, 27],
+  blue: [22, 101, 52],
+  muted: [113, 113, 122],
+  border: [212, 212, 216],
+  borderSoft: [228, 228, 231],
+  surface: [250, 250, 247],
   white: [255, 255, 255],
   success: [15, 118, 110],
   danger: [153, 27, 27],
@@ -216,11 +218,15 @@ function dataTable(
   const tw = widths.reduce((a, b) => a + b, 0);
 
   const drawTableHeader = (hy: number): void => {
-    fill(doc, ink.navy);
+    fill(doc, [244, 244, 245]);
     doc.rect(x, hy, tw, rowH, "F");
+    stroke(doc, ink.blue);
+    doc.setLineWidth(0.4);
+    doc.line(x, hy + rowH, x + tw, hy + rowH);
+    doc.setLineWidth(0.2);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
-    color(doc, ink.white);
+    color(doc, ink.navy);
 
     let hx = x;
     headers.forEach((h, i) => {
@@ -354,18 +360,19 @@ export function generateCompanyReport(config: ReportConfig): void {
 
   fill(doc, ink.white);
   doc.rect(0, 0, PW, PH, "F");
-  fill(doc, ink.navy);
+  fill(doc, ink.surface);
   doc.rect(0, 0, PW, 66, "F");
   fill(doc, ink.blue);
   doc.rect(0, 64.5, PW, 1.5, "F");
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(25);
-  color(doc, ink.white);
+  color(doc, ink.navy);
   doc.text(COMPANY, PW / 2, 24, { align: "center" });
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
+  color(doc, ink.muted);
   doc.text(tr("pdfReport.companySub"), PW / 2, 33, { align: "center" });
 
   doc.setFontSize(7.8);

@@ -60,6 +60,10 @@ const CODE_MESSAGES: Record<string, string> = {
   DISCOUNT_QUANTITY_REQUIRED: "pos.discountQuantityRequired",
   DISCOUNT_ATTEMPTS_LIMITED: "pos.discountAttemptsLimited",
   EXCHANGE_RATE_CHANGED: "pos.exchangeRateChanged",
+  FAMILY_SALE_ONLINE_REQUIRED: "familySale.onlineRequired",
+  FAMILY_MEMBER_REQUIRED: "familySale.memberRequired",
+  FAMILY_MEMBER_INVALID: "familySale.memberInvalid",
+  FAMILY_SALE_TYPE_INVALID: "familySale.typeInvalid",
 };
 
 // Known server messages (English, or French written by the server), each
