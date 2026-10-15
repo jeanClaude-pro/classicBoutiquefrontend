@@ -3,7 +3,8 @@ import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { currentLocale } from "../i18n";
 import { ENTRY_CATEGORIES, ENTRY_SOURCES, entryCategoryLabel, entrySourceLabel } from "../lib/entryOptions";
-import { apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { apiErrorFromPayload, fetchWithTimeout, toApiError } from "../lib/apiError";
+import { newRequestKey } from "../lib/requestKey";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
 import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
@@ -65,6 +66,7 @@ export default function Entry() {
   const [submitting, setSubmitting] = useState(false);
   // Synchronous guard: a second click can arrive before `submitting` re-renders.
   const submitLock = useRef(false);
+  const requestKey = useRef(newRequestKey());
   const [receiptData, setReceiptData] = useState<any>(null);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [loadingRate, setLoadingRate] = useState(true);
@@ -870,12 +872,12 @@ export default function Entry() {
           name: form.receivedFromName,
           phone: form.receivedFromPhone,
           email: form.receivedFromEmail || "",
-        }
+        },
+        // Same key for every retry of this entry.
+        requestKey: requestKey.current,
       };
 
-      console.log("Sending entry data:", body);
-
-      const res = await fetch(`${API_BASE}/entries`, {
+      const res = await fetchWithTimeout(`${API_BASE}/entries`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -891,7 +893,7 @@ export default function Entry() {
         throw apiErrorFromPayload(res.status, data);
       }
 
-      console.log("Entry created successfully:", data);
+      requestKey.current = newRequestKey();
 
       // Get the entry ID from the API response
       const entryId = data.entryId || data._id;
@@ -941,8 +943,12 @@ export default function Entry() {
       );
       notifySuccess(t("entry.recorded"));
     } catch (e: any) {
-      console.error("Error creating entry:", e);
-      setError(toApiError(e).message);
+      const failure = toApiError(e);
+      // After a network failure or timeout the entry may have been recorded:
+      // the retry keeps the same key so the server returns it instead of
+      // recording it twice. A definite refusal starts a fresh key.
+      if (!failure.isNetwork) requestKey.current = newRequestKey();
+      setError(failure.message);
     } finally {
       submitLock.current = false;
       setSubmitting(false);

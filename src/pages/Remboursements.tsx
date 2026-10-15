@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Building2, CalendarDays, Landmark, Plus, ReceiptText } from "lucide-react";
 import { serverUrl } from "../utils/constants";
 import { Button, Card, EmptyState, ErrorState, PageHeader, StatusBadge } from "../components/ui";
 import { requestJson, toApiError, userError } from "../lib/apiError";
+import { newRequestKey } from "../lib/requestKey";
 import { notifyError, notifySuccess } from "../lib/notify";
 import { loanCopy } from "../lib/confirmationCopy";
 import { useConfirmAction } from "../hooks/useConfirmAction";
@@ -33,6 +34,9 @@ export default function Remboursements() {
   const [form, setForm] = useState<CreditorForm>(initialCreditor);
   const [loan, setLoan] = useState<LoanForm>(initialLoan);
   const confirmAction = useConfirmAction();
+  // One key per loan: a retry after a dropped connection returns the loan
+  // already recorded instead of adding the same debt twice.
+  const loanRequestKey = useRef(newRequestKey());
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -75,8 +79,16 @@ export default function Remboursements() {
       : money(amount);
     confirmAction.request({
       ...loanCopy(creditor?.name || t("debts.thisCreditor"), amountLabel),
-      action: () => requestJson(`${serverUrl}/creditors/${selected}/loans`, { method: "POST", body }),
-      onSuccess: async () => { setLoan(initialLoan()); await load(); await loadHistory(selected); },
+      action: async () => {
+        try {
+          return await requestJson(`${serverUrl}/creditors/${selected}/loans`, { method: "POST", body: { ...body, requestKey: loanRequestKey.current } });
+        } catch (error) {
+          // Only a network failure keeps the key: the loan may have arrived.
+          if (!toApiError(error).isNetwork) loanRequestKey.current = newRequestKey();
+          throw error;
+        }
+      },
+      onSuccess: async () => { loanRequestKey.current = newRequestKey(); setLoan(initialLoan()); await load(); await loadHistory(selected); },
     });
   };
 

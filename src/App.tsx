@@ -36,6 +36,7 @@ const Rate = lazy(() => import("./pages/Rate"));
 const Entry = lazy(() => import("./pages/Entry"));
 const EntryHistory = lazy(() => import("./pages/EntryHistory"));
 const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
+const AuditLog = lazy(() => import("./pages/admin/AuditLog"));
 const Remboursements = lazy(() => import("./pages/Remboursements"));
 const OfflineSales = lazy(() => import("./pages/offline/OfflineSales"));
 const ProductStockSheet = lazy(() => import("./pages/products/ProductStockSheet"));
@@ -199,6 +200,10 @@ export default function App() {
                       <RequireRole roles={["superadmin"]}><AdminPanel /></RequireRole>
                     </RequireAuth>
                   }
+                />
+                <Route
+                  path="/audit"
+                  element={<RequireAuth><RequireRole roles={["superadmin"]}><AuditLog /></RequireRole></RequireAuth>}
                 />
                 <Route path="/login" element={<LoginRoute />} />
               </Routes></Suspense>

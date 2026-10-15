@@ -2,7 +2,9 @@ import type { Product } from "../types";
 import type { User } from "../types/auth";
 
 export type ConnectivityState = "online" | "offline" | "checking";
-export type SyncStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT";
+// RESOLVED: a refused (CONFLICT) sale that a manager checked and handled.
+// It never reached the server; the refusal itself is in the audit log.
+export type SyncStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT" | "RESOLVED";
 
 export interface ExchangeRateSnapshot {
   rate: number;
@@ -56,6 +58,8 @@ export interface LocalSale {
   serverSaleId?: string;
   syncedAt?: string;
   serverSale?: Record<string, unknown>;
+  resolvedAt?: string;
+  resolvedBy?: string;
   payload: OfflineSalePayload;
 }
 

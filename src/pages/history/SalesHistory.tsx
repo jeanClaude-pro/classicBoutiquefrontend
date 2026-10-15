@@ -66,6 +66,7 @@ import {
 } from "../../utils/saleCorrection";
 import { getUserSales } from "../../offline/repositories/sales";
 import type { LocalSale } from "../../offline/types";
+import VoidedSalesDialog from "./VoidedSalesDialog";
 
 interface SaleItem {
   productId: string;
@@ -436,10 +437,12 @@ export default function SalesHistory() {
     }
   };
 
-  // Keep normal sales visible while excluding expense records.
+  // The primary list is the active/completed-sales workspace. Voided records
+  // live in VoidedSalesDialog and are excluded here as a defensive boundary,
+  // even if an older API or local cache returns one unexpectedly.
   const filterValidSales = (sales: Sale[]): Sale[] => {
     return sales.filter((sale: Sale) => {
-      const nonSaleStatuses = ['expense', 'depense'];
+      const nonSaleStatuses = ['expense', 'depense', 'voided'];
       const isValidStatus = !nonSaleStatuses.includes(sale.status?.toLowerCase());
       
       const isSaleStructure = Boolean(sale.saleId) && Array.isArray(sale.items);
@@ -453,7 +456,7 @@ export default function SalesHistory() {
   };
 
   // Build query string from queryParams
-  const buildQueryString = () => {
+  const buildQueryString = (statusOverride?: string) => {
     const params = new URLSearchParams();
     params.set("page", String(currentPage));
     params.set("limit", "50");
@@ -481,7 +484,7 @@ export default function SalesHistory() {
     }
     
     // Add additional filters
-    if (queryParams.status) params.append("status", queryParams.status);
+    params.set("status", statusOverride || queryParams.status || "completed");
     if (queryParams.customerPhone) params.append("customerPhone", queryParams.customerPhone);
     if (isAdmin && queryParams.category) params.append("category", queryParams.category);
     if (searchTerm.trim()) params.append("search", searchTerm.trim());
@@ -1332,6 +1335,7 @@ export default function SalesHistory() {
           </h3>
           
           <div className="flex flex-wrap gap-2">
+            <VoidedSalesDialog token={getToken()} queryString={buildQueryString("voided")} />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
@@ -1533,7 +1537,7 @@ export default function SalesHistory() {
                       className="w-full p-2 border border-gray-300 rounded-lg"
                     >
                       <option value="">{t("salesHistory.filters.allStatuses")}</option>
-                      {(["completed", "pending", "voided"] as const).map((value) => (
+                      {(["completed", "pending"] as const).map((value) => (
                         <option key={value} value={value}>{saleStatusLabel(value)}</option>
                       ))}
                     </select>

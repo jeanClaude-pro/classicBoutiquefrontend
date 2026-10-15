@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../hooks/useAuth";
 import { logoutSession } from "../services/authService";
+import { flushBeforeSignOut } from "../offline/syncManager";
 import { formatDayGMT2, formatTimeGMT2 } from "../utils/dateUtils";
 import { canAccessNavigationItem, isNavigationItemActive, navigationSections } from "../config/navigation";
 import { roleLabel } from "../config/roles";
@@ -28,7 +29,9 @@ export default function Sidebar() {
     .filter((section) => section.items.length), [user, offline]);
 
   if ((!token && !offline) || !user) return null;
-  const logout = async () => { await logoutSession(); clearAuth(); window.location.href = "/login"; };
+  // Queued sales are sent first (at most a few seconds) so they do not wait
+  // on this device for the cashier's next sign-in.
+  const logout = async () => { await flushBeforeSignOut(user?.id, token); await logoutSession(); clearAuth(); window.location.href = "/login"; };
 
   return (
     <aside className={`desktop-tablet-sidebar app-sidebar ${collapsed ? "is-collapsed" : ""}`}>

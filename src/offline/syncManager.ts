@@ -15,6 +15,11 @@ export type SubmitOutcome =
 // sale concurrently from this tab. Other tabs are covered by the server's
 // unique idempotency key.
 let chain: Promise<unknown> = Promise.resolve();
+
+/** Longest wait for one sale submission before it is treated as a network failure. */
+export const SUBMIT_TIMEOUT_MS = 20_000;
+/** Mutable so tests can shorten the wait; the application never changes it. */
+export const syncSettings = { submitTimeoutMs: SUBMIT_TIMEOUT_MS };
 let activeSync: Promise<void> | null = null;
 
 function exclusive<T>(task: () => Promise<T>): Promise<T> {
@@ -40,12 +45,25 @@ async function submit(sale: LocalSale, token: string): Promise<SubmitOutcome> {
   try {
     // Always the payload captured at checkout: same idempotency key, same
     // occurrence time and rate snapshot, never recomputed.
-    const response = await fetch(`${serverUrl}/sales`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify(sale.payload),
-    });
-    const data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    // A shaky connection can leave a request hanging for minutes. After
+    // SUBMIT_TIMEOUT_MS the attempt is abandoned as a network failure: the
+    // sale stays safely queued and the next attempt reuses the same key, so
+    // the server replays it if this one did arrive.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), syncSettings.submitTimeoutMs);
+    let response: Response;
+    let data: Record<string, unknown>;
+    try {
+      response = await fetch(`${serverUrl}/sales`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(sale.payload),
+        signal: controller.signal,
+      });
+      data = await response.json().catch(() => ({})) as Record<string, unknown>;
+    } finally {
+      clearTimeout(timer);
+    }
     if (!response.ok) throw apiErrorFromPayload(response.status, data);
     const syncedAt = new Date().toISOString();
     await updateSaleStatus(sale.clientSaleId, "SYNCED", {
@@ -107,6 +125,35 @@ export function submitNewSale(sale: LocalSale, token: string | null): Promise<Su
     if (outcome.kind === "rejected") await deleteLocalSale(sale.clientSaleId);
     return outcome;
   }).finally(() => window.dispatchEvent(new Event("offline-sales:changed")));
+}
+
+/**
+ * Best effort before a sign-out (button or idle): send this cashier's queued
+ * sales now, waiting at most `maxWaitMs`. Whatever is not sent stays safely
+ * queued on the device for the cashier's next online sign-in.
+ */
+export async function flushBeforeSignOut(userId: string | undefined, token: string | null, maxWaitMs = 10_000): Promise<void> {
+  if (!userId || !token) return;
+  try {
+    if (!(await getPendingSales(userId)).length) return;
+    await Promise.race([
+      synchronizeSales(userId, token, true),
+      new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
+    ]);
+  } catch {
+    // Sign-out must never be blocked: the queue survives on the device.
+  }
+}
+
+/**
+ * A manager confirms a refused sale was checked (and recorded again if it
+ * was a real sale). It leaves the warning list but stays on the device.
+ */
+export async function resolveRefusedSale(clientSaleId: string, resolvedBy: string): Promise<void> {
+  const sale = await getLocalSale(clientSaleId);
+  if (!sale || sale.syncStatus !== "CONFLICT") return;
+  await updateSaleStatus(clientSaleId, "RESOLVED", { resolvedAt: new Date().toISOString(), resolvedBy });
+  window.dispatchEvent(new Event("offline-sales:changed"));
 }
 
 /** Puts a parked sale back in the queue for one more attempt (same identity). */

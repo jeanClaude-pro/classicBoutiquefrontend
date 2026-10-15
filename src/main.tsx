@@ -20,7 +20,7 @@ const updateSW = registerSW({
         <p>{t('system.updateAvailable')}</p>
         <button
           type="button"
-          className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+          className="ui-button ui-button--primary ui-button--sm"
           onClick={() => {
             toast.dismiss(updateToastId)
             void updateSW(true)
@@ -55,6 +55,15 @@ const showOfflineToast = () => {
 window.addEventListener('vite:preloadError', (event) => {
   if (reloadForNewVersion()) event.preventDefault()
 })
+
+// Queued sales live in IndexedDB. Ask the browser to keep this storage even
+// when the disk fills up, so it is never evicted before the sales reach the
+// server. Best effort: some browsers decide on their own.
+try {
+  void navigator.storage?.persist?.().catch(() => undefined)
+} catch {
+  // Storage API unavailable: nothing to request.
+}
 
 let previousConnectivity: string | null = null
 subscribeConnectivity((state) => {

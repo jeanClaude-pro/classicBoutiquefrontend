@@ -264,3 +264,19 @@ export async function requestJson<T = unknown>(url: string, { body, timeoutMs = 
     clearTimeout(timer);
   }
 }
+
+/**
+ * fetch that gives up after `timeoutMs`. A stalled connection then fails like
+ * any network error (status 0, "may or may not have reached the server")
+ * instead of freezing the page; callers keep their idempotency key for the
+ * retry so a request that did arrive is replayed, never duplicated.
+ */
+export async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs = 20_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: init.signal ?? controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}

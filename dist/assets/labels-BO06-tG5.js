@@ -1,1 +1,0 @@
-import{y as a}from"./index-cP8fjh4g.js";const t=n=>s=>{if(typeof s!="string"||!s)return"—";for(const o of[s,s.toLowerCase()]){const e=`${n}.${o}`;if(a.exists(e))return a.t(e)}return s},u=t("enums.paymentMethod"),c=t("enums.saleStatus"),p=t("enums.saleType"),m=t("enums.expenseStatus"),y=t("enums.entryStatus"),b=t("enums.productStatus");export{m as a,b,p as c,y as e,u as p,c as s};

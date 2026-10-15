@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import { setActivityHold } from "../lib/idleTimeout";
 import { useTranslation } from "react-i18next";
 import { currentLocale, t as translate } from "../i18n";
-import { apiErrorFromPayload, toApiError } from "../lib/apiError";
+import { apiErrorFromPayload, fetchWithTimeout, toApiError } from "../lib/apiError";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
 import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
@@ -806,7 +806,7 @@ export default function NewSale() {
         // verify the role and the family status before anything is recorded.
         // A refusal throws to the error handling below with the cart intact.
         if (!(await checkApiReachability(true))) throw new Error(t("familySale.onlineRequired"));
-        const response = await fetch(`${API_BASE}/sales`, {
+        const response = await fetchWithTimeout(`${API_BASE}/sales`, {
           method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify(body),
         });
@@ -820,7 +820,7 @@ export default function NewSale() {
         // the established online path, but never pretend an offline sale was
         // saved when durable local storage is unavailable.
         console.warn("Offline storage unavailable; using online submission:", storageError);
-        const response = await fetch(`${API_BASE}/sales`, {
+        const response = await fetchWithTimeout(`${API_BASE}/sales`, {
           method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify(body),
         });

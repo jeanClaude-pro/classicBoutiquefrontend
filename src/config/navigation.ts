@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { BarChart3, CircleDollarSign, ClipboardList, Landmark, Package, Shield, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
+import { BarChart3, CircleDollarSign, ClipboardList, FileSearch, Landmark, Package, Shield, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
 import type { User } from "../types/auth";
 import { t } from "../i18n/index.ts";
 import { MODULES, type ModuleDefinition, type ModuleId } from "./modules.ts";
@@ -62,10 +62,11 @@ export const navigationSections: NavigationSection[] = [
     item("productsSold", ClipboardList, ["superadmin", "admin"], false, "/reports"),
     item("customers", Users, ["superadmin", "manager", "cashier_supervisor"]),
     item("admin", Shield, ["superadmin"]),
+    item("audit", FileSearch, ["superadmin"]),
   ]),
 ];
 
-const fixedRolePaths = new Set(["/admin"]);
+const fixedRolePaths = new Set(["/admin", "/audit"]);
 export function canAccessNavigationItem(item: NavigationItem, user: User | null): boolean {
   if (!item.roles) return true;
   if (!user?.role) return false;

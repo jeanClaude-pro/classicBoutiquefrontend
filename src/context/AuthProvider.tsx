@@ -14,6 +14,7 @@ import {
 import { renewOfflineAuthorization } from "../offline/offlineAuth";
 import { startIdleTimer } from "../lib/idleTimeout";
 import { logoutSession } from "../services/authService";
+import { flushBeforeSignOut } from "../offline/syncManager";
 
 // setTimeout's delay is a 32-bit signed int; clamp defensively so a
 // misconfigured/longer-lived token can never overflow into an immediate fire.
@@ -30,6 +31,8 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
   });
 
   const expiryTimerRef = React.useRef<number | null>(null);
+  const stateRef = React.useRef(state);
+  stateRef.current = state;
 
   const clearExpiryTimer = React.useCallback(() => {
     if (expiryTimerRef.current !== null) {
@@ -121,7 +124,10 @@ export const AuthProvider: React.FC<React.PropsWithChildren> = ({
   React.useEffect(() => {
     if (!signedIn) return undefined;
     return startIdleTimer(() => {
-      void logoutSession().finally(() => invalidateSession("idle"));
+      // Send this cashier's queued sales before the idle sign-out.
+      void flushBeforeSignOut(stateRef.current.user?.id, stateRef.current.token)
+        .then(() => logoutSession())
+        .finally(() => invalidateSession("idle"));
     });
   }, [signedIn]);
 

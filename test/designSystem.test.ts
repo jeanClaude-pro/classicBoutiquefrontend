@@ -20,17 +20,18 @@ function files(dir: string, extensions: string[], out: string[] = []): string[] 
 const OFFICIAL_TOKENS: Record<string, string> = {
   "--color-background": "#fafaf7",
   "--color-surface": "#ffffff",
-  "--color-foreground": "#18181b",
+  "--color-sidebar": "#f5f5f0",
+  "--color-foreground": "#27272a",
   "--color-muted-foreground": "#71717a",
-  "--color-border": "#e4e4e7",
+  "--color-border": "#e4e4de",
   "--color-primary": "#166534",
   "--color-primary-hover": "#14532d",
-  "--color-primary-soft": "#dcfce7",
-  "--color-accent": "#b68a35",
-  "--color-success": "#16a34a",
-  "--color-warning": "#d97706",
+  "--color-primary-soft": "#f0fdf4",
+  "--color-accent": "#166534",
+  "--color-success": "#15803d",
+  "--color-warning": "#b45309",
   "--color-danger": "#dc2626",
-  "--color-info": "#2563eb",
+  "--color-info": "#0369a1",
 };
 
 test("the official palette is defined once, as Tailwind theme tokens", () => {
@@ -41,12 +42,34 @@ test("the official palette is defined once, as Tailwind theme tokens", () => {
     assert.ok(match, `${token} is defined`);
     assert.equal(match[1].toLowerCase(), value, token);
   }
-  // Every legacy neutral resolves to the zinc foreground / muted / border.
+  // Every legacy neutral resolves to the charcoal / muted / border system.
   for (const family of ["gray", "slate", "stone", "neutral"]) {
-    assert.match(css, new RegExp(`--color-${family}-900: #18181b`), family);
+    assert.match(css, new RegExp(`--color-${family}-900: #27272a`), family);
     assert.match(css, new RegExp(`--color-${family}-500: #71717a`), family);
-    assert.match(css, new RegExp(`--color-${family}-200: #e4e4e7`), family);
+    assert.match(css, new RegExp(`--color-${family}-200: #e4e4de`), family);
   }
+});
+
+function luminance(hex: string): number {
+  const channels = hex.match(/[0-9a-f]{2}/gi)!.map((part) => parseInt(part, 16) / 255)
+    .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+function contrast(foreground: string, background: string): number {
+  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+test("core text and action combinations meet WCAG AA contrast", () => {
+  assert.ok(contrast("#27272a", "#fafaf7") >= 4.5, "charcoal on ivory");
+  assert.ok(contrast("#52525b", "#ffffff") >= 4.5, "secondary text on cards");
+  assert.ok(contrast("#71717a", "#ffffff") >= 4.5, "muted text on cards");
+  assert.ok(contrast("#ffffff", "#166534") >= 4.5, "inverse text on primary");
+  assert.ok(contrast("#ffffff", "#14532d") >= 4.5, "inverse text on primary hover");
+  assert.ok(contrast("#b45309", "#fffbeb") >= 4.5, "warning text on warning surface");
+  assert.ok(contrast("#dc2626", "#ffffff") >= 4.5, "danger action on white");
+  assert.ok(contrast("#0369a1", "#f0f9ff") >= 4.5, "information text on information surface");
 });
 
 // Class tokens such as shadow-sm, hover:shadow-lg, drop-shadow, backdrop-blur,

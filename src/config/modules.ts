@@ -47,6 +47,7 @@ export const MODULES = {
   productsSold: defineModule("productsSold", "/reports/products-sold", true),
   customers: defineModule("customers", "/customers", false),
   admin: defineModule("admin", "/admin", true),
+  audit: defineModule("audit", "/audit", true),
 } satisfies Record<string, ModuleDefinition>;
 
 export type ModuleId = keyof typeof MODULES;

@@ -14,6 +14,39 @@ export const getPendingSales = (userId: string) => offlineDb.sales.where("[owner
   [[userId, "PENDING"], [userId, "FAILED"], [userId, "SYNCING"]],
 ).sortBy("queuedAt");
 
+/** Every sale stored on this device, all cashiers, newest first. */
+export async function getDeviceSales(): Promise<LocalSale[]> {
+  const sales = await offlineDb.sales.toArray();
+  return sales.sort((a, b) => b.queuedAt.localeCompare(a.queuedAt));
+}
+
+export interface DeviceQueueSummary {
+  /** Sales refused by the server and not yet handled (any cashier). */
+  refused: number;
+  /** Sales of the signed-in cashier still waiting to reach the server. */
+  mineWaiting: number;
+  /** Sales of other cashiers waiting on this device: only they can send them. */
+  othersWaiting: number;
+  otherCashiers: string[];
+}
+
+const WAITING: SyncStatus[] = ["PENDING", "SYNCING", "FAILED"];
+
+/** What on this device has not safely reached the server yet. */
+export async function deviceQueueSummary(currentUserId?: string): Promise<DeviceQueueSummary> {
+  const summary: DeviceQueueSummary = { refused: 0, mineWaiting: 0, othersWaiting: 0, otherCashiers: [] };
+  const names = new Set<string>();
+  await offlineDb.sales.each((sale) => {
+    if (sale.syncStatus === "CONFLICT") summary.refused += 1;
+    else if (WAITING.includes(sale.syncStatus)) {
+      if (sale.ownerUserId === currentUserId) summary.mineWaiting += 1;
+      else { summary.othersWaiting += 1; names.add(sale.ownerName || sale.ownerUserId); }
+    }
+  });
+  summary.otherCashiers = [...names].sort();
+  return summary;
+}
+
 export async function updateSaleStatus(
   clientSaleId: string,
   syncStatus: SyncStatus,
@@ -30,7 +63,7 @@ export async function updateSaleStatus(
  */
 export async function pendingQuantityByProduct(snapshotAt?: string): Promise<Map<string, number>> {
   const records = await offlineDb.sales.filter((sale) => {
-    if (sale.syncStatus === "CONFLICT") return false;
+    if (sale.syncStatus === "CONFLICT" || sale.syncStatus === "RESOLVED") return false;
     if (sale.syncStatus !== "SYNCED") return true;
     return Boolean(snapshotAt && sale.syncedAt && sale.syncedAt > snapshotAt);
   }).toArray();

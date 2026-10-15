@@ -2,8 +2,9 @@
 
 /* ==========================================================================
    DOUBLE M visual system — single source of design tokens.
-   Flat, neutral retail ERP/POS: warm off-white canvas, white surfaces,
-   zinc text/borders, forest-green primary, gold accent used sparingly.
+   Flat retail ERP/POS in ivory, white, forest green, and charcoal:
+   an ivory canvas, white working surfaces, neutral borders, and a restrained
+   forest-green primary used for navigation and high-value actions.
    No shadows, no gradients, no translucency.
    `@theme static` makes every token both a CSS variable (var(--color-primary))
    and a Tailwind utility (bg-primary, text-muted-foreground, border-border…).
@@ -13,63 +14,118 @@
 
   --color-background: #fafaf7;
   --color-surface: #ffffff;
-  --color-surface-muted: #f4f4f5;
-  --color-foreground: #18181b;
+  --color-surface-muted: #f5f5f0;
+  --color-surface-hover: #f0f1eb;
+  --color-sidebar: #f5f5f0;
+  --color-table-head: #f5f5f0;
+  --color-row-border: #e4e4de;
+  --color-foreground: #27272a;
+  --color-text-secondary: #52525b;
   --color-muted-foreground: #71717a;
-  --color-border: #e4e4e7;
-  --color-border-strong: #d4d4d8;
+  --color-disabled: #a1a1aa;
+  --color-border: #e4e4de;
+  --color-border-strong: #d4d4cd;
 
   --color-primary: #166534;
+  --color-primary-interactive: #15803d;
   --color-primary-hover: #14532d;
-  --color-primary-soft: #dcfce7;
+  --color-primary-soft: #f0fdf4;
+  --color-primary-hover-soft: #dcfce7;
+  --color-primary-border: #bbf7d0;
   --color-primary-foreground: #ffffff;
 
-  --color-accent: #b68a35;
+  --color-accent: #166534;
 
-  --color-success: #16a34a;
+  --color-success: #15803d;
   --color-success-soft: #f0fdf4;
   --color-success-strong: #15803d;
-  --color-warning: #d97706;
+  --color-success-border: #bbf7d0;
+  --color-warning: #b45309;
   --color-warning-soft: #fffbeb;
   --color-warning-strong: #b45309;
+  --color-warning-border: #fde68a;
   --color-danger: #dc2626;
   --color-danger-soft: #fef2f2;
   --color-danger-strong: #b91c1c;
-  --color-info: #2563eb;
-  --color-info-soft: #eff6ff;
-  --color-info-strong: #1d4ed8;
+  --color-danger-border: #fecaca;
+  --color-info: #0369a1;
+  --color-info-soft: #f0f9ff;
+  --color-info-strong: #075985;
+  --color-info-border: #bae6fd;
+  --color-overlay: rgb(24 24 27 / 0.48);
 
-  --radius-control: 8px;
-  --radius-card: 10px;
-  --radius-dialog: 12px;
+  --radius-control: 9px;
+  --radius-card: 14px;
+  --radius-dialog: 16px;
 
-  /* One neutral family. Legacy gray/slate/stone/neutral classes all resolve
-     to the zinc scale, so #18181B / #71717A / #E4E4E7 hold everywhere. */
-  --color-gray-50: #fafafa;  --color-slate-50: #fafafa;  --color-stone-50: #fafafa;  --color-neutral-50: #fafafa;
-  --color-gray-100: #f4f4f5; --color-slate-100: #f4f4f5; --color-stone-100: #f4f4f5; --color-neutral-100: #f4f4f5;
-  --color-gray-200: #e4e4e7; --color-slate-200: #e4e4e7; --color-stone-200: #e4e4e7; --color-neutral-200: #e4e4e7;
-  --color-gray-300: #d4d4d8; --color-slate-300: #d4d4d8; --color-stone-300: #d4d4d8; --color-neutral-300: #d4d4d8;
+  /* One ivory-and-charcoal neutral family. Legacy gray/slate/stone/neutral
+     classes resolve to it, so text, muted text and hairlines
+     match the tokens above everywhere. */
+  --color-gray-50: #fafaf7;  --color-slate-50: #fafaf7;  --color-stone-50: #fafaf7;  --color-neutral-50: #fafaf7;
+  --color-gray-100: #f5f5f0; --color-slate-100: #f5f5f0; --color-stone-100: #f5f5f0; --color-neutral-100: #f5f5f0;
+  --color-gray-200: #e4e4de; --color-slate-200: #e4e4de; --color-stone-200: #e4e4de; --color-neutral-200: #e4e4de;
+  --color-gray-300: #d4d4cd; --color-slate-300: #d4d4cd; --color-stone-300: #d4d4cd; --color-neutral-300: #d4d4cd;
   --color-gray-400: #a1a1aa; --color-slate-400: #a1a1aa; --color-stone-400: #a1a1aa; --color-neutral-400: #a1a1aa;
   --color-gray-500: #71717a; --color-slate-500: #71717a; --color-stone-500: #71717a; --color-neutral-500: #71717a;
   --color-gray-600: #52525b; --color-slate-600: #52525b; --color-stone-600: #52525b; --color-neutral-600: #52525b;
   --color-gray-700: #3f3f46; --color-slate-700: #3f3f46; --color-stone-700: #3f3f46; --color-neutral-700: #3f3f46;
   --color-gray-800: #27272a; --color-slate-800: #27272a; --color-stone-800: #27272a; --color-neutral-800: #27272a;
-  --color-gray-900: #18181b; --color-slate-900: #18181b; --color-stone-900: #18181b; --color-neutral-900: #18181b;
-  --color-gray-950: #09090b; --color-slate-950: #09090b; --color-stone-950: #09090b; --color-neutral-950: #09090b;
+  --color-gray-900: #27272a; --color-slate-900: #27272a; --color-stone-900: #27272a; --color-neutral-900: #27272a;
+  --color-gray-950: #18181b; --color-slate-950: #18181b; --color-stone-950: #18181b; --color-neutral-950: #18181b;
 
   /* Decorative hues of older screens (purple print buttons, role chips,
-     the family-sale panel…) fold into the forest-green primary scale, so
-     the interface keeps one brand colour instead of five. */
+     the family-sale panel…) fold into the forest-green primary scale, so the
+     interface keeps one brand colour instead of five. */
   --color-purple-50: #f0fdf4;  --color-violet-50: #f0fdf4;  --color-indigo-50: #f0fdf4;  --color-fuchsia-50: #f0fdf4;  --color-pink-50: #f0fdf4;
   --color-purple-100: #dcfce7; --color-violet-100: #dcfce7; --color-indigo-100: #dcfce7; --color-fuchsia-100: #dcfce7; --color-pink-100: #dcfce7;
   --color-purple-200: #bbf7d0; --color-violet-200: #bbf7d0; --color-indigo-200: #bbf7d0; --color-fuchsia-200: #bbf7d0; --color-pink-200: #bbf7d0;
   --color-purple-300: #86efac; --color-violet-300: #86efac; --color-indigo-300: #86efac; --color-fuchsia-300: #86efac; --color-pink-300: #86efac;
   --color-purple-400: #4ade80; --color-violet-400: #4ade80; --color-indigo-400: #4ade80; --color-fuchsia-400: #4ade80; --color-pink-400: #4ade80;
-  --color-purple-500: #15803d; --color-violet-500: #15803d; --color-indigo-500: #15803d; --color-fuchsia-500: #15803d; --color-pink-500: #15803d;
+  --color-purple-500: #22c55e; --color-violet-500: #22c55e; --color-indigo-500: #22c55e; --color-fuchsia-500: #22c55e; --color-pink-500: #22c55e;
   --color-purple-600: #166534; --color-violet-600: #166534; --color-indigo-600: #166534; --color-fuchsia-600: #166534; --color-pink-600: #166534;
   --color-purple-700: #14532d; --color-violet-700: #14532d; --color-indigo-700: #14532d; --color-fuchsia-700: #14532d; --color-pink-700: #14532d;
   --color-purple-800: #14532d; --color-violet-800: #14532d; --color-indigo-800: #14532d; --color-fuchsia-800: #14532d; --color-pink-800: #14532d;
   --color-purple-900: #052e16; --color-violet-900: #052e16; --color-indigo-900: #052e16; --color-fuchsia-900: #052e16; --color-pink-900: #052e16;
+
+  /* Legacy utility families retain meaning: green is success, blue is
+     information, amber/orange/yellow are warning, and red is danger. */
+  --color-green-50: #f0fdf4; --color-emerald-50: #f0fdf4;
+  --color-green-100: #dcfce7; --color-emerald-100: #dcfce7;
+  --color-green-200: #bbf7d0; --color-emerald-200: #bbf7d0;
+  --color-green-300: #86efac; --color-emerald-300: #86efac;
+  --color-green-500: #22c55e; --color-emerald-500: #22c55e;
+  --color-green-600: #15803d; --color-emerald-600: #15803d;
+  --color-green-700: #166534; --color-emerald-700: #166534;
+  --color-green-800: #14532d; --color-emerald-800: #14532d;
+  --color-green-900: #052e16; --color-emerald-900: #052e16;
+
+  --color-blue-50: #f0f9ff; --color-sky-50: #f0f9ff;
+  --color-blue-100: #e0f2fe; --color-sky-100: #e0f2fe;
+  --color-blue-200: #bae6fd; --color-sky-200: #bae6fd;
+  --color-blue-300: #7dd3fc; --color-sky-300: #7dd3fc;
+  --color-blue-500: #0284c7; --color-sky-500: #0284c7;
+  --color-blue-600: #0369a1; --color-sky-600: #0369a1;
+  --color-blue-700: #075985; --color-sky-700: #075985;
+  --color-blue-800: #0c4a6e; --color-sky-800: #0c4a6e;
+  --color-blue-900: #082f49; --color-sky-900: #082f49;
+
+  --color-amber-50: #fffbeb; --color-yellow-50: #fffbeb; --color-orange-50: #fffbeb;
+  --color-amber-100: #fef3c7; --color-yellow-100: #fef3c7; --color-orange-100: #fef3c7;
+  --color-amber-200: #fde68a; --color-yellow-200: #fde68a; --color-orange-200: #fde68a;
+  --color-amber-500: #d97706; --color-yellow-500: #d97706; --color-orange-500: #d97706;
+  --color-amber-600: #b45309; --color-yellow-600: #b45309; --color-orange-600: #b45309;
+  --color-amber-700: #92400e; --color-yellow-700: #92400e; --color-orange-700: #92400e;
+  --color-amber-800: #78350f; --color-yellow-800: #78350f; --color-orange-800: #78350f;
+  --color-amber-900: #451a03; --color-yellow-900: #451a03; --color-orange-900: #451a03;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
 
   /* Flat design: every Tailwind elevation utility renders nothing. */
   --shadow-2xs: 0 0 #0000;
@@ -88,7 +144,7 @@
 }
 
 /* Tailwind v4 draws a bare `border` in currentColor; the system default is the
-   zinc hairline. In the base layer, so explicit border-* utilities still win. */
+   neutral hairline. In the base layer, so explicit border-* utilities still win. */
 @layer base {
   *, ::after, ::before, ::backdrop, ::file-selector-button { border-color: var(--color-border); }
 }
@@ -99,9 +155,12 @@
   --background: var(--color-background);
   --surface: var(--color-surface);
   --foreground: var(--color-foreground);
+  --text-secondary: var(--color-text-secondary);
   --muted-foreground: var(--color-muted-foreground);
+  --disabled: var(--color-disabled);
   --border: var(--color-border);
   --primary: var(--color-primary);
+  --primary-interactive: var(--color-primary-interactive);
   --primary-hover: var(--color-primary-hover);
   --primary-soft: var(--color-primary-soft);
   --accent: var(--color-accent);
@@ -109,6 +168,8 @@
   --warning: var(--color-warning);
   --danger: var(--color-danger);
   --info: var(--color-info);
+  --focus-ring: rgb(22 101 52 / 0.2);
+  --danger-focus-ring: rgb(220 38 38 / 0.16);
   font-family: var(--font-sans);
 }
 
@@ -154,7 +215,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a1a1aa;
+  background: var(--color-disabled);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -179,7 +240,7 @@ textarea:focus-visible,
 
 input::placeholder,
 textarea::placeholder {
-  color: #a1a1aa;
+  color: var(--color-disabled);
 }
 
 table {
@@ -286,7 +347,7 @@ table {
   width: 100%;
   height: 100%;
   border: 0;
-  background: rgb(24 24 27 / 0.5);
+  background: var(--color-overlay);
 }
 
 .mobile-more-sheet {
@@ -327,21 +388,21 @@ table {
 
 .mobile-sheet-header h2 { margin: 0; color: var(--color-foreground); font-size: 1.1rem; font-weight: 700; }
 .mobile-sheet-header p { margin: 0.2rem 0 0; color: var(--color-muted-foreground); font-size: 0.75rem; text-transform: capitalize; }
-.mobile-icon-button { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); color: #52525b; }
+.mobile-icon-button { width: 2.75rem; height: 2.75rem; display: grid; place-items: center; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-text-secondary); }
 .mobile-icon-button svg { width: 1.2rem; height: 1.2rem; }
 .mobile-sheet-content { overflow-y: auto; overscroll-behavior: contain; padding: 0.75rem 1rem 1rem; }
 .mobile-module-section + .mobile-module-section { margin-top: 1rem; }
 .mobile-module-section h3 { margin: 0 0 0.5rem; color: var(--color-muted-foreground); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
 .mobile-module-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
-.mobile-module-grid a { min-height: 4.5rem; padding: 0.7rem; display: flex; align-items: center; gap: 0.7rem; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); color: #3f3f46; font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
-.mobile-module-grid a.is-active { border-color: #bbf7d0; background: var(--color-primary-soft); color: var(--color-primary); }
+.mobile-module-grid a { min-height: 4.5rem; padding: 0.7rem; display: flex; align-items: center; gap: 0.7rem; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); color: var(--color-text-secondary); font-size: 0.8rem; font-weight: 600; line-height: 1.2; }
+.mobile-module-grid a.is-active { border-color: var(--color-primary-border); background: var(--color-primary-soft); color: var(--color-primary); }
 .mobile-module-icon { width: 2rem; height: 2rem; flex: 0 0 auto; display: grid; place-items: center; border-radius: var(--radius-control); background: var(--color-surface-muted); color: var(--color-primary); }
 .mobile-module-icon svg { width: 1.05rem; height: 1.05rem; }
 .mobile-account-card { margin-top: 1rem; padding: 0.75rem; display: flex; align-items: center; gap: 0.65rem; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-background); font-size: 0.75rem; color: var(--color-muted-foreground); }
 .mobile-account-avatar { width: 2.25rem; height: 2.25rem; flex: 0 0 auto; display: grid; place-items: center; border-radius: 999px; background: var(--color-primary-soft); color: var(--color-primary); }
 .mobile-account-avatar svg { width: 1rem; height: 1rem; }
 .mobile-account-card strong { color: var(--color-foreground); font-size: 0.82rem; }
-.mobile-logout-button { min-height: 2.75rem; padding: 0.5rem 0.65rem; display: flex; align-items: center; gap: 0.35rem; border: 1px solid #fecaca; border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-danger); font-size: 0.75rem; font-weight: 600; }
+.mobile-logout-button { min-height: 2.75rem; padding: 0.5rem 0.65rem; display: flex; align-items: center; gap: 0.35rem; border: 1px solid var(--color-danger-border); border-radius: var(--radius-control); background: var(--color-surface); color: var(--color-danger); font-size: 0.75rem; font-weight: 600; }
 .mobile-logout-button svg { width: 1rem; height: 1rem; }
 
 /* Reports & analyses: same flat canvas as every page. */
@@ -470,7 +531,7 @@ table {
   align-items: center;
   justify-content: center;
   padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
-  background: rgb(24 24 27 / 0.5);
+  background: var(--color-overlay);
 }
 .confirm-dialog-panel {
   display: flex;
@@ -487,20 +548,20 @@ table {
 .confirm-dialog-header h2 { flex: 1; min-width: 0; margin-top: 0.35rem; font-size: 1.125rem; font-weight: 650; line-height: 1.35; color: var(--color-foreground); }
 .confirm-dialog-icon { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; border-radius: 9999px; }
 .confirm-dialog-close { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 2.75rem; height: 2.75rem; margin: -0.5rem -0.5rem 0 0; border-radius: var(--radius-control); color: var(--color-muted-foreground); }
-.confirm-dialog-close:hover:not(:disabled) { background: var(--color-surface-muted); color: var(--color-foreground); }
+.confirm-dialog-close:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-foreground); }
 .confirm-dialog-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0.25rem 1.25rem 1rem; }
 .confirm-dialog-details { display: grid; gap: 0.35rem; margin-top: 0.9rem; padding: 0.75rem 0.9rem; border-radius: var(--radius-control); background: var(--color-background); border: 1px solid var(--color-border); font-size: 0.875rem; }
 .confirm-dialog-details > div { display: flex; justify-content: space-between; gap: 1rem; }
 .confirm-dialog-details dt { color: var(--color-muted-foreground); }
 .confirm-dialog-details dd { margin: 0; font-weight: 600; color: var(--color-foreground); text-align: right; overflow-wrap: anywhere; }
-.confirm-dialog-consequences { margin-top: 0.9rem; padding-left: 1.1rem; list-style: disc; display: grid; gap: 0.35rem; font-size: 0.875rem; line-height: 1.45; color: #3f3f46; }
-.confirm-dialog-error { margin-top: 1rem; padding: 0.75rem 0.9rem; border-radius: var(--radius-control); border: 1px solid #fecaca; background: var(--color-danger-soft); color: var(--color-danger-strong); font-size: 0.875rem; }
+.confirm-dialog-consequences { margin-top: 0.9rem; padding-left: 1.1rem; list-style: disc; display: grid; gap: 0.35rem; font-size: 0.875rem; line-height: 1.45; color: var(--color-text-secondary); }
+.confirm-dialog-error { margin-top: 1rem; padding: 0.75rem 0.9rem; border-radius: var(--radius-control); border: 1px solid var(--color-danger-border); background: var(--color-danger-soft); color: var(--color-danger-strong); font-size: 0.875rem; }
 .confirm-dialog-error p { margin-top: 0.2rem; white-space: pre-line; }
 .confirm-dialog-actions { display: flex; flex-wrap: wrap-reverse; justify-content: flex-end; gap: 0.625rem; padding: 0.875rem 1.25rem 1.25rem; border-top: 1px solid var(--color-border); background: var(--color-surface); }
 .confirm-dialog-cancel, .confirm-dialog-confirm { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0 1.1rem; border-radius: var(--radius-control); font-weight: 600; font-size: 0.95rem; }
 .confirm-dialog-cancel { border: 1px solid var(--color-border-strong); background: var(--color-surface); color: var(--color-foreground); }
-.confirm-dialog-cancel:hover:not(:disabled) { background: var(--color-surface-muted); }
-.confirm-dialog-confirm { color: #fff; }
+.confirm-dialog-cancel:hover:not(:disabled) { background: var(--color-surface-hover); }
+.confirm-dialog-confirm { color: var(--color-primary-foreground); }
 .confirm-dialog-cancel:focus-visible, .confirm-dialog-confirm:focus-visible, .confirm-dialog-close:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
 .confirm-dialog-cancel:disabled, .confirm-dialog-confirm:disabled, .confirm-dialog-close:disabled { opacity: 0.55; cursor: not-allowed; }
 
@@ -516,6 +577,6 @@ table {
 .app-error-fallback { display: flex; min-height: 60vh; align-items: center; justify-content: center; padding: 1.5rem; }
 .app-error-card { width: 100%; max-width: 28rem; border-radius: var(--radius-dialog); border: 1px solid var(--color-border); background: var(--color-surface); padding: 1.75rem; text-align: center; }
 .app-error-card h1 { margin-top: 1rem; font-size: 1.25rem; font-weight: 700; color: var(--color-foreground); }
-.app-error-card p { margin-top: 0.5rem; font-size: 0.925rem; line-height: 1.5; color: #52525b; }
+.app-error-card p { margin-top: 0.5rem; font-size: 0.925rem; line-height: 1.5; color: var(--color-text-secondary); }
 .app-error-actions { margin-top: 1.25rem; display: flex; flex-wrap: wrap; justify-content: center; gap: 0.625rem; }
 .app-error-actions button, .app-error-actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding: 0 1.1rem; border-radius: var(--radius-control); font-weight: 600; }

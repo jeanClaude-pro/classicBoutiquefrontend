@@ -74,7 +74,7 @@ export function OfflineRuntime() {
             <p>{t("offline.reconnected")}</p>
             <button
               type="button"
-              className="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              className="ui-button ui-button--primary ui-button--sm"
               onClick={() => { toast.dismiss(RECONNECTED_TOAST_ID); clearAuth(); }}
             >
               {t("offline.signInOnline")}
