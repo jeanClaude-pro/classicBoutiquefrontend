@@ -210,7 +210,7 @@ button:disabled { cursor: not-allowed; }
 .Toastify__progress-bar--success { background: var(--color-success); }
 
 /* Shared primitives (components/ui.tsx) -------------------------------- */
-.ui-page { display: grid; gap: 22px; padding: 28px; max-width: 1480px; margin-inline: auto; width: 100%; }
+.ui-page { display: grid; gap: 20px; padding: 24px; max-width: 1680px; margin-inline: auto; width: 100%; }
 .ui-page-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px 20px; }
 .ui-page-header > div:first-child { min-width: 0; flex: 1 1 18rem; }
 .ui-page-header { padding-bottom: 16px; border-bottom: 1px solid var(--color-border); }

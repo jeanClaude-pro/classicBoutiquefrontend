@@ -65,8 +65,12 @@ test("replenishment funds use accurate terminology", () => {
 
 test("Analytics and the PDF share this mapping and do no arithmetic of their own", () => {
   const pdf = readFileSync(new URL("../src/pages/analytics/reportGenerator.ts", import.meta.url), "utf8");
-  const screen = readFileSync(new URL("../src/pages/analytics/Analytics.tsx", import.meta.url), "utf8");
-  for (const source of [pdf, screen]) assert.match(source, /categoryPresentation\(key, /);
+  const analytics = readFileSync(new URL("../src/pages/analytics/Analytics.tsx", import.meta.url), "utf8");
+  // The Reports screen renders category accounting through its tables component.
+  const screen = readFileSync(new URL("../src/pages/analytics/CategoryAccountingTables.tsx", import.meta.url), "utf8");
+  assert.match(analytics, /<CategoryAccountingTables/);
+  assert.match(pdf, /categoryPresentation\(key, /);
+  assert.match(screen, /categoryPresentation\(category, /);
   assert.doesNotMatch(pdf, /row\.\w+\s*[-+*/]\s*\w/);
-  assert.doesNotMatch(screen, /cat\.\w+\s*[-+*/]\s*\w/);
+  for (const source of [analytics, screen]) assert.doesNotMatch(source, /\b(?:cat|c)\.\w+\s*[-+*/]\s*\w/);
 });

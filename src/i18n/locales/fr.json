@@ -709,7 +709,8 @@
       "category": "Categorie",
       "stock": "Stock",
       "status": "Statut",
-      "price": "Prix de vente"
+      "price": "Prix de vente",
+      "purchasePrice": "Prix d'achat"
     },
     "unclassified": "À classer",
     "view": "Voir l'article",
@@ -747,6 +748,7 @@
     "purchasedQuantityLabel": "Quantité achetée:",
     "totalCostLabel": "Coût total:",
     "unitCostLabel": "Coût unitaire:",
+    "purchasePriceUnavailable": "Accès restreint",
     "unitLabel": "Unité:",
     "physical": "Propriétés physiques",
     "weightLabel": "Poids:",
@@ -1900,6 +1902,156 @@
       "USER_PROFILE_CHANGED": "Profil modifié",
       "USER_LOGIN_UNLOCKED": "Connexion débloquée",
       "CUSTOMER_FAMILY_STATUS_CHANGED": "Statut famille modifié"
+    }
+  },
+  "financialReports": {
+    "tables": {
+      "title": "Comptabilité par catégorie",
+      "subtitle": "Période « {{period}} ». Chiffres calculés par le serveur à partir des ventes et dépenses enregistrées.",
+      "currency": "Devise d'affichage",
+      "indicator": "Indicateur",
+      "total": "Total",
+      "periodTitle": "Performance de la période",
+      "periodHint": "Montants en USD (devise comptable). Ventes comptabilisées à leur finalisation, dépenses à leur validation.",
+      "periodHintFC": "Montants en FC aux taux historiques de chaque opération (informatif) ; les lignes sans équivalent FC restent en USD.",
+      "positionTitle": "Position actuelle (cumul, USD)",
+      "positionHint": "Solde cumulé depuis le début, au {{date}} : il ne dépend pas de la période choisie.",
+      "stockTitle": "Valeur du stock (USD)",
+      "stockHint": "Articles actifs aujourd'hui, valorisés au coût d'achat unitaire et au prix de vente normal actuel.",
+      "integrityWarning_one": "{{count}} ligne de vente a un bénéfice enregistré différent de (chiffre d'affaires − coût d'achat). Les montants affichés utilisent toujours chiffre d'affaires − coût d'achat.",
+      "integrityWarning_other": "{{count}} lignes de vente ont un bénéfice enregistré différent de (chiffre d'affaires − coût d'achat). Les montants affichés utilisent toujours chiffre d'affaires − coût d'achat."
+    },
+    "overview": {
+      "hint": "Les deux activités sont présentées côte à côte. Voyez d'abord ce qui revient aux actionnaires et ce qui reste disponible pour acheter le stock.",
+      "businessUnit": "Activité",
+      "revenue": "Chiffre d'affaires de la période",
+      "grossProfit": "Bénéfice brut",
+      "expenses": "Dépenses de l'entreprise",
+      "netProfit": "Résultat net",
+      "purchaseFunds": "Disponible pour réapprovisionnement",
+      "shareholderPayout": "Montant disponible pour les actionnaires",
+      "clothesOwner": "Propriétaire vêtements (100 %)",
+      "shoeOwner1": "Actionnaire chaussures 1 (50 %)",
+      "shoeOwner2": "Actionnaire chaussures 2 (50 %)",
+      "clothesRule": "Vêtements : le capital récupéré protège le stock. Le bénéfice restant revient au propriétaire après les dépenses et le réinvestissement.",
+      "shoesRule": "Chaussures : les achats utilisent le capital récupéré. Le bénéfice distribuable positif est partagé équitablement entre les deux actionnaires.",
+      "showDetails": "Comprendre les chiffres",
+      "hideDetails": "Masquer les détails comptables",
+      "detailsTitle": "Comptabilité détaillée",
+      "detailsHint": "Consultez la performance, les soldes cumulés, la valeur du stock et l'origine exacte de chaque montant."
+    },
+    "sections": {
+      "results": "Résultats",
+      "purchases": "Réapprovisionnement",
+      "distribution": "Répartition du bénéfice",
+      "activity": "Activité"
+    },
+    "rows": {
+      "revenue": "Chiffre d'affaires",
+      "costOfGoodsSold": "Coût d'achat des articles vendus",
+      "grossProfit": "Bénéfice brut",
+      "grossMargin": "Marge brute",
+      "companyExpenses": "Dépenses de l'entreprise",
+      "netResult": "Résultat net",
+      "netMargin": "Marge nette",
+      "goodsPurchases": "Achats de marchandises",
+      "capitalUsedForPurchases": "dont capital récupéré",
+      "profitUsedForPurchases": "dont bénéfice réinvesti",
+      "distributableProfit": "Bénéfice distribuable",
+      "shareholder1": "Part actionnaire 1",
+      "shareholder2": "Part actionnaire 2",
+      "unitsSold": "Pièces vendues",
+      "saleLines": "Lignes de vente",
+      "expenseTransactions": "Dépenses et achats validés",
+      "reversals": "Annulations comptables",
+      "recoveredCapital": "Capital récupéré",
+      "lossCoveredByCapital": "Pertes couvertes par le capital",
+      "netResultCumulative": "Résultat net cumulé",
+      "generatedPurchaseFunds": "Ressources de réapprovisionnement",
+      "goodsPurchasesCumulative": "Achats de marchandises cumulés",
+      "availablePurchaseFunds": "Fonds disponibles pour réapprovisionnement",
+      "remainingRecoveredCapital": "Capital récupéré encore disponible",
+      "availableDistributableProfit": "Bénéfice distribuable disponible",
+      "fundingShortfall": "Capital à reconstituer",
+      "activeProducts": "Articles actifs",
+      "unitsInStock": "Pièces en stock",
+      "acquisitionValue": "Valeur au coût d'achat",
+      "retailValue": "Valeur au prix de vente",
+      "potentialMargin": "Marge potentielle"
+    },
+    "notes": {
+      "clothesOwner": "100 % au propriétaire",
+      "shoesHalf": "50 %",
+      "shoesNoProfitPurchases": "Non applicable",
+      "recognition": "Une vente est comptée une seule fois, à sa finalisation ; les ventes annulées ou en attente sont exclues. Le Total additionne les deux catégories au centime près."
+    },
+    "metrics": {
+      "revenue": "Chiffre d'affaires",
+      "grossProfit": "Bénéfice brut",
+      "netResult": "Résultat net"
+    },
+    "granularity": {
+      "title": "Regroupement",
+      "auto": "Auto ({{size}})",
+      "label": {
+        "day": "Par jour",
+        "week": "Par semaine",
+        "month": "Par mois"
+      },
+      "per": {
+        "day": "jour",
+        "week": "semaine",
+        "month": "mois"
+      }
+    },
+    "range": {
+      "label": "Période du graphique",
+      "presets": {
+        "7d": "7 j",
+        "30d": "30 j",
+        "90d": "90 j",
+        "6m": "6 mois",
+        "12m": "12 mois",
+        "ytd": "Année",
+        "custom": "Personnalisée"
+      },
+      "from": "Du",
+      "to": "Au",
+      "apply": "Appliquer",
+      "errors": {
+        "invalid": "Choisissez deux dates valides.",
+        "order": "La date de début doit précéder la date de fin.",
+        "tooLong": "La période ne peut pas dépasser {{years}} ans."
+      }
+    },
+    "chart": {
+      "title": "Évolution — {{metric}}",
+      "metric": "Indicateur affiché",
+      "category": "Catégorie",
+      "allCategories": "Toutes catégories",
+      "kpi": {
+        "total": "Total de la période",
+        "average": "Moyenne par {{per}}",
+        "peak": "Plus haut",
+        "low": "Plus bas"
+      },
+      "salesCount_one": "{{count}} vente",
+      "salesCount_other": "{{count}} ventes",
+      "units_one": "{{count}} pièce",
+      "units_other": "{{count}} pièces",
+      "margin": "Marge brute {{value}} %",
+      "partialBucket": "Période incomplète (limitée à la plage choisie)",
+      "empty": "Aucune vente comptabilisée sur cette période",
+      "barsLegend": "Barres : montant par {{per}}",
+      "source": "Ventes finalisées et dépenses validées, en USD.",
+      "showData": "Afficher les données",
+      "hideData": "Masquer les données",
+      "dataTitle": "Données du graphique",
+      "columns": {
+        "period": "Période",
+        "sales": "Ventes"
+      },
+      "ariaSummary": "{{metric}}, {{range}} : total {{total}}, plus haut {{peak}} ({{peakDate}})."
     }
   }
 }

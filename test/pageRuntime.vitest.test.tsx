@@ -35,6 +35,7 @@ test("Rapports: a shareholder account renders its report (previously a white scr
   signIn({ role: "admin", assignedCategory: "SHOES", permissions: ["/sales", "/reports", "/products"] });
   const api = mockApi([
     { match: /^\/analytics\/summary/, reply: { body: shareholderAnalytics } },
+    { match: /^\/analytics\/timeseries\?/, reply: { body: { success: true, source: "mongodb-aggregation", paginated: false, granularity: "day", categories: ["SHOES"], series: [], totals: { revenue: 0, grossProfit: 0, netResult: 0, revenueFC: 0, grossProfitFC: 0, netResultFC: 0, sales: 0 } } } },
     { match: /^\/settings\/receipt/, reply: { body: {} } },
   ]);
   renderPage(<Analytics />, "/reports");

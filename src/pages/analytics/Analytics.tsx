@@ -1,12 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useCallback, useState, useEffect } from "react";
+import React, { lazy, Suspense, useCallback, useState, useEffect } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { currentLocale, t as translate } from "../../i18n";
 import {
   BarChart3,
-  TrendingUp,
   DollarSign,
   Users,
   Package,
@@ -24,7 +23,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { generateCompanyReport, type ReportSections } from "./reportGenerator";
-import { categoryPresentation, type AccountingCategory, type AccountingMetric, type CategoryAccountingDTO } from "./accountingPresentation";
+import type { AccountingCategory } from "./accountingPresentation";
+import CategoryAccountingTables, { type CategoryReportDTO, type InventoryValuationDTO } from "./CategoryAccountingTables";
 import { Link } from "react-router-dom";
 import { serverUrl } from "../../utils/constants";
 import { formatFC, formatUSD } from "../../utils/salePricing";
@@ -44,7 +44,8 @@ interface AnalyticsData {
   clothesShareholderProfitFC: number;
   shoeShareholder1ProfitFC: number;
   shoeShareholder2ProfitFC: number;
-  categoryBreakdown?: Partial<Record<AccountingCategory, CategoryAccountingDTO>>;
+  categoryBreakdown?: Partial<Record<AccountingCategory, CategoryReportDTO>>;
+  inventoryValuation?: Partial<Record<AccountingCategory, InventoryValuationDTO>>;
   assignedCategory?: "CLOTHES" | "SHOES";
   shareholderEntitlement?: number;
   shareholderEntitlementFC?: number;
@@ -110,28 +111,15 @@ interface TimeframeData {
 const chartDate = (iso: string, options: Intl.DateTimeFormatOptions) =>
   new Date(iso).toLocaleDateString(currentLocale(), { timeZone: "Africa/Lubumbashi", ...options });
 
-const METRIC_TONE_CLASS: Record<AccountingMetric["tone"], string> = {
-  neutral: "text-gray-900",
-  positive: "text-emerald-800",
-  negative: "text-red-700",
-  funds: "text-indigo-800",
-  shareholder: "text-purple-800",
-};
+// Recharts is only downloaded when the Reports page shows the chart.
+const FinancialTrendChart = lazy(() => import("./FinancialTrendChart"));
 
-function MetricCell({ metric }: { metric: AccountingMetric }) {
-  const wide = metric.tone === "funds" || metric.hint !== undefined;
+function ChartPlaceholder() {
+  const { t } = useTranslation();
   return (
-    <div className={wide ? "col-span-2" : undefined}>
-      <p className="text-xs text-gray-500">{metric.label}</p>
-      {metric.valueFC !== undefined ? (
-        <>
-          <p className={`font-semibold ${METRIC_TONE_CLASS[metric.tone]}`}>{formatFC(metric.valueFC)}</p>
-          <p className="text-xs text-gray-500">≈ {formatUSD(metric.value)}</p>
-        </>
-      ) : (
-        <p className={`font-semibold ${METRIC_TONE_CLASS[metric.tone]}`}>{formatUSD(metric.value)}</p>
-      )}
-      {metric.hint && <p className="text-[11px] leading-snug text-gray-500 mt-0.5">{metric.hint}</p>}
+    <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200" role="status">
+      <p className="text-sm text-gray-500">{t("common.loading")}</p>
+      <div className="mt-4 h-64 rounded-lg bg-gray-50" aria-hidden="true" />
     </div>
   );
 }
@@ -712,34 +700,10 @@ export default function Analytics() {
     );
   }
 
-  const chartData = getChartDataForTimeframe();
-  const maxRevenue = Math.max(...chartData.map((d: any) => d.revenue), 1);
-
-  function getChartDataForTimeframe() {
-    if (!analytics) return [];
-    
-    switch (timeframe) {
-      case "day":
-        return analytics.salesByDay;
-      case "week":
-        return analytics.salesByWeek;
-      case "month":
-        return analytics.salesByMonth;
-      case "year": {
-        const yearData = analytics.salesByYear.find(
-          (y) => y.year === selectedYear.toString()
-        );
-        return yearData ? yearData.months : [];
-      }
-      default:
-        return analytics.salesByWeek;
-    }
-  }
-
   return (
     <>
-    <div className="min-h-screen analytics-page p-4 sm:p-6">
-      <div className="max-w-7xl mx-auto space-y-6 analytics-shell">
+    <div className="min-h-screen analytics-page p-3 sm:p-5 lg:p-6">
+      <div className="max-w-[1600px] mx-auto space-y-5 analytics-shell">
         {/* Header */}
         <div className="analytics-hero rounded-lg text-center sm:text-left">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -763,6 +727,16 @@ export default function Analytics() {
             </div>
           </div>
         </div>
+
+        {/* The revenue trend is the first business view on the page. It owns
+            its date range so a decision-maker can understand direction before
+            reading the period detail below. */}
+        <Suspense fallback={<ChartPlaceholder />}>
+          <FinancialTrendChart
+            canFilterCategory={isAdmin()}
+            lockedCategory={isAdmin() ? null : analytics.assignedCategory ?? null}
+          />
+        </Suspense>
 
         {/* Timeframe Selection */}
         <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
@@ -955,37 +929,15 @@ export default function Analytics() {
             )}
           </div>
 
-          {isAdmin() && analytics.categoryBreakdown && (
-            <div className="mt-6">
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">{t("reports.byCategory")}</h3>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {(["CLOTHES", "SHOES"] as const).map((key) => {
-                  const cat = analytics.categoryBreakdown?.[key];
-                  if (!cat) return null;
-                  const view = categoryPresentation(key, cat);
-                  return (
-                    <div key={key} className="rounded-xl bg-white border border-gray-200 p-4">
-                      <p className="text-sm font-semibold text-gray-800">{view.title}</p>
-                      <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-3 mb-2">{t("reports.periodPerformance")}</p>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        {view.period.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
-                      </div>
-                      {view.balance.length > 0 && (
-                        <>
-                          <p className="text-[11px] uppercase tracking-wide text-gray-500 mt-4 mb-2">{t("reports.currentPosition")}</p>
-                          <div className="grid grid-cols-2 gap-3 text-sm">
-                            {view.balance.map((metric) => <MetricCell key={metric.id} metric={metric} />)}
-                          </div>
-                          <p className="mt-2 text-xs text-gray-500">{view.fundsExplanation}</p>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </section>
+
+        {/* CLOTHES / SHOES accounting tables. A shareholder payload only
+            carries its own category, so only that column is shown. */}
+        <CategoryAccountingTables
+          breakdown={analytics.categoryBreakdown}
+          inventory={analytics.inventoryValuation}
+          periodLabel={getTimeframeLabel()}
+        />
 
         {analytics.reimbursement && (
           <section className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
@@ -1049,112 +1001,6 @@ export default function Analytics() {
             </div>
           </div>
         </div>}
-
-        {/* Sales Chart */}
-        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5" />
-              {t("reports.salesTrends", { period: getTimeframeLabel() })}
-            </h3>
-          </div>
-
-          <div className="space-y-4 overflow-x-auto">
-            {timeframe === "year" ? (
-              // Yearly view with months for selected year
-              <div className="mb-6">
-                <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {t("reports.year", { year: selectedYear })}
-                </h4>
-                <div className="space-y-4 ml-0 sm:ml-4 min-w-[300px]">
-                  {chartData.map((month: any, index: number) => (
-                    <div
-                      key={index}
-                      className="flex items-center gap-3 sm:gap-4"
-                    >
-                      <div className="w-28 sm:w-40 text-xs sm:text-sm text-gray-600 font-medium capitalize">
-                        {month.iso ? chartDate(month.iso, { month: "long" }) : month.monthName}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs sm:text-sm text-gray-700 truncate">
-                            {t("reports.salesCount", { count: month.sales })}
-                          </span>
-                          <span className="text-xs sm:text-sm font-medium text-gray-900 whitespace-nowrap ml-2">
-                            {formatUSD(month.revenue)}
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                            style={{
-                              width: `${(month.revenue / maxRevenue) * 100}%`,
-                            }}
-                          ></div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              // Daily, Weekly, Monthly view
-              chartData.map((item: any, index: number) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-3 sm:gap-4 min-w-[300px]"
-                >
-                  <div className="w-32 sm:w-48 text-xs sm:text-sm text-gray-600 font-medium">
-                    {timeframe === "day" ? (
-                      <div>
-                        <div className="capitalize">
-                          {item.iso ? chartDate(item.iso, { weekday: "long" }) : item.dayName}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {item.iso ? chartDate(item.iso, { day: "numeric", month: "short" }) : item.date}
-                        </div>
-                      </div>
-                    ) : timeframe === "week" ? (
-                      <div>
-                        <div className="text-xs sm:text-sm">
-                          {item.weekIndex ? t("reports.weekN", { n: item.weekIndex }) : item.week}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {t("reports.weekRange", { from: item.iso ? chartDate(item.iso, { day: "numeric", month: "short" }) : item.startDate, to: item.endDate })}
-                        </div>
-                      </div>
-                    ) : timeframe === "month" ? (
-                      <div className="capitalize">
-                        {item.iso ? chartDate(item.iso, { month: "long" }) : item.monthName}
-                      </div>
-                    ) : (
-                      item.iso ? chartDate(item.iso, { month: "long" }) : item.monthName
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs sm:text-sm text-gray-700">
-                        {t("reports.salesCount", { count: item.sales })}
-                      </span>
-                      <span className="text-xs sm:text-sm font-medium text-gray-900 whitespace-nowrap ml-2">
-                        {formatUSD(item.revenue)}
-                      </span>
-                    </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${(item.revenue / maxRevenue) * 100}%`,
-                        }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
 
         {/* Top Products and Customers */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">

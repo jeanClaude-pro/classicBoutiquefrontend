@@ -105,7 +105,10 @@ test("Produits: the superadmin's menu adds edit and the destructive delete", asy
   await user.click(await screen.findByRole("button", { name: "Actions pour Nike Air" }));
   expect(screen.getAllByRole("menuitem").map((item) => item.getAttribute("aria-label") || item.textContent))
     .toEqual(["Voir l'article", "Fiche de stock de Nike Air", "Modifier l'article", "Supprimer Nike Air"]);
+  expect(screen.getByRole("columnheader", { name: "Prix de vente" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Prix d'achat" })).toBeInTheDocument();
   expect(screen.getByText("50,00 $US")).toBeInTheDocument();
+  expect(screen.getByText("30,00 $US")).toBeInTheDocument();
 });
 
 test("Produits on a phone: one card per product, every action still reachable, no wide table", async () => {

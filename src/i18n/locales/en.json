@@ -709,7 +709,8 @@
       "category": "Category",
       "stock": "Stock",
       "status": "Status",
-      "price": "Selling price"
+      "price": "Selling price",
+      "purchasePrice": "Purchase price"
     },
     "unclassified": "Unclassified",
     "view": "View item",
@@ -747,6 +748,7 @@
     "purchasedQuantityLabel": "Quantity purchased:",
     "totalCostLabel": "Total cost:",
     "unitCostLabel": "Unit cost:",
+    "purchasePriceUnavailable": "Restricted",
     "unitLabel": "Unit:",
     "physical": "Physical properties",
     "weightLabel": "Weight:",
@@ -1900,6 +1902,156 @@
       "USER_PROFILE_CHANGED": "Profile changed",
       "USER_LOGIN_UNLOCKED": "Sign-in unlocked",
       "CUSTOMER_FAMILY_STATUS_CHANGED": "Family status changed"
+    }
+  },
+  "financialReports": {
+    "tables": {
+      "title": "Accounting by category",
+      "subtitle": "Period “{{period}}”. Figures calculated by the server from recorded sales and expenses.",
+      "currency": "Display currency",
+      "indicator": "Indicator",
+      "total": "Total",
+      "periodTitle": "Period performance",
+      "periodHint": "Amounts in USD (accounting currency). Sales are recognised on completion, expenses on validation.",
+      "periodHintFC": "Amounts in FC at each transaction's historical rate (informational); rows without an FC equivalent stay in USD.",
+      "positionTitle": "Current position (cumulative, USD)",
+      "positionHint": "Cumulative balance since the beginning, as of {{date}}: it does not depend on the selected period.",
+      "stockTitle": "Stock value (USD)",
+      "stockHint": "Products active today, valued at unit purchase cost and at today's normal selling price.",
+      "integrityWarning_one": "{{count}} sale line has a stored profit that differs from (revenue − purchase cost). The amounts shown always use revenue − purchase cost.",
+      "integrityWarning_other": "{{count}} sale lines have a stored profit that differs from (revenue − purchase cost). The amounts shown always use revenue − purchase cost."
+    },
+    "overview": {
+      "hint": "The two business units are shown side by side. Start with what can be paid to shareholders and what is still available to buy stock.",
+      "businessUnit": "Business unit",
+      "revenue": "Revenue for the period",
+      "grossProfit": "Gross profit",
+      "expenses": "Company expenses",
+      "netProfit": "Net result",
+      "purchaseFunds": "Available for restocking",
+      "shareholderPayout": "Available shareholder payout",
+      "clothesOwner": "Clothes owner (100%)",
+      "shoeOwner1": "Shoes shareholder 1 (50%)",
+      "shoeOwner2": "Shoes shareholder 2 (50%)",
+      "clothesRule": "Clothes: recovered capital is protected for stock. Eligible remaining profit belongs to the clothes owner after expenses and reinvestment.",
+      "shoesRule": "Shoes: stock purchases use recovered capital. Positive distributable profit is split equally between the two shareholders.",
+      "showDetails": "Understand the figures",
+      "hideDetails": "Hide detailed accounting",
+      "detailsTitle": "Detailed accounting",
+      "detailsHint": "Inspect performance, cumulative balances, stock value and the exact source of each amount."
+    },
+    "sections": {
+      "results": "Results",
+      "purchases": "Restocking",
+      "distribution": "Profit allocation",
+      "activity": "Activity"
+    },
+    "rows": {
+      "revenue": "Revenue",
+      "costOfGoodsSold": "Cost of goods sold",
+      "grossProfit": "Gross profit",
+      "grossMargin": "Gross margin",
+      "companyExpenses": "Company expenses",
+      "netResult": "Net result",
+      "netMargin": "Net margin",
+      "goodsPurchases": "Goods purchases",
+      "capitalUsedForPurchases": "of which recovered capital",
+      "profitUsedForPurchases": "of which reinvested profit",
+      "distributableProfit": "Distributable profit",
+      "shareholder1": "Shareholder 1 share",
+      "shareholder2": "Shareholder 2 share",
+      "unitsSold": "Pieces sold",
+      "saleLines": "Sale lines",
+      "expenseTransactions": "Validated expenses and purchases",
+      "reversals": "Accounting reversals",
+      "recoveredCapital": "Recovered capital",
+      "lossCoveredByCapital": "Losses covered by capital",
+      "netResultCumulative": "Cumulative net result",
+      "generatedPurchaseFunds": "Restocking resources",
+      "goodsPurchasesCumulative": "Cumulative goods purchases",
+      "availablePurchaseFunds": "Funds available for restocking",
+      "remainingRecoveredCapital": "Recovered capital still available",
+      "availableDistributableProfit": "Distributable profit available",
+      "fundingShortfall": "Capital to rebuild",
+      "activeProducts": "Active products",
+      "unitsInStock": "Pieces in stock",
+      "acquisitionValue": "Value at purchase cost",
+      "retailValue": "Value at selling price",
+      "potentialMargin": "Potential margin"
+    },
+    "notes": {
+      "clothesOwner": "100% to the owner",
+      "shoesHalf": "50%",
+      "shoesNoProfitPurchases": "Not applicable",
+      "recognition": "A sale is counted once, when it is completed; voided and pending sales are excluded. Total adds both categories to the cent."
+    },
+    "metrics": {
+      "revenue": "Revenue",
+      "grossProfit": "Gross profit",
+      "netResult": "Net result"
+    },
+    "granularity": {
+      "title": "Grouping",
+      "auto": "Auto ({{size}})",
+      "label": {
+        "day": "Daily",
+        "week": "Weekly",
+        "month": "Monthly"
+      },
+      "per": {
+        "day": "day",
+        "week": "week",
+        "month": "month"
+      }
+    },
+    "range": {
+      "label": "Chart period",
+      "presets": {
+        "7d": "7D",
+        "30d": "30D",
+        "90d": "90D",
+        "6m": "6M",
+        "12m": "12M",
+        "ytd": "YTD",
+        "custom": "Custom"
+      },
+      "from": "From",
+      "to": "To",
+      "apply": "Apply",
+      "errors": {
+        "invalid": "Choose two valid dates.",
+        "order": "The start date must be before the end date.",
+        "tooLong": "The period cannot exceed {{years}} years."
+      }
+    },
+    "chart": {
+      "title": "Trend — {{metric}}",
+      "metric": "Displayed measure",
+      "category": "Category",
+      "allCategories": "All categories",
+      "kpi": {
+        "total": "Period total",
+        "average": "Average per {{per}}",
+        "peak": "Highest",
+        "low": "Lowest"
+      },
+      "salesCount_one": "{{count}} sale",
+      "salesCount_other": "{{count}} sales",
+      "units_one": "{{count}} piece",
+      "units_other": "{{count}} pieces",
+      "margin": "Gross margin {{value}}%",
+      "partialBucket": "Incomplete period (limited to the selected range)",
+      "empty": "No recognised sales in this period",
+      "barsLegend": "Bars: amount per {{per}}",
+      "source": "Completed sales and validated expenses, in USD.",
+      "showData": "Show data",
+      "hideData": "Hide data",
+      "dataTitle": "Chart data",
+      "columns": {
+        "period": "Period",
+        "sales": "Sales"
+      },
+      "ariaSummary": "{{metric}}, {{range}}: total {{total}}, highest {{peak}} ({{peakDate}})."
     }
   }
 }

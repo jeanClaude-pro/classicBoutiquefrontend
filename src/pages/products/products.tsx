@@ -403,6 +403,19 @@ export default function Products() {
     return reference.currency === "FC" ? { primary: fc ?? usd, secondary: fc ? usd : null } : { primary: usd, secondary: fc };
   };
 
+  // Acquisition cost is returned only to roles allowed to see financial
+  // product data. Keep the currency in which it was entered authoritative,
+  // just like the selling price.
+  const purchasePriceOf = (product: Product) => {
+    if (product.unitCost === undefined) return null;
+    const usd = formatUSD(product.unitCost);
+    const fcAmount = product.unitCostFC ?? (exchangeRate ? Math.round(product.unitCost * exchangeRate.rate) : undefined);
+    const fc = fcAmount === undefined ? null : formatFC(fcAmount);
+    return product.unitCostEnteredCurrency === "FC"
+      ? { primary: fc ?? usd, secondary: fc ? usd : null }
+      : { primary: usd, secondary: fc };
+  };
+
   const rowActions = (product: Product): ActionMenuItem[] => [
     { key: "view", label: t("products.view"), icon: <Eye aria-hidden="true" />, onSelect: () => openViewModal(product) },
     ...(product._id ? [{
@@ -485,6 +498,7 @@ export default function Products() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.item")}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.category")}</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.price")}</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.purchasePrice")}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.stock")}</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t("products.columns.status")}</th>
                     <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">{t("common.actions")}</th>
@@ -493,6 +507,7 @@ export default function Products() {
                 <tbody className="bg-white">
                   {filteredProducts.map((product, idx) => {
                     const price = sellingPriceOf(product);
+                    const purchasePrice = purchasePriceOf(product);
                     return (
                       <tr key={product._id ?? idx}>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{idx + 1}</td>
@@ -507,6 +522,14 @@ export default function Products() {
                         <td className="px-4 py-3 whitespace-nowrap text-right tabular-nums">
                           <span className="block font-semibold text-gray-900">{price.primary}</span>
                           {price.secondary && <span className="block text-xs text-gray-500">≈ {price.secondary}</span>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-right tabular-nums">
+                          {purchasePrice ? (
+                            <>
+                              <span className="block font-semibold text-gray-900">{purchasePrice.primary}</span>
+                              {purchasePrice.secondary && <span className="block text-xs text-gray-500">≈ {purchasePrice.secondary}</span>}
+                            </>
+                          ) : <span className="text-xs text-gray-500">{t("products.purchasePriceUnavailable")}</span>}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">{renderStockInfo(product)}</td>
                         <td className="px-4 py-3 whitespace-nowrap">{statusBadge(product)}</td>
@@ -525,6 +548,7 @@ export default function Products() {
             <ul className="divide-y divide-gray-200" aria-label={MODULES.products.label}>
               {filteredProducts.map((product, idx) => {
                 const price = sellingPriceOf(product);
+                const purchasePrice = purchasePriceOf(product);
                 return (
                   <li key={product._id ?? idx} className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -537,10 +561,14 @@ export default function Products() {
                       </div>
                       <ActionMenu items={rowActions(product)} label={t("common.actionsFor", { name: product.name })} />
                     </div>
-                    <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
+                    <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                       <div>
                         <dt className="text-xs text-gray-500">{t("products.columns.price")}</dt>
                         <dd className="font-semibold tabular-nums text-gray-900">{price.primary}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-gray-500">{t("products.columns.purchasePrice")}</dt>
+                        <dd className="font-semibold tabular-nums text-gray-900">{purchasePrice?.primary ?? t("products.purchasePriceUnavailable")}</dd>
                       </div>
                       <div>
                         <dt className="text-xs text-gray-500">{t("products.columns.stock")}</dt>
