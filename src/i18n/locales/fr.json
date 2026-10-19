@@ -991,11 +991,16 @@
     "dateLabel": "Date:",
     "previousYear": "Année précédente",
     "nextYear": "Année suivante",
+    "previousPeriod": "Période précédente",
+    "nextPeriod": "Période suivante",
+    "periodSelector": "Période d'analyse",
+    "periodAppliesToAll": "S'applique à toutes les sections de cette page, y compris le graphique et le rapport PDF.",
     "periods": {
       "day": "Jour",
       "week": "Semaine",
       "month": "Mois",
-      "year": "Année"
+      "year": "Année",
+      "custom": "Personnalisée"
     },
     "totalSales": "Ventes Totales",
     "salesReceipts": "Encaissements ventes",
@@ -1994,11 +1999,13 @@
       "title": "Regroupement",
       "auto": "Auto ({{size}})",
       "label": {
+        "hour": "Par heure",
         "day": "Par jour",
         "week": "Par semaine",
         "month": "Par mois"
       },
       "per": {
+        "hour": "heure",
         "day": "jour",
         "week": "semaine",
         "month": "mois"

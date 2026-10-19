@@ -48,3 +48,11 @@ test("bucket labels are calendar dates whatever the browser timezone", () => {
   assert.match(bucketLabel({ start: "2026-09-01", end: "2026-09-30" }, "month"), /septembre 2026/i);
   assert.match(bucketLabel({ start: "2026-09-10", end: "2026-09-13" }, "week"), /10 septembre 2026 – 13 septembre 2026/);
 });
+
+test("a single day is charted hour by hour", () => {
+  assert.equal(autoGranularity(1), "hour");
+  assert.equal(autoGranularity(2), "day");
+  assert.equal(bucketCount("2026-10-19", "2026-10-19", "hour"), 24);
+  assert.match(bucketLabel({ date: "2026-10-19T14", start: "2026-10-19", end: "2026-10-19" }, "hour"), /lundi 19 octobre 2026, 14:00 – 15:00/i);
+  assert.match(bucketLabel({ date: "2026-10-19T23", start: "2026-10-19", end: "2026-10-19" }, "hour"), /23:00 – 00:00/);
+});

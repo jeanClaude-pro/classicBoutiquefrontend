@@ -4,13 +4,14 @@
 import { currentLocale } from "../../i18n/index.ts";
 import type { AccountingCategory } from "./accountingPresentation.ts";
 
-export type Granularity = "day" | "week" | "month";
+export type Granularity = "hour" | "day" | "week" | "month";
 export type GranularityChoice = Granularity | "auto";
 export type SeriesMetric = "revenue" | "grossProfit" | "netResult";
 export type RangePreset = "7d" | "30d" | "90d" | "6m" | "12m" | "ytd" | "custom";
 
 export const BUSINESS_TIMEZONE = "Africa/Lubumbashi";
-export const MAX_BUCKETS: Record<Granularity, number> = { day: 400, week: 260, month: 120 };
+// Hourly buckets cover at most one week (7 x 24), like the API.
+export const MAX_BUCKETS: Record<Granularity, number> = { hour: 168, day: 400, week: 260, month: 120 };
 export const RANGE_PRESETS: readonly Exclude<RangePreset, "custom">[] = ["7d", "30d", "90d", "6m", "12m", "ytd"];
 export const SERIES_METRICS: readonly SeriesMetric[] = ["revenue", "grossProfit", "netResult"];
 
@@ -31,8 +32,10 @@ export interface SeriesFigures {
 }
 
 export interface SeriesBucket extends SeriesFigures {
-  /** First business day of the bucket (YYYY-MM-DD). */
+  /** First business day of the bucket (YYYY-MM-DD); "YYYY-MM-DDTHH" for an hour. */
   date: string;
+  /** Business hour (0-23) of an hourly bucket. */
+  hour?: number;
   /** Bucket clipped to the requested range. */
   start: string;
   end: string;
@@ -99,6 +102,7 @@ export function presetRange(preset: Exclude<RangePreset, "custom">, today: strin
 
 /** The bucket size the server picks for "auto" (kept in sync with the API). */
 export function autoGranularity(days: number): Granularity {
+  if (days <= 1) return "hour";
   if (days <= 62) return "day";
   if (days <= 366) return "week";
   return "month";
@@ -106,6 +110,7 @@ export function autoGranularity(days: number): Granularity {
 
 /** Number of buckets a range needs, to disable sizes the API would refuse. */
 export function bucketCount(from: string, to: string, granularity: Granularity): number {
+  if (granularity === "hour") return daysBetween(from, to) * 24;
   if (granularity === "day") return daysBetween(from, to);
   if (granularity === "week") {
     const start = utc(from);
@@ -136,14 +141,27 @@ export function timeSeriesQuery({ from, to, granularity, category }: {
 // Bucket keys are calendar dates, so they are formatted in UTC: no browser
 // timezone can move them to the previous day.
 const dateFormat = (options: Intl.DateTimeFormatOptions) => (key: string) =>
-  utc(key).toLocaleDateString(currentLocale(), { timeZone: "UTC", ...options });
+  utc(key.slice(0, 10)).toLocaleDateString(currentLocale(), { timeZone: "UTC", ...options });
+
+/** "14:00" for the business hour of an hourly key ("YYYY-MM-DDTHH"). */
+export function hourLabel(key: string, offset = 0): string {
+  const hour = (Number(key.slice(11, 13)) + offset) % 24;
+  return new Date(Date.UTC(2000, 0, 1, hour)).toLocaleTimeString(currentLocale(), {
+    timeZone: "UTC", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 export function axisLabel(key: string, granularity: Granularity): string {
+  if (granularity === "hour") return hourLabel(key);
   if (granularity === "month") return dateFormat({ month: "short", year: "2-digit" })(key);
   return dateFormat({ day: "numeric", month: "short" })(key);
 }
 
-export function bucketLabel(bucket: Pick<SeriesBucket, "start" | "end">, granularity: Granularity): string {
+export function bucketLabel(bucket: Pick<SeriesBucket, "start" | "end"> & { date?: string }, granularity: Granularity): string {
+  if (granularity === "hour" && bucket.date) {
+    const day = dateFormat({ weekday: "long", day: "numeric", month: "long", year: "numeric" })(bucket.start);
+    return `${day}, ${hourLabel(bucket.date)} – ${hourLabel(bucket.date, 1)}`;
+  }
   const long = dateFormat({ day: "numeric", month: "long", year: "numeric" });
   if (granularity === "day") return dateFormat({ weekday: "long", day: "numeric", month: "long", year: "numeric" })(bucket.start);
   if (granularity === "month" && bucket.start.slice(8) === "01" && addDays(bucket.end, 1).slice(8) === "01") {

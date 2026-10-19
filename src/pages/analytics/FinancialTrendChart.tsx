@@ -18,10 +18,10 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ErrorState } from "../../components/ui";
 import type { AccountingCategory } from "./accountingPresentation";
 import {
-  FC_FIELD, MAX_BUCKETS, RANGE_PRESETS, SERIES_METRICS,
-  autoGranularity, axisLabel, bucketCount, bucketLabel, businessToday, compactAmount, daysBetween,
-  presetRange, rangeLabel, timeSeriesQuery, validateRange,
-  type Granularity, type GranularityChoice, type RangePreset, type SeriesBucket, type SeriesMetric, type TimeSeriesResponse,
+  FC_FIELD, MAX_BUCKETS, SERIES_METRICS,
+  autoGranularity, axisLabel, bucketCount, bucketLabel, compactAmount, daysBetween,
+  rangeLabel, timeSeriesQuery,
+  type Granularity, type GranularityChoice, type SeriesBucket, type SeriesMetric, type TimeSeriesResponse,
 } from "./financialTimeSeries";
 import "./financialReports.css";
 
@@ -57,20 +57,23 @@ function ChartTooltip({ active, row, metricLabel, granularity, fcField }: {
   );
 }
 
-export default function FinancialTrendChart({ canFilterCategory, lockedCategory }: {
+export default function FinancialTrendChart({ canFilterCategory, lockedCategory, from, to, reloadToken = 0 }: {
   /** Superadmin: may switch between both categories and each one. */
   canFilterCategory: boolean;
   /** Shareholder: the server pins the series to this category anyway. */
   lockedCategory?: AccountingCategory | null;
+  /** Inclusive business dates of the page's analysis period (owned by the Reports page). */
+  from: string;
+  to: string;
+  /** Bumped by the page's Refresh button to reload the series. */
+  reloadToken?: number;
 }) {
   const { t, i18n } = useTranslation();
   const isPhone = useMediaQuery("(max-width: 640px)");
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
-  const [preset, setPreset] = useState<RangePreset>("30d");
-  const [range, setRange] = useState(() => presetRange("30d"));
-  const [draft, setDraft] = useState(range);
-  const [draftError, setDraftError] = useState<string | null>(null);
+  // The period is chosen once for the whole page; the chart only follows it.
+  const range = useMemo(() => ({ from, to }), [from, to]);
   const [granularity, setGranularity] = useState<GranularityChoice>("auto");
   const [metric, setMetric] = useState<SeriesMetric>("revenue");
   const [category, setCategory] = useState<CategoryFilter>("ALL");
@@ -107,7 +110,7 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory 
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [range, effectiveGranularity, requestedCategory, reloadKey, t]);
+  }, [range, effectiveGranularity, requestedCategory, reloadKey, reloadToken, t]);
 
   const shownGranularity: Granularity = data?.granularity ?? (effectiveGranularity === "auto" ? autoGranularity(days) : effectiveGranularity);
   const rows: ChartRow[] = useMemo(
@@ -138,27 +141,6 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory 
 
   const metricLabel = t(`financialReports.metrics.${metric}`);
   const granularityWord = t(`financialReports.granularity.per.${shownGranularity}`);
-
-  const choosePreset = (next: Exclude<RangePreset, "custom">) => {
-    const nextRange = presetRange(next, businessToday());
-    setPreset(next);
-    setRange(nextRange);
-    setDraft(nextRange);
-    setDraftError(null);
-  };
-  const applyCustom = () => {
-    const problem = validateRange(draft.from, draft.to);
-    if (problem) {
-      setDraftError(t(`financialReports.range.errors.${problem}`));
-      return;
-    }
-    if (bucketCount(draft.from, draft.to, "month") > MAX_BUCKETS.month) {
-      setDraftError(t("financialReports.range.errors.tooLong", { years: MAX_BUCKETS.month / 12 }));
-      return;
-    }
-    setDraftError(null);
-    setRange({ ...draft });
-  };
 
   const yDomain: [number | "auto", number | "auto"] = !stats || stats.allZero ? [0, 100] : [stats.min < 0 ? "auto" : 0, "auto"];
   const chartLabel = stats
@@ -191,16 +173,6 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory 
       </div>
 
       <div className="fin-chart-controls">
-        <div className="fin-segmented" role="group" aria-label={t("financialReports.range.label")}>
-          {RANGE_PRESETS.map((option) => (
-            <button key={option} type="button" aria-pressed={preset === option} className={preset === option ? "is-active" : undefined} onClick={() => choosePreset(option)}>
-              {t(`financialReports.range.presets.${option}`)}
-            </button>
-          ))}
-          <button type="button" aria-pressed={preset === "custom"} className={preset === "custom" ? "is-active" : undefined} onClick={() => setPreset("custom")}>
-            {t("financialReports.range.presets.custom")}
-          </button>
-        </div>
         <span className="fin-spacer" />
         {canFilterCategory && (
           <div className="fin-segmented" role="group" aria-label={t("financialReports.chart.category")}>
@@ -214,26 +186,11 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory 
         <label className="sr-only" htmlFor="fin-granularity">{t("financialReports.granularity.title")}</label>
         <select id="fin-granularity" className="fin-select" value={effectiveGranularity} onChange={(event) => setGranularity(event.target.value as GranularityChoice)}>
           <option value="auto">{t("financialReports.granularity.auto", { size: t(`financialReports.granularity.label.${autoGranularity(days)}`) })}</option>
-          {(["day", "week", "month"] as const).map((option) => (
+          {(["hour", "day", "week", "month"] as const).map((option) => (
             <option key={option} value={option} disabled={!allowed(option)}>{t(`financialReports.granularity.label.${option}`)}</option>
           ))}
         </select>
       </div>
-
-      {preset === "custom" && (
-        <form className="fin-custom-range" onSubmit={(event) => { event.preventDefault(); applyCustom(); }} noValidate>
-          <label>
-            {t("financialReports.range.from")}
-            <input type="date" value={draft.from} max={draft.to || undefined} onChange={(event) => setDraft((current) => ({ ...current, from: event.target.value }))} aria-invalid={draftError ? true : undefined} />
-          </label>
-          <label>
-            {t("financialReports.range.to")}
-            <input type="date" value={draft.to} min={draft.from || undefined} onChange={(event) => setDraft((current) => ({ ...current, to: event.target.value }))} aria-invalid={draftError ? true : undefined} />
-          </label>
-          <button type="submit" className="ui-button ui-button--secondary ui-button--sm">{t("financialReports.range.apply")}</button>
-          {draftError && <p className="fin-field-error" role="alert">{draftError}</p>}
-        </form>
-      )}
 
       {error && !data ? (
         <div className="mt-5"><ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} /></div>
@@ -281,8 +238,9 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory 
                   tick={{ fill: MUTED, fontSize: 11 }}
                   tickLine={false}
                   axisLine={{ stroke: AXIS }}
-                  minTickGap={isPhone ? 18 : 28}
-                  interval="preserveStartEnd"
+                  minTickGap={shownGranularity === "hour" ? 4 : isPhone ? 18 : 28}
+                  // One label per hour on a day view (every 3 hours on phones).
+                  interval={shownGranularity === "hour" ? (isPhone ? 2 : 0) : "preserveStartEnd"}
                   tickMargin={8}
                 />
                 <YAxis

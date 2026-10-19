@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { lazy, Suspense, useCallback, useState, useEffect } from "react";
+import React, { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { currentLocale, t as translate } from "../../i18n";
 import {
@@ -30,6 +30,11 @@ import { serverUrl } from "../../utils/constants";
 import { formatFC, formatUSD } from "../../utils/salePricing";
 import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
 import { MODULES } from "../../config/modules";
+import { MAX_BUCKETS, bucketCount, businessToday, validateRange } from "./financialTimeSeries";
+import {
+  PERIOD_TYPES, canGoForward, chartRange, describePeriod, periodAround, shiftPeriod, summaryTimeframe,
+  type PeriodType, type ReportPeriod,
+} from "./reportPeriod";
 
 interface AnalyticsData {
   totalSales: number;
@@ -100,9 +105,7 @@ interface AnalyticsData {
 
 interface TimeframeData {
   // What was loaded; the label is written at render time in the current language.
-  period: "day" | "week" | "month" | "year";
-  date: string;
-  year: number;
+  period: ReportPeriod;
   start: string;
   end: string;
 }
@@ -145,14 +148,8 @@ function TrendIndicator({ value }: { value: number | null }) {
   );
 }
 
-// Helper function to get today's date in correct format
-const getTodayDate = (): string => {
-  const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, "0");
-  const day = String(today.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
+// Today in the boutique's business timezone (the server's calendar).
+const getTodayDate = (): string => businessToday();
 
 // Helper function to get user role from localStorage
 const getUserRole = (): string => {
@@ -205,81 +202,24 @@ const getHeaders = () => {
   };
 };
 
-// Helper function to get timeframe parameters based on selection
-const getTimeframeParams = (
-  timeframe: "day" | "week" | "month" | "year", 
-  selectedYear?: number, 
-  selectedDate?: string
-) => {
-  const params = new URLSearchParams();
-  const today = new Date();
-  
-  switch (timeframe) {
-    case "day": {
-      params.set("date", selectedDate || getTodayDate());
-      break;
-    }
-      
-    case "week": {
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      params.set("from", weekAgo.toISOString().split('T')[0]);
-      params.set("to", today.toISOString().split('T')[0]);
-      break;
-    }
-      
-    case "month": {
-      const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-      params.set("from", firstDayOfMonth.toISOString().split('T')[0]);
-      params.set("to", lastDayOfMonth.toISOString().split('T')[0]);
-      break;
-    }
-      
-    case "year": {
-      const year = selectedYear || today.getFullYear();
-      params.set("year", year.toString());
-      break;
-    }
-  }
-  
-  return params.toString();
-};
-
-const describeTimeframe = (
-  timeframe: "day" | "week" | "month" | "year",
-  selectedDate: string,
-  selectedYear: number
-) => {
-  if (timeframe === "day") {
-    return new Date(selectedDate).toLocaleDateString(currentLocale(), {
-      timeZone: "Africa/Lubumbashi",
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  }
-  if (timeframe === "week") return translate("reports.thisWeek");
-  if (timeframe === "month") return translate("reports.thisMonth");
-  return translate("reports.year", { year: selectedYear });
-};
-
 export default function Analytics() {
   const { t } = useTranslation();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [timeframe, setTimeframe] = useState<"day" | "week" | "month" | "year">(
-    "day"
-  );
-  const [selectedYear, setSelectedYear] = useState<number>(
-    new Date().getFullYear()
-  );
-  const [selectedDate, setSelectedDate] = useState<string>(getTodayDate());
+  // ONE analysis period for the whole page: every section below, the trend
+  // chart and the PDF report all read it.
+  const [period, setPeriod] = useState<ReportPeriod>(() => periodAround("day", getTodayDate()));
+  // The selector button that is pressed; "custom" waits for Apply before it
+  // changes the period.
+  const [selectorType, setSelectorType] = useState<PeriodType>("day");
+  const [customDraft, setCustomDraft] = useState(() => ({ from: getTodayDate(), to: getTodayDate() }));
+  const [customError, setCustomError] = useState<string | null>(null);
   const [timeframeData, setTimeframeData] = useState<TimeframeData | null>(null);
-  const [initialLoad, setInitialLoad] = useState(true);
-  const [availableYears, setAvailableYears] = useState<number[]>([]);
+  // Bumped by Refresh so the chart reloads together with the summary.
+  const [reloadToken, setReloadToken] = useState(0);
+  // Only the latest request may write state (fast period clicks).
+  const requestId = useRef(0);
 
   // ── Company / shop settings ───────────────────────────────────────────
   const [shopSettings, setShopSettings] = useState({
@@ -314,28 +254,13 @@ export default function Analytics() {
   const [printPasswordError, setPrintPasswordError] = useState("");
   const [printPasswordLoading, setPrintPasswordLoading] = useState(false);
 
-  // Effect to automatically set to today's date when timeframe changes to "day"
-  useEffect(() => {
-    if (!initialLoad && timeframe === "day") {
-      const today = getTodayDate();
-      setSelectedDate(today);
-    }
-  }, [timeframe, initialLoad]);
-
-  // Effect to mark initial load as complete
-  useEffect(() => {
-    if (analytics) {
-      setInitialLoad(false);
-    }
-  }, [analytics]);
-
   // Effect to enforce day-only view for non-admin users
   useEffect(() => {
-    if (shouldSeeOnlyTodayData() && timeframe !== "day") {
-      setTimeframe("day");
-      setSelectedDate(getTodayDate());
+    if (shouldSeeOnlyTodayData() && (period.type !== "day" || period.from !== getTodayDate())) {
+      setPeriod(periodAround("day", getTodayDate()));
+      setSelectorType("day");
     }
-  }, [timeframe]);
+  }, [period]);
 
   // Fetch shop settings once on mount
   useEffect(() => {
@@ -356,20 +281,25 @@ export default function Analytics() {
 
   // Fetch analytics data with server-side timeframe filtering
   const fetchAnalytics = useCallback(async () => {
+    const id = ++requestId.current;
     try {
       setLoading(true);
       setLoadError(null);
-      const effectiveTimeframe = shouldSeeOnlyTodayData() ? "day" : timeframe;
-      const effectiveDate = shouldSeeOnlyTodayData() ? getTodayDate() : selectedDate;
-      const params = new URLSearchParams(
-        getTimeframeParams(effectiveTimeframe, selectedYear, effectiveDate)
-      );
-      params.set("timeframe", effectiveTimeframe);
+      const effectivePeriod = shouldSeeOnlyTodayData() ? periodAround("day", getTodayDate()) : period;
+      const effectiveTimeframe = summaryTimeframe(effectivePeriod);
+      // The server reads from/to as inclusive business dates, exactly like
+      // the chart endpoint, so both cover the same days.
+      const params = new URLSearchParams({
+        from: effectivePeriod.from,
+        to: effectivePeriod.to,
+        timeframe: effectiveTimeframe,
+      });
       const response = await fetch(`${serverUrl}/analytics/summary?${params}`, {
         headers: getHeaders(),
       });
       if (!response.ok) throw await apiErrorFromResponse(response);
       const payload = await response.json();
+      if (id !== requestId.current) return;
       if (payload.source !== "mongodb-aggregation" || payload.paginated !== false) {
         throw userError(translate("reports.unexpectedResponse"));
       }
@@ -396,105 +326,74 @@ export default function Analytics() {
         salesByWeek: effectiveTimeframe === "week" ? chartRows : [],
         salesByMonth: effectiveTimeframe === "month" ? chartRows : [],
         salesByYear: effectiveTimeframe === "year"
-          ? [{ year: selectedYear.toString(), months: chartRows }]
+          ? [{ year: effectivePeriod.from.slice(0, 4), months: chartRows }]
           : [],
       };
       setAnalytics(normalized);
       setTimeframeData({
-        period: effectiveTimeframe,
-        date: effectiveDate,
-        year: selectedYear,
+        period: effectivePeriod,
         start: payload.timeframe.start,
         end: payload.timeframe.end,
       });
-      setAvailableYears(extractAvailableYears());
     } catch (error) {
+      if (id !== requestId.current) return;
       setLoadError(toApiError(error).message);
       setAnalytics(null);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
-  }, [selectedDate, selectedYear, timeframe]);
+  }, [period]);
 
   // Analytics has one request per selected period and never walks sales pages.
   useEffect(() => {
     fetchAnalytics();
   }, [fetchAnalytics]);
 
-  // Extract available years from data
-  const extractAvailableYears = (): number[] => {
-    const yearsSet = new Set<number>();
-    const now = new Date();
-    
-    // Add current year
-    yearsSet.add(now.getFullYear());
-    
-    // Add previous 5 years as options
-    for (let i = 1; i <= 5; i++) {
-      yearsSet.add(now.getFullYear() - i);
-    }
-    
-    // Sort descending
-    return Array.from(yearsSet).sort((a, b) => b - a);
+  const refreshAll = () => {
+    setReloadToken((token) => token + 1);
+    fetchAnalytics();
   };
 
-  const navigateYear = (direction: "prev" | "next") => {
-    const currentIndex = availableYears.indexOf(selectedYear);
-    
-    if (direction === "prev" && currentIndex < availableYears.length - 1) {
-      setSelectedYear(availableYears[currentIndex + 1]);
-    } else if (direction === "next" && currentIndex > 0) {
-      setSelectedYear(availableYears[currentIndex - 1]);
-    }
-  };
+  // Label of the data on screen (the loaded period), in the current language.
+  const getTimeframeLabel = () => describePeriod(timeframeData?.period ?? period);
 
-  const getTimeframeLabel = () => {
-    if (timeframeData) {
-      return describeTimeframe(timeframeData.period, timeframeData.date, timeframeData.year);
-    }
-    
-    switch (timeframe) {
-      case "day": {
-        if (selectedDate) {
-          const date = new Date(selectedDate);
-          return date.toLocaleDateString(currentLocale(), {
-            timeZone: "Africa/Lubumbashi",
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-          });
-        }
-        return t("reports.today");
-      }
-      case "week":
-        return t("reports.thisWeek");
-      case "month":
-        return t("reports.thisMonth");
-      case "year":
-        return t("reports.year", { year: selectedYear });
-      default:
-        return t("reports.thisWeek");
-    }
-  };
-
-  const handleTimeframeChange = (period: "day" | "week" | "month" | "year") => {
+  const handlePeriodTypeChange = (type: PeriodType) => {
     // For non-admin users, only allow "day" timeframe
-    if (shouldSeeOnlyTodayData() && period !== "day") {
+    if (shouldSeeOnlyTodayData() && type !== "day") {
       return;
     }
-
-    setTimeframe(period);
-
-    if (period === "year") {
-      // Set to current year if available
-      const currentYear = new Date().getFullYear();
-      if (availableYears.length > 0 && availableYears.includes(currentYear)) {
-        setSelectedYear(currentYear);
-      } else if (availableYears.length > 0) {
-        setSelectedYear(availableYears[0]);
-      }
+    setCustomError(null);
+    setSelectorType(type);
+    if (type === "custom") {
+      // Start from the period on screen; it changes only with Apply.
+      setCustomDraft({ from: period.from, to: chartRange(period).to });
+      return;
     }
+    // Keep the moment being looked at: the week / month / year around it.
+    const today = getTodayDate();
+    const anchor = period.to < today ? period.to : today;
+    setPeriod(periodAround(type, anchor < period.from ? period.from : anchor));
+  };
+
+  const handleDayChange = (value: string) => {
+    if (!value || validateRange(value, value)) return;
+    setPeriod(periodAround("day", value));
+  };
+
+  const applyCustomPeriod = (event: React.FormEvent) => {
+    event.preventDefault();
+    const problem = validateRange(customDraft.from, customDraft.to);
+    if (problem) {
+      setCustomError(t(`financialReports.range.errors.${problem}`));
+      return;
+    }
+    // Same limit as the trend chart, so every section can show the range.
+    if (bucketCount(customDraft.from, customDraft.to, "month") > MAX_BUCKETS.month) {
+      setCustomError(t("financialReports.range.errors.tooLong", { years: MAX_BUCKETS.month / 12 }));
+      return;
+    }
+    setCustomError(null);
+    setPeriod({ type: "custom", from: customDraft.from, to: customDraft.to });
   };
 
   // Verify admin password against the server
@@ -648,7 +547,9 @@ export default function Analytics() {
     );
   }
 
-  if (loading) {
+  // Full-page spinner only for the first load; afterwards the current figures
+  // stay on screen (marked busy) while a new period loads.
+  if (loading && !analytics) {
     return (
       <div className="min-h-screen analytics-page p-4 sm:p-6">
         <div className="max-w-7xl mx-auto space-y-6 analytics-shell">
@@ -717,7 +618,7 @@ export default function Analytics() {
             </div>
             <div className="flex items-center gap-3">
               <button
-                onClick={fetchAnalytics}
+                onClick={refreshAll}
                 disabled={loading}
                 className="px-3 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 rounded-lg border border-blue-200 transition-colors disabled:opacity-50 flex items-center gap-2"
               >
@@ -728,90 +629,131 @@ export default function Analytics() {
           </div>
         </div>
 
-        {/* The revenue trend is the first business view on the page. It owns
-            its date range so a decision-maker can understand direction before
-            reading the period detail below. */}
-        <Suspense fallback={<ChartPlaceholder />}>
-          <FinancialTrendChart
-            canFilterCategory={isAdmin()}
-            lockedCategory={isAdmin() ? null : analytics.assignedCategory ?? null}
-          />
-        </Suspense>
-
-        {/* Timeframe Selection */}
-        <div className="analytics-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
-              {t("reports.period", { period: getTimeframeLabel() })}
-            </h3>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              {/* Date Picker for Day View */}
-              {timeframe === "day" && (
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
-                  <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                  <label
-                    htmlFor="date-picker"
-                    className="text-xs sm:text-sm font-medium text-gray-700 whitespace-nowrap"
-                  >
-                    {t("reports.dateLabel")}
-                  </label>
-                  <input
-                    id="date-picker"
-                    type="date"
-                    value={selectedDate}
-                    onChange={(e) => setSelectedDate(e.target.value)}
-                    className="ml-2 px-2 py-1 border-none bg-transparent text-xs sm:text-sm focus:outline-none focus:ring-0 text-gray-900 font-medium w-full"
-                    disabled={shouldSeeOnlyTodayData()}
-                  />
-                </div>
-              )}
-
-              {timeframe === "year" && availableYears.length > 1 && (
-                <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-300 px-3 py-2 w-full sm:w-auto">
-                  <button
-                    onClick={() => navigateYear("prev")}
-                    aria-label={t("reports.previousYear")}
-                    disabled={availableYears.indexOf(selectedYear) === availableYears.length - 1}
-                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
-                  </button>
-                  <span className="text-xs sm:text-sm font-medium text-gray-900 px-2 min-w-[60px] sm:min-w-[80px] text-center">
-                    {selectedYear}
+        {/* Analysis period: the ONLY period control of the page. Everything
+            below (chart, cards, accounting tables, debts, top lists, PDF)
+            shows exactly this period. */}
+        <section
+          className="analytics-card report-period-card bg-white p-4 sm:p-5 rounded-lg border border-gray-200"
+          aria-labelledby="report-period-title"
+        >
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div className="min-w-0">
+              <h2 id="report-period-title" className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">{t("reports.period", { period: describePeriod(period) })}</span>
+              </h2>
+              <p className="text-xs text-gray-500 mt-1 flex items-center gap-2" aria-live="polite">
+                {t("reports.periodAppliesToAll")}
+                {loading && (
+                  <span className="inline-flex items-center gap-1 text-blue-600">
+                    <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
+                    {t("common.loading")}
                   </span>
+                )}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {selectorType !== "custom" && (
+                <div className="flex items-center gap-1 bg-white rounded-lg border border-gray-300 px-2 py-1.5 w-full sm:w-auto">
                   <button
-                    onClick={() => navigateYear("next")}
-                    aria-label={t("reports.nextYear")}
-                    disabled={availableYears.indexOf(selectedYear) === 0}
+                    type="button"
+                    onClick={() => setPeriod((current) => shiftPeriod(current, -1))}
+                    aria-label={t("reports.previousPeriod")}
+                    disabled={shouldSeeOnlyTodayData()}
                     className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                   >
-                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  {period.type === "day" ? (
+                    <input
+                      id="date-picker"
+                      type="date"
+                      value={period.from}
+                      max={getTodayDate()}
+                      onChange={(e) => handleDayChange(e.target.value)}
+                      aria-label={t("reports.dateLabel")}
+                      className="px-2 py-1 border-none bg-transparent text-xs sm:text-sm focus:outline-none focus:ring-0 text-gray-900 font-medium flex-1 sm:flex-none text-center"
+                      disabled={shouldSeeOnlyTodayData()}
+                    />
+                  ) : (
+                    <span className="text-xs sm:text-sm font-medium text-gray-900 px-2 min-w-[120px] flex-1 sm:flex-none text-center whitespace-nowrap">
+                      {describePeriod(period)}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPeriod((current) => shiftPeriod(current, 1))}
+                    aria-label={t("reports.nextPeriod")}
+                    disabled={shouldSeeOnlyTodayData() || !canGoForward(period)}
+                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               )}
 
-              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto">
-                {(["day", "week", "month", "year"] as const).map((period) => (
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto overflow-x-auto" role="group" aria-label={t("reports.periodSelector")}>
+                {PERIOD_TYPES.map((type) => (
                   <button
-                    key={period}
-                    onClick={() => handleTimeframeChange(period)}
-                    className={`px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 flex-1 sm:flex-none ${
-                      timeframe === period
+                    key={type}
+                    type="button"
+                    aria-pressed={selectorType === type}
+                    onClick={() => handlePeriodTypeChange(type)}
+                    className={`px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 flex-1 sm:flex-none whitespace-nowrap ${
+                      selectorType === type
                         ? "bg-blue-500 text-white"
-                        : shouldSeeOnlyTodayData() && period !== "day"
+                        : shouldSeeOnlyTodayData() && type !== "day"
                         ? "text-gray-400 cursor-not-allowed opacity-50"
                         : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
                     }`}
-                    disabled={shouldSeeOnlyTodayData() && period !== "day"}
+                    disabled={shouldSeeOnlyTodayData() && type !== "day"}
                   >
-                    {t(`reports.periods.${period}`)}
+                    {t(`reports.periods.${type}`)}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-        </div>
+
+          {selectorType === "custom" && (
+            <form className="fin-custom-range" onSubmit={applyCustomPeriod} noValidate>
+              <label>
+                {t("financialReports.range.from")}
+                <input
+                  type="date"
+                  value={customDraft.from}
+                  max={customDraft.to || undefined}
+                  onChange={(e) => setCustomDraft((current) => ({ ...current, from: e.target.value }))}
+                  aria-invalid={customError ? true : undefined}
+                />
+              </label>
+              <label>
+                {t("financialReports.range.to")}
+                <input
+                  type="date"
+                  value={customDraft.to}
+                  min={customDraft.from || undefined}
+                  onChange={(e) => setCustomDraft((current) => ({ ...current, to: e.target.value }))}
+                  aria-invalid={customError ? true : undefined}
+                />
+              </label>
+              <button type="submit" className="ui-button ui-button--secondary ui-button--sm">{t("financialReports.range.apply")}</button>
+              {customError && <p className="fin-field-error" role="alert">{customError}</p>}
+            </form>
+          )}
+        </section>
+
+        <div className="space-y-5" aria-busy={loading || undefined}>
+        {/* Revenue trend over the selected period (stopped at today). */}
+        <Suspense fallback={<ChartPlaceholder />}>
+          <FinancialTrendChart
+            canFilterCategory={isAdmin()}
+            lockedCategory={isAdmin() ? null : analytics.assignedCategory ?? null}
+            from={chartRange(period).from}
+            to={chartRange(period).to}
+            reloadToken={reloadToken}
+          />
+        </Suspense>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
@@ -1090,6 +1032,8 @@ export default function Analytics() {
             </div>
           </div>}
         </div>
+        </div>
+
         {/* ── Report Generation — Admin Only ────────────────────────── */}
         {isAdmin() && (
           <div className="report-builder bg-white rounded-lg border border-gray-200 overflow-hidden">

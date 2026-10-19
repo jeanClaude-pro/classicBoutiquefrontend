@@ -991,11 +991,16 @@
     "dateLabel": "Date:",
     "previousYear": "Previous year",
     "nextYear": "Next year",
+    "previousPeriod": "Previous period",
+    "nextPeriod": "Next period",
+    "periodSelector": "Analysis period",
+    "periodAppliesToAll": "Applies to every section of this page, including the chart and the PDF report.",
     "periods": {
       "day": "Day",
       "week": "Week",
       "month": "Month",
-      "year": "Year"
+      "year": "Year",
+      "custom": "Custom"
     },
     "totalSales": "Total Sales",
     "salesReceipts": "Sales receipts",
@@ -1994,11 +1999,13 @@
       "title": "Grouping",
       "auto": "Auto ({{size}})",
       "label": {
+        "hour": "Hourly",
         "day": "Daily",
         "week": "Weekly",
         "month": "Monthly"
       },
       "per": {
+        "hour": "hour",
         "day": "day",
         "week": "week",
         "month": "month"
