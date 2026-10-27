@@ -5,6 +5,7 @@ import { useAuth } from "../../hooks/useAuth";
 import { describeTimeframeFr, formatDateTimeGMT2, formatMonthNameGMT2 } from "../../utils/dateUtils";
 import { paymentMethodLabel, saleStatusLabel, saleTypeLabel } from "../../lib/labels";
 import { serverUrl } from "../../utils/constants";
+import { COMPANY_PHONE } from "../../config/company";
 import {
   Search,
   FileText,
@@ -284,7 +285,7 @@ export default function SalesHistory() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopNumber: "+243 975 085 799",
+    shopNumber: COMPANY_PHONE,
     shopRegistration: "LSH/RCCM/22-A-01266",
     // Empty: the receipt then uses its own thank-you line in the interface language.
     receiptFooter: "",
@@ -372,7 +373,7 @@ export default function SalesHistory() {
           setShopSettings({
             shopName: data.shopName || "ETS DOUBLE M CLASSIC BOUTIQUE",
             shopAddress: data.shopAddress || "",
-            shopNumber: data.shopNumber || "",
+            shopNumber: COMPANY_PHONE,
             shopRegistration: data.shopRegistration || "",
             receiptFooter: data.receiptFooter || "",
           });

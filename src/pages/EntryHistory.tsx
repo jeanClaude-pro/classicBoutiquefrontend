@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { currentLocale } from "../i18n";
 import { describeTimeframe, formatDateTimeGMT2 } from "../utils/dateUtils";
 import { serverUrl } from "../utils/constants";
+import { COMPANY_PHONE } from "../config/company";
 import { apiErrorFromResponse, requestJson } from "../lib/apiError";
 import { deleteEntryCopy } from "../lib/confirmationCopy";
 import { useConfirmAction } from "../hooks/useConfirmAction";
@@ -172,7 +173,7 @@ export default function EntryHistory() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopNumber: "+243 975 085 799",
+    shopNumber: COMPANY_PHONE,
     shopRegistration: "LSH/RCCM/22-A-01266",
     // Empty: the receipt then uses its own closing line in the interface language.
     receiptFooter: "",
@@ -240,7 +241,7 @@ export default function EntryHistory() {
           setShopSettings({
             shopName: data.shopName || "ETS DOUBLE M CLASSIC BOUTIQUE",
             shopAddress: data.shopAddress || "",
-            shopNumber: data.shopNumber || "",
+            shopNumber: COMPANY_PHONE,
             shopRegistration: data.shopRegistration || "",
             receiptFooter: data.receiptFooter || "",
           });

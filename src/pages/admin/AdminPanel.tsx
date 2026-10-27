@@ -7,6 +7,7 @@ import { currentLocale } from "../../i18n";
 import { toast } from "react-toastify";
 import { useAuth } from "../../hooks/useAuth";
 import { serverUrl } from "../../utils/constants";
+import { COMPANY_PHONE } from "../../config/company";
 import { apiErrorFromResponse, requestJson, userError } from "../../lib/apiError";
 import { notifyError } from "../../lib/notify";
 import { deleteUserCopy, roleChangeCopy, shareholderCategoryCopy, toggleUserStatusCopy } from "../../lib/confirmationCopy";
@@ -177,7 +178,7 @@ export default function AdminPanel() {
   const [shopSettings, setShopSettings] = useState<ShopSettings>({
     shopName: "",
     shopAddress: "",
-    shopNumber: "",
+    shopNumber: COMPANY_PHONE,
     shopRegistration: "",
     receiptFooter: "",
   });
@@ -221,7 +222,7 @@ export default function AdminPanel() {
       setShopSettings({
         shopName: data.shopName || "",
         shopAddress: data.shopAddress || "",
-        shopNumber: data.shopNumber || "",
+        shopNumber: COMPANY_PHONE,
         shopRegistration: data.shopRegistration || "",
         receiptFooter: data.receiptFooter || "",
       });
@@ -1044,11 +1045,9 @@ export default function AdminPanel() {
                       id="admin-numero-de-telephone"
                       type="text"
                       value={shopSettings.shopNumber}
-                      onChange={(e) =>
-                        setShopSettings((s) => ({ ...s, shopNumber: e.target.value }))
-                      }
-                      placeholder="+243 975 085 799"
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                      readOnly
+                      aria-readonly="true"
+                      className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-50 text-gray-700 text-sm"
                     />
                   </div>
 

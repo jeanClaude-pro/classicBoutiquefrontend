@@ -46,6 +46,13 @@ test("receipt amounts are whole francs with a fixed separator", () => {
   assert.equal(formatReceiptFC(undefined), "—");
 });
 
+test("every generated sale receipt uses the canonical company telephone", () => {
+  const doc = buildSaleReceipt({ ...sale([fcEntered], 2800), shopNumber: "+243 000 000 000" }, "fr");
+  assert.equal(doc.shopNumber, "+243 975 085 799");
+  assert.match(renderSaleReceiptHtml(doc, "receipt", ""), /\+243 975 085 799/);
+  assert.equal(escPosReceiptData(doc).shopNumber, "+243 975 085 799");
+});
+
 test("an FC-entered price prints its exact FC amount", () => {
   const [line] = receiptLines([fcEntered], 2800);
   assert.deepEqual(line, { name: "SAMBASO", quantity: 1, unitFC: 30000, totalFC: 30000 });

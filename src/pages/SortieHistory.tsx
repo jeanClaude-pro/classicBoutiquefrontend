@@ -6,6 +6,7 @@ import { currentLocale } from "../i18n";
 import { describeTimeframeFr, formatDateTimeGMT2, formatTimeGMT2, formatMonthNameGMT2 } from "../utils/dateUtils";
 import { expenseStatusLabel, paymentMethodLabel } from "../lib/labels";
 import { serverUrl } from "../utils/constants";
+import { COMPANY_PHONE } from "../config/company";
 import { formatFC, formatUSD } from "../utils/salePricing";
 import { apiErrorFromResponse, requestJson, toApiError, type ApiError } from "../lib/apiError";
 import { notifyInfo, notifySuccess } from "../lib/notify";
@@ -900,7 +901,7 @@ export default function SortieHistory() {
       <div class="header">
         <div class="shop-name"><strong>ETS DOUBLE M CLASSIC BOUTIQUE</strong></div>
         <div class="shop-details"><strong>780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi</strong></div>
-        <div class="shop-details">${t("receipt.tel")}: <strong>+243 975 085 799</strong></div>
+        <div class="shop-details">${t("receipt.tel")}: <strong>${COMPANY_PHONE}</strong></div>
         <div class="shop-details"><strong>LSH/RCCM/22-A-01266</strong></div>
       </div>
       

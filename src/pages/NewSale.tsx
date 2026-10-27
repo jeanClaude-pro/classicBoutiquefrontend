@@ -10,6 +10,7 @@ import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, Calculator, Search } from "lucide-react";
 import { serverUrl } from "../utils/constants";
+import { COMPANY_PHONE } from "../config/company";
 import UnitPriceInput from "../components/UnitPriceInput";
 import {
   DISCOUNT_QUANTITY_THRESHOLD,
@@ -117,7 +118,7 @@ export default function NewSale() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopNumber: "+243 975 085 799",
+    shopNumber: COMPANY_PHONE,
     shopRegistration: "LSH/RCCM/22-A-01266",
     receiptFooter: translate("pos.defaultFooter"),
   });
@@ -184,7 +185,7 @@ export default function NewSale() {
         setShopSettings({
           shopName: data.shopName || "ETS DOUBLE M CLASSIC BOUTIQUE",
           shopAddress: data.shopAddress || "",
-          shopNumber: data.shopNumber || "",
+          shopNumber: COMPANY_PHONE,
           shopRegistration: data.shopRegistration || "",
           receiptFooter: data.receiptFooter || "",
         });

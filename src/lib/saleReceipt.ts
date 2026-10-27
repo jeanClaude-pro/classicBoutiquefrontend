@@ -8,6 +8,7 @@
 // FC price snapshot, or the USD price at the sale's historical rate — never
 // today's rate. The USD values stay untouched in the sale for accounting.
 import i18n, { currentLanguage, type AppLanguage } from "../i18n/index.ts";
+import { COMPANY_PHONE } from "../config/company.ts";
 import { getItemFcUnitPrice, type StoredSaleItemPrice } from "../utils/salePricing.ts";
 
 export type ReceiptItem = StoredSaleItemPrice & { name: string };
@@ -160,6 +161,8 @@ export function buildSaleReceipt(input: SaleReceiptInput, language: AppLanguage 
   const totalFC = receiptTotalFC(lines);
   return {
     ...input,
+    // The company telephone is fixed across new receipts and historical reprints.
+    shopNumber: COMPANY_PHONE,
     language,
     labels: saleReceiptLabels(language),
     lines,

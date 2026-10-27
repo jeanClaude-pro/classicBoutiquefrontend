@@ -11,6 +11,7 @@ import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
 import { DollarSign, RefreshCw, FileText, User, Calculator } from "lucide-react";
 import { serverUrl } from "../utils/constants";
+import { COMPANY_PHONE } from "../config/company";
 import { createAmountSnapshot, formatFC, formatUSD } from "../utils/salePricing";
 import { escapeHtmlDeep, printAndClose } from "../lib/saleReceipt";
 
@@ -902,7 +903,7 @@ export default function Entry() {
       const newReceiptData = {
         shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
         shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-        shopNumber: "+243 975 085 799",
+        shopNumber: COMPANY_PHONE,
         shopRegistration: "LSH/RCCM/22-A-01266",
         amount: amountSnapshot.amountUSD,
         ...amountSnapshot,

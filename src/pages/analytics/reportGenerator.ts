@@ -3,6 +3,7 @@ import jsPDF from "jspdf";
 import { formatNowGMT2 } from "../../utils/dateUtils";
 import { t } from "../../i18n";
 import { categoryPresentation, type AccountingCategory, type CategoryAccountingDTO } from "./accountingPresentation";
+import { COMPANY_PHONE } from "../../config/company";
 
 interface TopProduct {
   name: string;
@@ -335,7 +336,7 @@ export function generateCompanyReport(config: ReportConfig): void {
     timeframeLabel,
     formatCurrency,
     companyAddress = "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    companyPhone = "+243 975 085 799",
+    companyPhone = COMPANY_PHONE,
     companyRegistration = "LSH/RCCM/22-A-01266",
   } = config;
 

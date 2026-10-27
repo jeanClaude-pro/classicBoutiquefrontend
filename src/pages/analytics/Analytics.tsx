@@ -27,6 +27,7 @@ import type { AccountingCategory } from "./accountingPresentation";
 import CategoryAccountingTables, { type CategoryReportDTO, type InventoryValuationDTO } from "./CategoryAccountingTables";
 import { Link } from "react-router-dom";
 import { serverUrl } from "../../utils/constants";
+import { COMPANY_PHONE } from "../../config/company";
 import { formatFC, formatUSD } from "../../utils/salePricing";
 import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
 import { MODULES } from "../../config/modules";
@@ -225,7 +226,7 @@ export default function Analytics() {
   const [shopSettings, setShopSettings] = useState({
     shopName: "ETS DOUBLE M CLASSIC BOUTIQUE",
     shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-    shopPhone: "+243 975 085 799",
+    shopPhone: COMPANY_PHONE,
     shopRegistration: "LSH/RCCM/22-A-01266",
   });
 
@@ -271,7 +272,7 @@ export default function Analytics() {
           setShopSettings({
             shopName: data.shopName || "ETS DOUBLE M CLASSIC BOUTIQUE",
             shopAddress: data.shopAddress || "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
-            shopPhone: data.shopNumber || "+243 975 085 799",
+            shopPhone: COMPANY_PHONE,
             shopRegistration: data.shopRegistration || "LSH/RCCM/22-A-01266",
           });
         }
