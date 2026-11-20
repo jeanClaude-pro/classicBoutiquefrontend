@@ -231,6 +231,19 @@ export function authHeaders(extra: Record<string, string> = {}): Record<string, 
   return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
 }
 
+// The reports password confirmation (lib/reportsReauth.ts), read inline to
+// avoid an import cycle. Sent only with reports requests to this app's API.
+function reportsProofHeader(url: string): Record<string, string> {
+  if (!url.includes("/analytics/")) return {};
+  try {
+    const saved = JSON.parse(sessionStorage.getItem("reportsReauth") || "null") as { token?: string; expiresAt?: string } | null;
+    if (!saved?.token || !saved.expiresAt || new Date(saved.expiresAt).getTime() - 5_000 <= Date.now()) return {};
+    return { "X-Reauth-Token": saved.token };
+  } catch {
+    return {};
+  }
+}
+
 export interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
   timeoutMs?: number;
@@ -247,7 +260,7 @@ export async function requestJson<T = unknown>(url: string, { body, timeoutMs = 
   try {
     const response = await fetch(url, {
       ...init,
-      headers: authHeaders((headers as Record<string, string>) || {}),
+      headers: authHeaders({ ...reportsProofHeader(url), ...((headers as Record<string, string>) || {}) }),
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: init.signal ?? controller.signal,
     });

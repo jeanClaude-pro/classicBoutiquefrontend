@@ -21,6 +21,11 @@ export function signIn(user: Record<string, unknown>): void {
   localStorage.setItem("user", JSON.stringify({ id: "u-self", username: "tester", email: "t@test.local", permissions: [], ...user }));
 }
 
+/** The superadmin confirmed the Reports password (a valid server proof is stored). */
+export function confirmReportsPassword(): void {
+  sessionStorage.setItem("reportsReauth", JSON.stringify({ token: "test-reauth-proof", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }));
+}
+
 type Handler = (request: { method: string; url: string; body: unknown }) => { status?: number; body?: unknown; networkError?: boolean };
 export interface Route { method?: string; match: RegExp; reply: Handler | { status?: number; body?: unknown } }
 
@@ -36,6 +41,12 @@ export function mockApi(routes: Route[]) {
     const request = { method, url, body };
     calls.push(request);
     const route = routes.find((candidate) => (candidate.method || "GET") === method && candidate.match.test(url.replace(API, "")));
+    // The app confirms the signed-in session with the server at start-up.
+    // Unless a test mocks it, the server confirms the user signed in by signIn().
+    if (!route && method === "GET" && url.replace(API, "") === "/auth/session") {
+      const user = JSON.parse(localStorage.getItem("user") || "null");
+      return new Response(JSON.stringify(user ? { user } : { message: "Authentication required" }), { status: user ? 200 : 401, headers: { "Content-Type": "application/json" } });
+    }
     if (!route) {
       unmatched.push(`${method} ${url.replace(API, "")}`);
       return new Response(JSON.stringify({ error: "Not mocked" }), { status: 404, headers: { "Content-Type": "application/json" } });

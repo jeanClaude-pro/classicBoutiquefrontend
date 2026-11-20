@@ -15,6 +15,9 @@ import { downloadOperationalReportPdf } from "./operationalReportPdf";
 import { categoryLabel, formatMoney, formatQuantity, salesSheetPdfModel, soldPriceLine, type SalesSheetPayload } from "./operationalReportModel";
 import { MoneyValue, ReportFilterFields, SummaryCard } from "./reportControls";
 import { periodLabelOf, useReportFilters, useShopIdentity } from "./reportFilters";
+import { useAuth } from "../../hooks/useAuth";
+import { ReauthGate } from "../../components/ReauthGate";
+import { hasReportsReauth, isReauthRequired } from "../../lib/reportsReauth";
 
 const th = "border-b border-slate-200 px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-600";
 const thNum = `${th} text-right`;
@@ -30,9 +33,15 @@ export default function ProductsSold() {
   const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const { query, rangeValid, range, ready } = filters;
+  // Same password confirmation as the Reports page, required by the server
+  // for the superadmin (a proof from the Reports page is reused for 15 min).
+  const { user } = useAuth();
+  const needsReauth = user?.role === "superadmin";
+  const [reauthed, setReauthed] = useState(() => hasReportsReauth());
+  const allowed = !needsReauth || reauthed;
 
   const load = useCallback(async () => {
-    if (!rangeValid || !ready) return;
+    if (!rangeValid || !ready || !allowed) return;
     const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
@@ -40,11 +49,12 @@ export default function ProductsSold() {
       const payload = await requestJson<SalesSheetPayload>(`${serverUrl}/analytics/sales-sheet?${query}`);
       if (seq === requestSeq.current) setData(payload);
     } catch (caught) {
+      if (seq === requestSeq.current && isReauthRequired(caught)) { setReauthed(false); setData(null); return; }
       if (seq === requestSeq.current) { setError(toApiError(caught).message); setData(null); }
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }, [query, rangeValid, ready]);
+  }, [query, rangeValid, ready, allowed]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -56,6 +66,8 @@ export default function ProductsSold() {
     if (!data) return;
     downloadOperationalReportPdf(salesSheetPdfModel(data, { shop, periodLabel, generatedAt: formatNowGMT2(), range }));
   }
+
+  if (!allowed) return <ReauthGate onConfirmed={() => setReauthed(true)} />;
 
   return (
     <div className="space-y-5 p-4 sm:p-6">

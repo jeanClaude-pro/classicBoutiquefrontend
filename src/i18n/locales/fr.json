@@ -687,7 +687,8 @@
     "noAccount": "Pas encore de compte ?",
     "haveAccount": "Vous avez déjà un compte ?",
     "accountPendingActivation": "Compte créé. Un administrateur doit l'activer avant votre première connexion.",
-    "sessionIdle": "Session fermée après une période d'inactivité. Veuillez vous reconnecter."
+    "sessionIdle": "Session fermée après une période d'inactivité. Veuillez vous reconnecter.",
+    "serverRequired": "Le serveur est injoignable. Pour votre sécurité, la connexion doit être vérifiée par le serveur : réessayez dès que la connexion Internet revient. Une caisse déjà connectée continue d'enregistrer les ventes."
   },
   "products": {
     "saved": "Modification enregistrée avec succès.",
@@ -1079,7 +1080,22 @@
     "selectOneSection": "Sélectionnez au moins une section.",
     "confirmationRequired": "Confirmation Requise",
     "confirmPassword": "Confirmez votre mot de passe pour générer le rapport",
-    "password": "Mot de passe"
+    "password": "Mot de passe",
+    "categoryFilter": {
+      "label": "Catégorie du rapport",
+      "all": "Toutes",
+      "showing": "Catégorie : {{category}}",
+      "shopWideExcluded": "Les entrées d'argent et les dettes concernent toute la boutique : elles ne sont affichées que dans la vue « Toutes ».",
+      "scopeCardTitle": "Catégorie analysée",
+      "scopeCardHint": "Entrées et dettes : vue « Toutes » uniquement",
+      "expensesHint": "Sorties validées de cette catégorie",
+      "netCashHint": "Ventes de la catégorie - sorties validées de la catégorie",
+      "entriesUnavailable": "Non disponible par catégorie (toute la boutique)"
+    },
+    "reauth": {
+      "locked": "Trop de tentatives. Réessayez plus tard.",
+      "unavailable": "Le serveur est injoignable. Vérifiez la connexion puis réessayez."
+    }
   },
   "pdfReport": {
     "companySub": "Gestion de Vente",
@@ -1110,7 +1126,8 @@
       "preparedBy": "Préparé par",
       "sections": "Sections incluses",
       "noSection": "Aucune section",
-      "status": "Statut du document"
+      "status": "Statut du document",
+      "category": "Catégorie"
     },
     "officialDoc": "Document officiel",
     "unofficialDoc": "Document non officiel",
@@ -1131,7 +1148,10 @@
       "netCash": "Trésorerie nette",
       "netCashNote": "Ventes + entrées - dépenses validées",
       "uniqueCustomers": "Clients uniques",
-      "uniqueCustomersNote": "Sur la période"
+      "uniqueCustomersNote": "Sur la période",
+      "shopWideOnly": "Toute la boutique",
+      "cashEntriesCategoryNote": "Non attribuées à une catégorie",
+      "netCashCategoryNote": "Ventes - dépenses validées de la catégorie"
     },
     "categoryPeriod": "Situation {{category}} - période",
     "categoryCurrent": "{{category}} - situation actuelle (cumul)",
@@ -1164,7 +1184,8 @@
     "officialBannerText": "Document signé et tamponné par un administrateur autorisé.",
     "unofficialBannerText": "Document généré sans validation complète de signature et/ou de cachet officiel.",
     "generatedBy": "Rapport généré le {{date}} par {{name}}",
-    "fileName": "rapport-double-m-classic-boutique"
+    "fileName": "rapport-double-m-classic-boutique",
+    "allCategories": "Toutes les catégories"
   },
   "pos": {
     "stockCount": "(Stock: {{count}})",
@@ -1755,13 +1776,7 @@
     "soldAt": "Prix de vente pratiqué"
   },
   "offline": {
-    "enablePrompt": "Activer l’accès hors ligne sécurisé sur cet appareil ?",
-    "enable": "Activer l’accès hors ligne",
-    "choosePin": "Choisissez un PIN hors ligne de 6 à 12 chiffres",
-    "pinLength": "Le PIN doit contenir entre 6 et 12 chiffres.",
-    "login": "Connexion hors ligne",
-    "pin": "PIN hors ligne",
-    "session": "Session hors ligne",
+    "session": "Session non vérifiée",
     "checking": "Vérification du serveur…",
     "pending_one": "{{count}} vente en attente",
     "pending_other": "{{count}} ventes en attente",
@@ -1780,16 +1795,8 @@
     "attempts": "Tentatives",
     "error": "Erreur",
     "none": "Aucune vente locale sur cet appareil.",
-    "restrictedTitle": "Indisponible hors ligne",
-    "restricted": "Ce module exige une session en ligne vérifiée. La session hors ligne est limitée au point de vente, aux reçus et aux ventes en attente.",
-    "errors": {
-      "PIN_INVALID": "PIN incorrect.",
-      "PIN_LOCKED": "Trop de tentatives. La connexion hors ligne est temporairement verrouillée.",
-      "OFFLINE_EXPIRED": "L’autorisation hors ligne a expiré. Reconnectez-vous en ligne pour la renouveler.",
-      "OFFLINE_DISABLED": "L’accès hors ligne est désactivé pour ce compte."
-    },
-    "reconnected": "Le serveur est de nouveau joignable. Connectez-vous en ligne pour synchroniser les ventes en attente.",
-    "signInOnline": "Se connecter en ligne",
+    "restrictedTitle": "Session non vérifiée",
+    "restricted": "Le serveur n'a pas encore pu confirmer votre session (pas de connexion). En attendant, seuls le point de vente, les reçus et les ventes en attente sont disponibles.",
     "syncNeedsOnline": "La synchronisation nécessite une connexion en ligne vérifiée.",
     "syncing": "Synchronisation…",
     "retryOne": "Réessayer",

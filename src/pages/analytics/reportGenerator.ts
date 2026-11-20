@@ -49,6 +49,8 @@ export interface ReportConfig {
   companyAddress?: string;
   companyPhone?: string;
   companyRegistration?: string;
+  /** Category the whole report is restricted to; null/undefined = whole shop. */
+  category?: AccountingCategory | null;
 }
 
 const COMPANY = "ETS DOUBLE M CLASSIC BOUTIQUE";
@@ -328,7 +330,6 @@ function drawCertificationBox(
 export function generateCompanyReport(config: ReportConfig): void {
   const {
     analytics,
-    sections,
     adminUsername,
     adminSignatureText,
     hasSignature,
@@ -338,7 +339,12 @@ export function generateCompanyReport(config: ReportConfig): void {
     companyAddress = "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
     companyPhone = COMPANY_PHONE,
     companyRegistration = "LSH/RCCM/22-A-01266",
+    category = null,
   } = config;
+  // Money-in entries are shop-wide (never attributed to CLOTHES or SHOES), so
+  // a category report never contains them, whatever the caller selected.
+  const sections: ReportSections = { ...config.sections, entries: config.sections.entries && !category };
+  const scopeLabel = category ? pdfText(t(`accounting.categoryTitles.${category}`)) : tr("pdfReport.allCategories");
 
   const doc = new (jsPDF as any)({ orientation: "portrait", unit: "mm", format: "a4" });
   const genAt = formatNowGMT2();
@@ -352,12 +358,13 @@ export function generateCompanyReport(config: ReportConfig): void {
   if (sections.expenses) secNames.push(tr("pdfReport.sec.expenses"));
   if (sections.entries) secNames.push(tr("pdfReport.sec.entries"));
 
-  const allSelected = Object.values(sections).every(Boolean);
-  const reportTitle = allSelected
+  const allSelected = Object.values(sections).every(Boolean) || (Boolean(category) && Object.entries(sections).every(([key, on]) => key === "entries" || on));
+  const baseTitle = allSelected
     ? tr("pdfReport.fullTitle")
     : secNames.length === 1
       ? secNames[0]
       : tr("pdfReport.selectiveTitle");
+  const reportTitle = category ? `${baseTitle} - ${scopeLabel}` : baseTitle;
 
   fill(doc, ink.white);
   doc.rect(0, 0, PW, PH, "F");
@@ -397,6 +404,7 @@ export function generateCompanyReport(config: ReportConfig): void {
   doc.rect(M, coverY + 22, CW, 50, "FD");
 
   const metaRows: [string, string][] = [
+    [tr("pdfReport.meta.category"), scopeLabel],
     [tr("pdfReport.meta.generatedAt"), genAt],
     [tr("pdfReport.meta.preparedBy"), adminUsername],
     [tr("pdfReport.meta.sections"), secNames.join(", ") || tr("pdfReport.meta.noSection")],
@@ -404,13 +412,13 @@ export function generateCompanyReport(config: ReportConfig): void {
   ];
 
   metaRows.forEach(([label, value], i) => {
-    const rowY = coverY + 34 + i * 9;
+    const rowY = coverY + 32 + i * 8;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8);
     color(doc, ink.navy);
     doc.text(label, M + 6, rowY);
     doc.setFont("helvetica", "normal");
-    color(doc, i === 3 ? (official ? ink.success : ink.warning) : ink.muted);
+    color(doc, i === metaRows.length - 1 ? (official ? ink.success : ink.warning) : ink.muted);
     doc.text(doc.splitTextToSize(value, CW - 62)[0] ?? "", M + 58, rowY);
   });
 
@@ -460,9 +468,11 @@ export function generateCompanyReport(config: ReportConfig): void {
       [
         { label: tr("pdfReport.metrics.totalSales"), value: String(analytics.totalSales), note: tr("pdfReport.metrics.totalSalesNote") },
         { label: tr("pdfReport.metrics.salesReceipts"), value: formatCurrency(analytics.totalRevenue), note: tr("pdfReport.metrics.salesReceiptsNote") },
-        { label: tr("pdfReport.metrics.cashEntries"), value: formatCurrency(analytics.totalEntries), note: tr("pdfReport.metrics.cashEntriesNote") },
+        category
+          ? { label: tr("pdfReport.metrics.cashEntries"), value: tr("pdfReport.metrics.shopWideOnly"), note: tr("pdfReport.metrics.cashEntriesCategoryNote") }
+          : { label: tr("pdfReport.metrics.cashEntries"), value: formatCurrency(analytics.totalEntries), note: tr("pdfReport.metrics.cashEntriesNote") },
         { label: tr("pdfReport.metrics.expenses"), value: formatCurrency(analytics.totalValidatedExpenses), note: tr("pdfReport.metrics.expensesNote") },
-        { label: tr("pdfReport.metrics.netCash"), value: formatCurrency(analytics.netRevenue), note: tr("pdfReport.metrics.netCashNote") },
+        { label: tr("pdfReport.metrics.netCash"), value: formatCurrency(analytics.netRevenue), note: category ? tr("pdfReport.metrics.netCashCategoryNote") : tr("pdfReport.metrics.netCashNote") },
         { label: tr("pdfReport.metrics.uniqueCustomers"), value: String(analytics.totalCustomers), note: tr("pdfReport.metrics.uniqueCustomersNote") },
       ],
       Y,
@@ -597,5 +607,6 @@ export function generateCompanyReport(config: ReportConfig): void {
   }
 
   const dateStamp = new Date().toISOString().split("T")[0];
-  doc.save(`${tr("pdfReport.fileName")}-${dateStamp}.pdf`);
+  const fileScope = category ? `-${category.toLowerCase()}` : "";
+  doc.save(`${tr("pdfReport.fileName")}${fileScope}-${dateStamp}.pdf`);
 }

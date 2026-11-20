@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Route, Routes } from "react-router-dom";
-import { mockApi, renderPage, signIn } from "./helpers/pageHarness";
+import { confirmReportsPassword, mockApi, renderPage, signIn } from "./helpers/pageHarness";
 import Products from "../src/pages/products/products";
 import ProductStockSheet from "../src/pages/products/ProductStockSheet";
 import ProductsSold from "../src/pages/reports/ProductsSold";
@@ -187,6 +187,7 @@ function soldApi(financialsVisible = true) {
 
 test("Fiche des ventes: each product shows the price it was sold at, the pieces that left and the revenue", async () => {
   signIn({ role: "superadmin" });
+  confirmReportsPassword();
   const api = soldApi();
   const user = userEvent.setup();
   renderPage(<ProductsSold />, "/reports/products-sold");

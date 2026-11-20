@@ -12,23 +12,11 @@
  * Import this module once (see main.tsx) before the app renders.
  */
 import { serverUrl } from "../utils/constants";
-import { AUTH_TOKEN_KEY, AUTH_USER_KEY, hasOfflineSession, invalidateSession } from "./sessionManager";
-import { disableOfflineAccess } from "../offline/offlineAuth";
+import { invalidateSession } from "./sessionManager";
 
-// A disabled account must also lose the offline (PIN) access stored on this
-// device, otherwise it could keep selling offline until that access expires.
-async function revokeOfflineAccessIfDisabled(response: Response): Promise<void> {
-  try {
-    const body = await response.clone().json() as { code?: string };
-    if (body?.code !== "ACCOUNT_DISABLED") return;
-    const user = JSON.parse(localStorage.getItem(AUTH_USER_KEY) || "null") as { id?: string } | null;
-    if (user?.id) await disableOfflineAccess(user.id);
-  } catch {
-    // Not JSON or storage unavailable: the session is invalidated anyway.
-  }
-}
-
-const EXCLUDED_PATHS = ["/auth/login", "/auth/register", "/auth/logout"];
+// The password confirmation of the Reports module answers a wrong password
+// with 403, never 401, but it is excluded too: it must never sign anyone out.
+const EXCLUDED_PATHS = ["/auth/login", "/auth/register", "/auth/logout", "/auth/reauth"];
 
 function resolveUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
@@ -64,11 +52,7 @@ export function installAuthFetchInterceptor(): void {
       const isExcluded = EXCLUDED_PATHS.some((path) => url.includes(path));
       const isOwnApi = url.startsWith(serverUrl);
 
-      // An offline (PIN) session holds no server token: a 401 there only
-      // means the API is reachable again, not that a session expired.
-      const offlineOnly = !localStorage.getItem(AUTH_TOKEN_KEY) && hasOfflineSession();
-      if (isOwnApi && !isExcluded && !offlineOnly && hasAuthorizationHeader(input, init)) {
-        await revokeOfflineAccessIfDisabled(response);
+      if (isOwnApi && !isExcluded && hasAuthorizationHeader(input, init)) {
         invalidateSession("unauthorized");
       }
     }

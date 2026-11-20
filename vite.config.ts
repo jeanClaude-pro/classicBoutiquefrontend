@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
     // Production bundles never publish source maps (they would expose the
     // original source to anyone).
     build: { sourcemap: false },
+    // Production bundles carry no console output or debugger statements:
+    // diagnostics stay in development and are never shown to shop users.
+    esbuild: mode === 'production' ? { drop: ['console', 'debugger'], legalComments: 'none' } : undefined,
     plugins: [
     react(),
     tailwindcss(),

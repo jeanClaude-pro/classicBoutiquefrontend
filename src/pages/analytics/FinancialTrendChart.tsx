@@ -57,9 +57,12 @@ function ChartTooltip({ active, row, metricLabel, granularity, fcField }: {
   );
 }
 
-export default function FinancialTrendChart({ canFilterCategory, lockedCategory, from, to, reloadToken = 0 }: {
+export default function FinancialTrendChart({ canFilterCategory, lockedCategory, category: pageCategory, from, to, reloadToken = 0 }: {
   /** Superadmin: may switch between both categories and each one. */
   canFilterCategory: boolean;
+  /** Category chosen for the whole Reports page. When given, the chart
+   *  follows it and hides its own category switch. */
+  category?: CategoryFilter;
   /** Shareholder: the server pins the series to this category anyway. */
   lockedCategory?: AccountingCategory | null;
   /** Inclusive business dates of the page's analysis period (owned by the Reports page). */
@@ -76,7 +79,9 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
   const range = useMemo(() => ({ from, to }), [from, to]);
   const [granularity, setGranularity] = useState<GranularityChoice>("auto");
   const [metric, setMetric] = useState<SeriesMetric>("revenue");
-  const [category, setCategory] = useState<CategoryFilter>("ALL");
+  const [ownCategory, setCategory] = useState<CategoryFilter>("ALL");
+  const controlled = pageCategory !== undefined;
+  const category: CategoryFilter = controlled ? pageCategory : ownCategory;
   const [showData, setShowData] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -174,7 +179,7 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
 
       <div className="fin-chart-controls">
         <span className="fin-spacer" />
-        {canFilterCategory && (
+        {canFilterCategory && !controlled && (
           <div className="fin-segmented" role="group" aria-label={t("financialReports.chart.category")}>
             {(["ALL", "CLOTHES", "SHOES"] as const).map((option) => (
               <button key={option} type="button" aria-pressed={category === option} className={category === option ? "is-active" : undefined} onClick={() => setCategory(option)}>

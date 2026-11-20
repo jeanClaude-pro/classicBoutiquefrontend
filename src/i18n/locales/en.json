@@ -687,7 +687,8 @@
     "noAccount": "Don't have an account yet?",
     "haveAccount": "Already have an account?",
     "accountPendingActivation": "Account created. An administrator must activate it before your first sign-in.",
-    "sessionIdle": "You were signed out after a period of inactivity. Please sign in again."
+    "sessionIdle": "You were signed out after a period of inactivity. Please sign in again.",
+    "serverRequired": "The server cannot be reached. For your security, every sign-in is checked by the server: try again as soon as the internet is back. A till that is already signed in keeps recording sales."
   },
   "products": {
     "saved": "Changes saved.",
@@ -1079,7 +1080,22 @@
     "selectOneSection": "Select at least one section.",
     "confirmationRequired": "Confirmation Required",
     "confirmPassword": "Confirm your password to generate the report",
-    "password": "Password"
+    "password": "Password",
+    "categoryFilter": {
+      "label": "Report category",
+      "all": "All",
+      "showing": "Category: {{category}}",
+      "shopWideExcluded": "Money-in entries and debts belong to the whole shop: they are only shown in the \"All\" view.",
+      "scopeCardTitle": "Category analysed",
+      "scopeCardHint": "Entries and debts: \"All\" view only",
+      "expensesHint": "Validated outflows of this category",
+      "netCashHint": "Category sales - validated category outflows",
+      "entriesUnavailable": "Not available per category (whole shop)"
+    },
+    "reauth": {
+      "locked": "Too many attempts. Try again later.",
+      "unavailable": "The server cannot be reached. Check the connection and try again."
+    }
   },
   "pdfReport": {
     "companySub": "Sales Management",
@@ -1110,7 +1126,8 @@
       "preparedBy": "Prepared by",
       "sections": "Included sections",
       "noSection": "No section",
-      "status": "Document status"
+      "status": "Document status",
+      "category": "Category"
     },
     "officialDoc": "Official document",
     "unofficialDoc": "Unofficial document",
@@ -1131,7 +1148,10 @@
       "netCash": "Net cash",
       "netCashNote": "Sales + receipts - approved expenses",
       "uniqueCustomers": "Unique customers",
-      "uniqueCustomersNote": "Over the period"
+      "uniqueCustomersNote": "Over the period",
+      "shopWideOnly": "Whole shop",
+      "cashEntriesCategoryNote": "Not attributed to a category",
+      "netCashCategoryNote": "Sales - validated category expenses"
     },
     "categoryPeriod": "{{category}} position - period",
     "categoryCurrent": "{{category}} - current position (cumulative)",
@@ -1164,7 +1184,8 @@
     "officialBannerText": "Document signed and stamped by an authorized administrator.",
     "unofficialBannerText": "Document generated without full validation of the signature and/or official stamp.",
     "generatedBy": "Report generated on {{date}} by {{name}}",
-    "fileName": "report-double-m-classic-boutique"
+    "fileName": "report-double-m-classic-boutique",
+    "allCategories": "All categories"
   },
   "pos": {
     "stockCount": "(Stock: {{count}})",
@@ -1755,13 +1776,7 @@
     "soldAt": "Price sold at"
   },
   "offline": {
-    "enablePrompt": "Enable secure offline access on this device?",
-    "enable": "Enable offline access",
-    "choosePin": "Choose a 6–12 digit offline PIN",
-    "pinLength": "The PIN must contain 6 to 12 digits.",
-    "login": "Offline sign-in",
-    "pin": "Offline PIN",
-    "session": "Offline session",
+    "session": "Session not verified",
     "checking": "Checking server…",
     "pending_one": "{{count}} sale pending",
     "pending_other": "{{count}} sales pending",
@@ -1780,16 +1795,8 @@
     "attempts": "Attempts",
     "error": "Error",
     "none": "No local sales on this device.",
-    "restrictedTitle": "Unavailable offline",
-    "restricted": "This module requires a verified online session. Offline sessions are limited to the POS, receipts and queued sales.",
-    "errors": {
-      "PIN_INVALID": "Incorrect PIN.",
-      "PIN_LOCKED": "Too many attempts. Offline sign-in is temporarily locked.",
-      "OFFLINE_EXPIRED": "Offline authorization expired. Sign in online to renew it.",
-      "OFFLINE_DISABLED": "Offline access is disabled for this account."
-    },
-    "reconnected": "The server is reachable again. Sign in online to synchronize pending sales.",
-    "signInOnline": "Sign in online",
+    "restrictedTitle": "Session not verified",
+    "restricted": "The server has not been able to confirm your session yet (no connection). Until then, only the till, receipts and unsent sales are available.",
     "syncNeedsOnline": "Synchronization requires a verified online sign-in.",
     "syncing": "Synchronizing…",
     "retryOne": "Retry",

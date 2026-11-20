@@ -21,21 +21,30 @@ import {
   RefreshCw,
   FileDown,
   AlertTriangle,
+  Tag,
 } from "lucide-react";
 import { generateCompanyReport, type ReportSections } from "./reportGenerator";
 import type { AccountingCategory } from "./accountingPresentation";
 import CategoryAccountingTables, { type CategoryReportDTO, type InventoryValuationDTO } from "./CategoryAccountingTables";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { serverUrl } from "../../utils/constants";
 import { COMPANY_PHONE } from "../../config/company";
 import { formatFC, formatUSD } from "../../utils/salePricing";
 import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
 import { MODULES } from "../../config/modules";
+import { ReauthGate } from "../../components/ReauthGate";
+import { confirmPassword, hasReportsReauth, isReauthRequired, reauthHeaders } from "../../lib/reportsReauth";
 import { MAX_BUCKETS, bucketCount, businessToday, validateRange } from "./financialTimeSeries";
 import {
   PERIOD_TYPES, canGoForward, chartRange, describePeriod, periodAround, shiftPeriod, summaryTimeframe,
   type PeriodType, type ReportPeriod,
 } from "./reportPeriod";
+
+/** Category the whole Reports page is restricted to (ALL = whole shop). */
+type ReportScope = AccountingCategory | "ALL";
+const REPORT_SCOPES: ReportScope[] = ["ALL", "CLOTHES", "SHOES"];
+const parseScope = (value: string | null): ReportScope =>
+  value === "CLOTHES" || value === "SHOES" ? value : "ALL";
 
 interface AnalyticsData {
   totalSales: number;
@@ -221,6 +230,25 @@ export default function Analytics() {
   const [reloadToken, setReloadToken] = useState(0);
   // Only the latest request may write state (fast period clicks).
   const requestId = useRef(0);
+  // ONE category for the whole page as well, kept in the URL (?category=SHOES)
+  // so a refresh, a shared link and the "Products sold" sheet keep it. Only
+  // the superadmin chooses; a shareholder is pinned to its category by the
+  // server whatever the client sends.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const scope: ReportScope = isAdmin() ? parseScope(searchParams.get("category")) : "ALL";
+  // Labels, hidden sections and the PDF follow the figures actually on
+  // screen, so switching category never relabels the previous numbers.
+  const [loadedScope, setLoadedScope] = useState<ReportScope>(scope);
+  const shownScope: ReportScope = loadedScope;
+  const categoryView = shownScope !== "ALL";
+  const setScope = (next: ReportScope) => {
+    setSearchParams((current) => {
+      const params = new URLSearchParams(current);
+      if (next === "ALL") params.delete("category");
+      else params.set("category", next);
+      return params;
+    }, { replace: true });
+  };
 
   // ── Company / shop settings ───────────────────────────────────────────
   const [shopSettings, setShopSettings] = useState({
@@ -245,10 +273,10 @@ export default function Analytics() {
   const [generatingReport, setGeneratingReport] = useState(false);
 
   // ── Security gates ────────────────────────────────────────────────────
-  const [accessVerified, setAccessVerified] = useState(false);
-  const [accessPassword, setAccessPassword] = useState("");
-  const [accessError, setAccessError] = useState("");
-  const [accessLoading, setAccessLoading] = useState(false);
+  // The server requires a recent password confirmation for superadmin
+  // reports; a proof still valid in this tab (15 min) skips the screen.
+  const [accessVerified, setAccessVerified] = useState(() => hasReportsReauth());
+  const canLoad = !isAdmin() || accessVerified;
 
   const [showPrintPasswordModal, setShowPrintPasswordModal] = useState(false);
   const [printPassword, setPrintPassword] = useState("");
@@ -295,8 +323,9 @@ export default function Analytics() {
         to: effectivePeriod.to,
         timeframe: effectiveTimeframe,
       });
+      if (scope !== "ALL") params.set("category", scope);
       const response = await fetch(`${serverUrl}/analytics/summary?${params}`, {
-        headers: getHeaders(),
+        headers: { ...getHeaders(), ...reauthHeaders() },
       });
       if (!response.ok) throw await apiErrorFromResponse(response);
       const payload = await response.json();
@@ -331,6 +360,7 @@ export default function Analytics() {
           : [],
       };
       setAnalytics(normalized);
+      setLoadedScope(scope);
       setTimeframeData({
         period: effectivePeriod,
         start: payload.timeframe.start,
@@ -338,17 +368,19 @@ export default function Analytics() {
       });
     } catch (error) {
       if (id !== requestId.current) return;
+      // The 15-minute confirmation expired: ask for the password again.
+      if (isReauthRequired(error)) { setAccessVerified(false); setAnalytics(null); return; }
       setLoadError(toApiError(error).message);
       setAnalytics(null);
     } finally {
       if (id === requestId.current) setLoading(false);
     }
-  }, [period]);
+  }, [period, scope]);
 
   // Analytics has one request per selected period and never walks sales pages.
   useEffect(() => {
-    fetchAnalytics();
-  }, [fetchAnalytics]);
+    if (canLoad) fetchAnalytics();
+  }, [fetchAnalytics, canLoad]);
 
   const refreshAll = () => {
     setReloadToken((token) => token + 1);
@@ -397,54 +429,19 @@ export default function Analytics() {
     setPeriod({ type: "custom", from: customDraft.from, to: customDraft.to });
   };
 
-  // Verify admin password against the server
-  const verifyPassword = async (password: string): Promise<boolean> => {
-    try {
-      const userRaw = localStorage.getItem("user");
-      if (!userRaw) return false;
-      const user = JSON.parse(userRaw);
-      const email = user.email;
-      if (!email) return false;
-      const res = await fetch(`${serverUrl}/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      return res.ok;
-    } catch {
-      return false;
-    }
-  };
-
-  const handleAccessVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAccessError("");
-    setAccessLoading(true);
-    try {
-      const ok = await verifyPassword(accessPassword);
-      if (ok) {
-        setAccessVerified(true);
-      } else {
-        setAccessError(t("reports.wrongPasswordAccess"));
-        setAccessPassword("");
-      }
-    } finally {
-      setAccessLoading(false);
-    }
-  };
-
   const handlePrintPasswordVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setPrintPasswordError("");
     setPrintPasswordLoading(true);
     try {
-      const ok = await verifyPassword(printPassword);
-      if (ok) {
+      // Checked by the server; never opens a new session.
+      const result = await confirmPassword(printPassword);
+      if (result === "confirmed") {
         setShowPrintPasswordModal(false);
         setPrintPassword("");
         await doGenerateReport();
       } else {
-        setPrintPasswordError(t("reports.wrongPasswordPrint"));
+        setPrintPasswordError(t(result === "locked" ? "reports.reauth.locked" : result === "unavailable" ? "reports.reauth.unavailable" : "reports.wrongPasswordPrint"));
         setPrintPassword("");
       }
     } finally {
@@ -454,11 +451,14 @@ export default function Analytics() {
 
   const handleGenerateReport = () => {
     if (!analytics || !isAdmin()) return;
-    if (!Object.values(reportSections).some(Boolean)) return;
+    if (!Object.values(effectiveSections).some(Boolean)) return;
     setPrintPassword("");
     setPrintPasswordError("");
     setShowPrintPasswordModal(true);
   };
+
+  // Entries are shop-wide: a category report can never include them.
+  const effectiveSections: ReportSections = { ...reportSections, entries: reportSections.entries && !categoryView };
 
   const doGenerateReport = async () => {
     setGeneratingReport(true);
@@ -466,7 +466,8 @@ export default function Analytics() {
       // Yield to let React re-render the loading state before the synchronous PDF build
       await new Promise((res) => setTimeout(res, 50));
       generateCompanyReport({
-        sections: reportSections,
+        sections: effectiveSections,
+        category: categoryView ? (shownScope as AccountingCategory) : null,
         analytics: analytics!,
         adminUsername: getAdminUsername(),
         adminSignatureText,
@@ -500,52 +501,9 @@ export default function Analytics() {
     );
   }
 
-  // Admin: password gate before showing anything
+  // Admin: password gate before showing anything (checked by the server).
   if (isAdmin() && !accessVerified) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-8 max-w-sm w-full">
-          <div className="text-center mb-6">
-            <div className="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Shield className="w-7 h-7 text-blue-600" />
-            </div>
-            <h2 className="text-xl font-bold text-gray-900">{t("reports.verificationRequired")}</h2>
-            <p className="text-gray-500 text-sm mt-1">
-              {t("reports.enterPassword")}
-            </p>
-          </div>
-          <form onSubmit={handleAccessVerify} className="space-y-4">
-            <div>
-              <label htmlFor="analytics-mot-de-passe" className="block text-sm font-medium text-gray-700 mb-1.5">
-                {t("reports.adminPassword")}
-              </label>
-              <input
-                id="analytics-mot-de-passe"
-                type="password"
-                value={accessPassword}
-                onChange={(e) => setAccessPassword(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
-                placeholder={t("reports.passwordPlaceholder")}
-                autoFocus
-                required
-              />
-            </div>
-            {accessError && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
-                {accessError}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={accessLoading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm"
-            >
-              {accessLoading ? t("reports.verifying") : t("reports.access")}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    return <ReauthGate onConfirmed={() => setAccessVerified(true)} />;
   }
 
   // Full-page spinner only for the first load; afterwards the current figures
@@ -641,7 +599,10 @@ export default function Analytics() {
             <div className="min-w-0">
               <h2 id="report-period-title" className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" aria-hidden="true" />
-                <span className="truncate">{t("reports.period", { period: describePeriod(period) })}</span>
+                <span className="truncate">
+                  {t("reports.period", { period: describePeriod(period) })}
+                  {categoryView && <> · {t(`accounting.categoryTitles.${shownScope}`)}</>}
+                </span>
               </h2>
               <p className="text-xs text-gray-500 mt-1 flex items-center gap-2" aria-live="polite">
                 {t("reports.periodAppliesToAll")}
@@ -742,6 +703,35 @@ export default function Analytics() {
               {customError && <p className="fin-field-error" role="alert">{customError}</p>}
             </form>
           )}
+
+          {isAdmin() && (
+            <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 lg:flex-row lg:items-center lg:justify-between">
+              <span id="report-category-label" className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                <Tag className="w-4 h-4" aria-hidden="true" />
+                {t("reports.categoryFilter.label")}
+              </span>
+              <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-full sm:w-auto" role="group" aria-labelledby="report-category-label">
+                {REPORT_SCOPES.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={scope === option}
+                    onClick={() => setScope(option)}
+                    className={`px-3 py-2 rounded-md text-xs sm:text-sm font-medium transition-all duration-200 flex-1 sm:flex-none whitespace-nowrap ${
+                      scope === option ? "bg-blue-500 text-white" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
+                    }`}
+                  >
+                    {option === "ALL" ? t("reports.categoryFilter.all") : t(`accounting.categoryTitles.${option}`)}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {categoryView && (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900" role="note">
+              {t("reports.categoryFilter.shopWideExcluded")}
+            </p>
+          )}
         </section>
 
         <div className="space-y-5" aria-busy={loading || undefined}>
@@ -749,6 +739,7 @@ export default function Analytics() {
         <Suspense fallback={<ChartPlaceholder />}>
           <FinancialTrendChart
             canFilterCategory={isAdmin()}
+            category={isAdmin() ? scope : undefined}
             lockedCategory={isAdmin() ? null : analytics.assignedCategory ?? null}
             from={chartRange(period).from}
             to={chartRange(period).to}
@@ -791,7 +782,11 @@ export default function Analytics() {
             </div>
           </div>
 
-          {isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
+          {isAdmin() && categoryView ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-amber-200">
+            <p className="text-xs sm:text-sm text-gray-600">{t("reports.categoryFilter.scopeCardTitle")}</p>
+            <p className="mt-2 text-xl font-bold text-gray-900">{t(`accounting.categoryTitles.${shownScope}`)}</p>
+            <p className="mt-1 text-xs text-gray-500">{t("reports.categoryFilter.scopeCardHint")}</p>
+          </div> : isAdmin() ? <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">
@@ -821,7 +816,7 @@ export default function Analytics() {
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.totalValidatedExpenses)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">{t("reports.totalValidated")}</p>
+                <p className="text-xs text-gray-500 mt-1">{categoryView ? t("reports.categoryFilter.expensesHint") : t("reports.totalValidated")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <Receipt className="w-4 h-4 sm:w-6 sm:h-6 text-red-600" />
@@ -852,16 +847,16 @@ export default function Analytics() {
             </div>
             {isAdmin() ? (
               <>
-                <div className="rounded-xl bg-white border border-gray-200 p-4">
+                {shownScope !== "SHOES" && <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.clothesShareholder")}</p>
                   <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.clothesShareholderProfitFC || 0)}</p>
                   <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.clothesShareholderProfit || 0)}</p>
-                </div>
-                <div className="rounded-xl bg-white border border-gray-200 p-4">
+                </div>}
+                {shownScope !== "CLOTHES" && <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.shoesShareholder")}</p>
                   <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.shoeShareholder1ProfitFC || 0)}</p>
                   <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.shoeShareholder1Profit || 0)}</p>
-                </div>
+                </div>}
               </>
             ) : (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 sm:col-span-2">
@@ -902,7 +897,7 @@ export default function Analytics() {
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
                   {formatUSD(analytics.netRevenue)}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">{t("reports.netCashHint")}</p>
+                <p className="text-xs text-gray-500 mt-1">{categoryView ? t("reports.categoryFilter.netCashHint") : t("reports.netCashHint")}</p>
               </div>
               <div className="metric-icon p-2 sm:p-3 rounded-full">
                 <Calculator className="w-4 h-4 sm:w-6 sm:h-6 text-purple-600" />
@@ -1104,11 +1099,12 @@ export default function Analytics() {
                       { key: "expenses",  label: t("reports.sections.expenses"),  desc: t("reports.sections.expensesHint") },
                       { key: "entries",   label: t("reports.sections.entries"),   desc: t("reports.sections.entriesHint") },
                     ] as const).map(({ key, label, desc }) => {
-                      const checked = reportSections[key];
+                      const unavailable = key === "entries" && categoryView;
+                      const checked = effectiveSections[key];
                       return (
                         <label
                           key={key}
-                          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                          className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${unavailable ? "cursor-not-allowed opacity-60" : "cursor-pointer"} ${
                             checked
                               ? "bg-blue-50 border-blue-300"
                               : "bg-gray-50 border-gray-200 hover:bg-gray-100"
@@ -1117,6 +1113,7 @@ export default function Analytics() {
                           <input
                             type="checkbox"
                             checked={checked}
+                            disabled={unavailable}
                             onChange={(e) =>
                               setReportSections((prev) => ({ ...prev, [key]: e.target.checked }))
                             }
@@ -1124,7 +1121,7 @@ export default function Analytics() {
                           />
                           <div>
                             <div className="text-sm font-medium text-gray-800">{label}</div>
-                            <div className="text-xs text-gray-500">{desc}</div>
+                            <div className="text-xs text-gray-500">{unavailable ? t("reports.categoryFilter.entriesUnavailable") : desc}</div>
                           </div>
                         </label>
                       );
@@ -1133,8 +1130,11 @@ export default function Analytics() {
 
                   {/* Selected count badge */}
                   <p className="text-xs text-gray-500">
-                    {t("reports.sectionsSelected", { count: Object.values(reportSections).filter(Boolean).length })}
-                    {Object.values(reportSections).every(Boolean) && (
+                    {t("reports.sectionsSelected", { count: Object.values(effectiveSections).filter(Boolean).length })}
+                    {categoryView && (
+                      <span className="ml-2 font-medium text-gray-700">{t("reports.categoryFilter.showing", { category: t(`accounting.categoryTitles.${shownScope}`) })}</span>
+                    )}
+                    {Object.values(effectiveSections).every(Boolean) && (
                       <span className="ml-2 text-blue-600 font-medium">{t("reports.fullReport")}</span>
                     )}
                   </p>
@@ -1226,7 +1226,7 @@ export default function Analytics() {
                     onClick={handleGenerateReport}
                     disabled={
                       generatingReport ||
-                      !Object.values(reportSections).some(Boolean)
+                      !Object.values(effectiveSections).some(Boolean)
                     }
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-700 text-white font-semibold rounded-lg hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                   >
@@ -1243,7 +1243,7 @@ export default function Analytics() {
                     )}
                   </button>
 
-                  {!Object.values(reportSections).some(Boolean) && (
+                  {!Object.values(effectiveSections).some(Boolean) && (
                     <p className="text-xs text-center text-gray-400">
                       {t("reports.selectOneSection")}
                     </p>
@@ -1259,7 +1259,7 @@ export default function Analytics() {
             <h2 className="text-lg font-semibold text-gray-900">{t("operationalReports.sales.title")}</h2>
             <p className="mt-1 text-sm text-gray-600">{t("operationalReports.sales.subtitle")}</p>
           </div>
-          <Link to="/reports/products-sold" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">
+          <Link to={scope !== "ALL" ? `/reports/products-sold?category=${scope}` : "/reports/products-sold"} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800">
             {t("operationalReports.openSalesSheet")}
           </Link>
         </section>

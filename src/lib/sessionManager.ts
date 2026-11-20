@@ -7,16 +7,11 @@
 
 export const AUTH_TOKEN_KEY = "token";
 export const AUTH_USER_KEY = "user";
-/** sessionStorage key of a PIN-verified offline session (no server token). */
+/** Legacy sessionStorage key of the retired offline PIN session. Every
+ *  session now comes from the server; the key is only erased. */
 export const OFFLINE_SESSION_KEY = "offlineSession";
-
-export function hasOfflineSession(): boolean {
-  try {
-    return Boolean(sessionStorage.getItem(OFFLINE_SESSION_KEY));
-  } catch {
-    return false;
-  }
-}
+/** sessionStorage key of the reports password confirmation (lib/reportsReauth). */
+const REPORTS_REAUTH_KEY = "reportsReauth";
 
 export type SessionInvalidationReason = "expired" | "unauthorized" | "idle";
 
@@ -73,6 +68,7 @@ export function clearAuthStorage(): void {
   localStorage.removeItem(AUTH_USER_KEY);
   try {
     sessionStorage.removeItem(OFFLINE_SESSION_KEY);
+    sessionStorage.removeItem(REPORTS_REAUTH_KEY);
   } catch {
     // sessionStorage unavailable: nothing to clear.
   }

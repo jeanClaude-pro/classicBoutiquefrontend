@@ -23,7 +23,6 @@ import { RequireRole } from "./components/RequireRole";
 import { useAuth } from "./hooks/useAuth";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { OfflineRuntime } from "./components/OfflineRuntime";
-import { OfflineAccessSetup } from "./components/OfflineAccessSetup";
 
 const Products = lazy(() => import("./pages/products/products"));
 const SalesHistory = lazy(() => import("./pages/history/SalesHistory"));
@@ -56,7 +55,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       {!isLogin && <Sidebar />}
       <main className="app-main flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
         {!isLogin && <NetworkStatus />}
-        {!isLogin && <OfflineAccessSetup />}
         <div className="app-content min-h-full min-w-0">
           {/* A page that fails to render (or whose chunk is outdated) shows a
               fallback here while the navigation stays usable. */}

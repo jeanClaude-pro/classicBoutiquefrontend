@@ -4,7 +4,7 @@ import { offlineDb, scopeForUser } from "../src/offline/db";
 import { cacheProducts, getCachedProducts } from "../src/offline/repositories/products";
 import { cacheExchangeRate, getCachedExchangeRate } from "../src/offline/repositories/exchangeRates";
 import { addLocalSale, getLocalSale, getPendingSales, pendingQuantityByProduct, updateSaleStatus } from "../src/offline/repositories/sales";
-import { disableOfflineAccessForEmail, enableOfflineAccess, renewOfflineAuthorization, verifyOfflinePin } from "../src/offline/offlineAuth";
+import { purgeOfflineCredentials } from "../src/offline/offlineAuth";
 import { requeueSale, submitNewSale, synchronizeSales } from "../src/offline/syncManager";
 import type { LocalSale } from "../src/offline/types";
 import type { Product } from "../src/types";
@@ -83,38 +83,17 @@ describe("offline database", () => {
   });
 });
 
-describe("offline PIN", () => {
-  test("stores a derived verifier, accepts the correct PIN and rejects a wrong PIN", async () => {
-    const profile = await enableOfflineAccess(user, "123456");
-    expect(JSON.stringify(profile)).not.toContain("123456");
-    await expect(verifyOfflinePin(user.id, "123456")).resolves.toMatchObject({ userId: user.id });
-    await expect(verifyOfflinePin(user.id, "654321")).rejects.toThrow("PIN_INVALID");
-  });
-
-  test("persists lockout and enforces offline authorization expiry", async () => {
-    await enableOfflineAccess(user, "123456");
-    for (let attempt = 0; attempt < 4; attempt += 1) await expect(verifyOfflinePin(user.id, "000000")).rejects.toThrow("PIN_INVALID");
-    await expect(verifyOfflinePin(user.id, "000000")).rejects.toThrow("PIN_LOCKED");
-    await expect(verifyOfflinePin(user.id, "123456")).rejects.toThrow("PIN_LOCKED");
-    await offlineDb.authProfiles.update(user.id, { lockoutUntil: undefined, offlineAccessExpiresAt: "2020-01-01T00:00:00.000Z" });
-    await expect(verifyOfflinePin(user.id, "123456")).rejects.toThrow("OFFLINE_EXPIRED");
-  });
-
-  test("no profile and disabled profiles refuse offline login; online login renews the window", async () => {
-    await expect(verifyOfflinePin("nobody", "123456")).rejects.toThrow("OFFLINE_DISABLED");
-    await enableOfflineAccess(user, "123456");
-    await offlineDb.authProfiles.update(user.id, { offlineAccessExpiresAt: "2020-01-01T00:00:00.000Z", failedAttempts: 3 });
-    await renewOfflineAuthorization({ ...user, role: "cashier_supervisor" });
-    const renewed = await offlineDb.authProfiles.get(user.id);
-    expect(new Date(renewed!.offlineAccessExpiresAt).getTime()).toBeGreaterThan(Date.now());
-    expect(renewed).toMatchObject({ failedAttempts: 0, user: { role: "cashier_supervisor" } });
-    // Server reports the account disabled: offline access is withdrawn.
-    await disableOfflineAccessForEmail("CASHIER@example.com");
-    await expect(verifyOfflinePin(user.id, "123456")).rejects.toThrow("OFFLINE_DISABLED");
-  });
-
-  test("rejects PINs shorter than six digits", async () => {
-    await expect(enableOfflineAccess(user, "1234")).rejects.toThrow("PIN_LENGTH");
+describe("retired offline PIN sign-in", () => {
+  test("credentials left by the old offline PIN sign-in are erased, queued sales are kept", async () => {
+    await offlineDb.authProfiles.put({
+      userId: user.id, user, scopeKey: scopeForUser(user), pinSalt: "c2FsdA==", pinVerifier: "dmVyaWZpZXI=", pinIterations: 310000,
+      enabled: true, lastOnlineAuthenticationAt: new Date().toISOString(), offlineAccessExpiresAt: new Date(Date.now() + 86400000).toISOString(),
+      failedAttempts: 0, authorizationVersion: 1,
+    });
+    await addLocalSale(sale());
+    await purgeOfflineCredentials();
+    expect(await offlineDb.authProfiles.count()).toBe(0);
+    expect(await getPendingSales(user.id)).toHaveLength(1);
   });
 });
 

@@ -18,6 +18,12 @@ import {
 
 export const fieldClass = "mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100 disabled:text-slate-600";
 
+function categoryFromUrl(): ReportCategory {
+  if (typeof window === "undefined") return "ALL";
+  const requested = new URLSearchParams(window.location.search).get("category");
+  return requested === "CLOTHES" || requested === "SHOES" ? requested : "ALL";
+}
+
 export function useReportFilters({ withCategory = true } = {}) {
   const { user, loading } = useAuth();
   const today = businessDay(new Date());
@@ -27,7 +33,9 @@ export function useReportFilters({ withCategory = true } = {}) {
   const fixedCategory = user?.role === "admin" && (user.assignedCategory === "CLOTHES" || user.assignedCategory === "SHOES")
     ? user.assignedCategory
     : undefined;
-  const [category, setCategory] = useState<ReportCategory>(fixedCategory || "ALL");
+  // A link from the Reports page (?category=SHOES) opens this sheet already
+  // restricted to that category. The server still decides what is visible.
+  const [category, setCategory] = useState<ReportCategory>(() => fixedCategory || categoryFromUrl());
   const range = useMemo(() => reportRange(period, customFrom, customTo), [period, customFrom, customTo]);
   const effectiveCategory: ReportCategory = withCategory ? (fixedCategory || category) : "ALL";
   const query = useMemo(() => {

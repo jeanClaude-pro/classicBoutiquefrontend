@@ -144,6 +144,7 @@ test("Clients on a phone: cards keep family status and all three actions", async
 
 test("Sidebar: navigation still follows permissions, and the language switch works", async () => {
   signIn({ role: "admin", assignedCategory: "CLOTHES", permissions: ["/reports", "/products"] });
+  mockApi([]); // the server confirms the stored session
   const user = userEvent.setup();
   renderPage(<Sidebar />, "/reports/products-sold");
   const nav = await screen.findByRole("navigation", { name: /navigation/i });
@@ -157,25 +158,30 @@ test("Sidebar: navigation still follows permissions, and the language switch wor
 });
 
 test("Sidebar: the Fiche des ventes is reachable for the roles that can open Reports, and only them", async () => {
-  const visibleFor = (user: Record<string, unknown>, path = "/") => {
+  // The menu appears once the server has confirmed the stored session.
+  const visibleFor = async (user: Record<string, unknown>, path = "/") => {
     localStorage.clear();
     signIn(user);
+    const api = mockApi([]);
     const view = renderPage(<Sidebar />, path);
+    await waitFor(() => expect(api.calls.some((call) => call.url.endsWith("/auth/session"))).toBe(true));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     const link = screen.queryByRole("link", { name: "Fiche des ventes" });
     const href = link?.getAttribute("href") ?? null;
     view.unmount();
     return href;
   };
-  expect(visibleFor({ role: "superadmin" })).toBe("/reports/products-sold");
-  expect(visibleFor({ role: "admin", assignedCategory: "SHOES", permissions: ["/reports"] })).toBe("/reports/products-sold");
-  expect(visibleFor({ role: "admin", assignedCategory: "SHOES", permissions: ["/sales"] })).toBeNull();
-  expect(visibleFor({ role: "staff" })).toBeNull();
-  expect(visibleFor({ role: "manager" })).toBeNull();
+  expect(await visibleFor({ role: "superadmin" })).toBe("/reports/products-sold");
+  expect(await visibleFor({ role: "admin", assignedCategory: "SHOES", permissions: ["/reports"] })).toBe("/reports/products-sold");
+  expect(await visibleFor({ role: "admin", assignedCategory: "SHOES", permissions: ["/sales"] })).toBeNull();
+  expect(await visibleFor({ role: "staff" })).toBeNull();
+  expect(await visibleFor({ role: "manager" })).toBeNull();
 
   // On the Reports page itself, Reports (not the Fiche des ventes) is current.
   localStorage.clear();
   signIn({ role: "superadmin" });
+  mockApi([]);
   renderPage(<Sidebar />, "/reports");
-  expect(screen.getByRole("link", { name: "Rapports & analyses" })).toHaveAttribute("aria-current", "page");
+  expect(await screen.findByRole("link", { name: "Rapports & analyses" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Fiche des ventes" })).not.toHaveAttribute("aria-current");
 });
