@@ -11,7 +11,8 @@
 # The build refuses to run on Netlify while the placeholder is still here.
 [[redirects]]
 from = "/api/*"
-to = "https://YOUR-API-HOST.onrender.com/api/:splat"
+to = "
+https://classicboutiqueserver.onrender.com/api/:splat"
 status = 200
 force = true
 signed = "API_PROXY_SIGNATURE"
