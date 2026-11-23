@@ -2,9 +2,9 @@ import { serverUrl } from "../utils/constants";
 import type { escPosReceiptData } from "../lib/saleReceipt";
 
 // Thermal (ESC/POS) printing through the server. The payload is built by
-// escPosReceiptData (lib/saleReceipt.ts): stored item snapshots, the sale's
-// rate snapshot and the receipt labels in the interface language. The server
-// prints every amount in FC only (server/utils/receiptLayout.js).
+// escPosReceiptData (lib/saleReceipt.ts): the sale's FC lines and the receipt
+// labels in the interface language. The server prints every amount in FC
+// (server/utils/receiptLayout.js).
 export type PrintReceiptData = ReturnType<typeof escPosReceiptData>;
 
 export class PrintService {
@@ -14,7 +14,6 @@ export class PrintService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
         },
         body: JSON.stringify({ receiptData, type }),
       });
@@ -37,7 +36,6 @@ export class PrintService {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
         },
         body: JSON.stringify({ receiptData, type }),
       });

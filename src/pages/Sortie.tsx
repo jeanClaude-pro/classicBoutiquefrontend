@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { currentLocale } from "../i18n";
-import { formatDateGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
-import { Calculator, DollarSign, RefreshCw } from "lucide-react";
 import { serverUrl } from "../utils/constants";
-import { createAmountSnapshot, formatFC, formatUSD } from "../utils/salePricing";
+import { createAmountSnapshot, formatFC } from "../utils/salePricing";
 import { FUNDS_DEFINITION, FUNDS_LABEL, FUNDS_RULE } from "./analytics/accountingPresentation";
 import { requestJson, toApiError } from "../lib/apiError";
 import { notifySuccess } from "../lib/notify";
@@ -25,17 +22,10 @@ interface SortieForm {
   reason: string;
   recipientName: string;
   recipientPhone: string;
+  /** Amount in FC, the shop's only currency. */
   amount: string;
-  amountInFC: string;
   paymentMethod: "cash" | "mpesa" | "bank" | "card" | "other";
   notes: string;
-  currencyMode: "usd" | "fc";
-}
-
-interface ExchangeRate {
-  rate: number;
-  effectiveFrom: string;
-  lastUpdated: string;
 }
 
 const API_BASE = serverUrl;
@@ -46,8 +36,6 @@ export default function Sortie() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
-  const [loadingRate, setLoadingRate] = useState(true);
   const [funds, setFunds] = useState<{ availablePurchaseFunds: number; fundingShortfall?: number | null } | null>(null);
   const [fundsVersion, setFundsVersion] = useState(0);
   const requestKey = useRef(newRequestKey());
@@ -64,37 +52,11 @@ export default function Sortie() {
     recipientName: "",
     recipientPhone: "",
     amount: "",
-    amountInFC: "",
     paymentMethod: "cash",
     notes: "",
-    currencyMode: "fc",
   });
 
-  // Load exchange rate
-  const loadExchangeRate = async () => {
-    try {
-      setLoadingRate(true);
-      const response = await fetch(`${API_BASE}/exchange-rates/current`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setExchangeRate(data);
-      } else {
-        console.warn('Failed to load exchange rate');
-      }
-    } catch (error) {
-      console.error('Error loading exchange rate:', error);
-    } finally {
-      setLoadingRate(false);
-    }
-  };
-
   useEffect(() => {
-    loadExchangeRate();
     fetch(`${API_BASE}/creditors/selector`, { headers: authHeader() }).then(r => r.ok ? r.json() : []).then(setCreditors).catch(() => setCreditors([]));
   }, []);
 
@@ -105,30 +67,6 @@ export default function Sortie() {
       .then(setFunds)
       .catch(() => setFunds(null));
   }, [form.category, form.expenseType, fundsVersion]);
-
-  // Calculate USD amount when FC amount changes
-  useEffect(() => {
-    if (form.currencyMode === "fc" && form.amountInFC && exchangeRate) {
-      const fcAmount = parseFloat(form.amountInFC) || 0;
-      const usdAmount = fcAmount / exchangeRate.rate;
-      setForm(prev => ({
-        ...prev,
-        amount: usdAmount.toFixed(2)
-      }));
-    }
-  }, [form.amountInFC, form.currencyMode, exchangeRate]);
-
-  // Calculate FC amount when USD amount changes
-  useEffect(() => {
-    if (form.currencyMode === "usd" && form.amount && exchangeRate) {
-      const usdAmount = parseFloat(form.amount) || 0;
-      const fcAmount = usdAmount * exchangeRate.rate;
-      setForm(prev => ({
-        ...prev,
-        amountInFC: Math.round(fcAmount).toString()
-      }));
-    }
-  }, [form.amount, form.currencyMode, exchangeRate]);
 
   const isFormValid =
     (form.expenseType !== "REPAYMENT" || form.creditorId !== "") &&
@@ -143,20 +81,9 @@ export default function Sortie() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   }
 
-  // Toggle between USD and FC input modes
-  const toggleCurrencyMode = () => {
-    setForm(prev => ({
-      ...prev,
-      currencyMode: prev.currencyMode === "usd" ? "fc" : "usd",
-      amount: "",
-      amountInFC: ""
-    }));
-  };
-
+  // The session is the httpOnly cookie the browser sends by itself.
   function authHeader(): Record<string, string> {
-    const token =
-      localStorage.getItem("authToken") || localStorage.getItem("token") || "";
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return {};
   }
 
   async function handleSortie(e: React.FormEvent) {
@@ -167,11 +94,7 @@ export default function Sortie() {
 
     let amountSnapshot: ReturnType<typeof createAmountSnapshot>;
     try {
-      amountSnapshot = createAmountSnapshot(
-        parseFloat(form.currencyMode === "fc" ? form.amountInFC : form.amount),
-        form.currencyMode === "fc" ? "FC" : "USD",
-        exchangeRate?.rate
-      );
+      amountSnapshot = createAmountSnapshot(parseFloat(form.amount));
     } catch {
       setError(t("expenses.invalidAmount"));
       return;
@@ -183,7 +106,7 @@ export default function Sortie() {
       reason: form.reason,
       recipientName: form.recipientName,
       recipientPhone: form.recipientPhone,
-      amount: amountSnapshot.amountUSD,
+      amount: amountSnapshot.amountFC,
       ...amountSnapshot,
       paymentMethod: form.paymentMethod,
       notes: form.notes || "",
@@ -221,10 +144,8 @@ export default function Sortie() {
       recipientName: "",
       recipientPhone: "",
       amount: "",
-      amountInFC: "",
       paymentMethod: "cash",
       notes: "",
-      currencyMode: "fc",
     });
     const success = saved.status === "validated"
       ? t("expenses.savedValidated")
@@ -240,37 +161,16 @@ export default function Sortie() {
   return (
     <div className="flex-1 p-4 sm:p-6 pb-28 md:pb-8 overflow-auto">
       <div className="max-w-4xl mx-auto">
-        {/* Header with Exchange Rate */}
+        {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{MODULES.sortie.label}</h2>
               <p className="text-gray-600 mt-1">{MODULES.sortie.description}</p>
             </div>
-            
-            {/* Exchange Rate Display */}
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
-                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("expenses.todayRate")}</span>
-                </div>
-                {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
-                ) : exchangeRate ? (
-                  <div className="text-right">
-                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
-                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t("expenses.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-red-600 text-sm">{t("expenses.rateUnavailable")}</span>
-                )}
-              </div>
-            </div>
+            <span className="self-start sm:self-auto rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-700">
+              {t("common.currencyFC")}
+            </span>
           </div>
         </div>
 
@@ -379,58 +279,21 @@ export default function Sortie() {
             {/* Amount and Payment Method */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label htmlFor="sortie-amount" className="block font-medium text-gray-700">
-                    {t("expenses.amountLabel")}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={toggleCurrencyMode}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    <Calculator className="w-3 h-3" />
-                    {form.currencyMode === 'usd' ? 'USD → FC' : 'FC → USD'}
-                  </button>
-                </div>
-                
-                {form.currencyMode === 'usd' ? (
-                  <input
-                    id="sortie-amount"
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    placeholder="0.00"
-                    min="0.01"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    required
-                  />
-                ) : (
-                  <input
-                    id="sortie-amount"
-                    type="number"
-                    name="amountInFC"
-                    value={form.amountInFC}
-                    onChange={(e) => setForm({ ...form, amountInFC: e.target.value })}
-                    placeholder="0"
-                    min="1"
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-                    required
-                  />
-                )}
-                
-                {/* Conversion Display */}
-                {form.amount && form.currencyMode === 'usd' && exchangeRate && (
-                  <p className="text-xs text-green-600 mt-1">
-                    ≈ {formatFC(parseFloat(form.amount) * exchangeRate.rate)}
-                  </p>
-                )}
-                {form.amountInFC && form.currencyMode === 'fc' && exchangeRate && (
-                  <p className="text-xs text-green-600 mt-1">
-                    ≈ {formatUSD(parseFloat(form.amountInFC) / exchangeRate.rate)}
-                  </p>
-                )}
+                <label htmlFor="sortie-amount" className="block mb-2 font-medium text-gray-700">
+                  {t("expenses.amountLabelFC")}
+                </label>
+                <input
+                  id="sortie-amount"
+                  type="number"
+                  inputMode="numeric"
+                  name="amount"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  placeholder="0"
+                  min="1"
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                  required
+                />
               </div>
 
               <div>
@@ -454,36 +317,16 @@ export default function Sortie() {
               </div>
             </div>
 
-            {/* Amount Summary */}
-            {form.amount && exchangeRate && (
-              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                  <div className="text-center">
-                    <div className="font-semibold text-gray-700">{t("expenses.amountUsd")}</div>
-                    <div className="text-lg font-bold text-green-600">
-                      {formatUSD(parseFloat(form.amount))}
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="font-semibold text-gray-700">{t("expenses.equivalentFc")}</div>
-                    <div className="text-lg font-bold text-blue-600">
-                      {formatFC(parseFloat(form.amount) * exchangeRate.rate)}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {form.expenseType === "GOODS_PURCHASE" && funds && (
               <div className="rounded-xl bg-slate-900 p-4 text-white">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div><p className="text-xs text-slate-300">{FUNDS_LABEL}</p><p className="text-lg font-bold">{formatUSD(funds.availablePurchaseFunds)}</p></div>
-                  <div><p className="text-xs text-slate-300">{t("expenses.requestedAmount")}</p><p className="text-lg font-bold">{formatUSD(Number(form.amount || 0))}</p></div>
-                  <div><p className="text-xs text-slate-300">{t("expenses.balanceAfter")}</p><p className={`text-lg font-bold ${funds.availablePurchaseFunds - Number(form.amount || 0) < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatUSD(funds.availablePurchaseFunds - Number(form.amount || 0))}</p></div>
+                  <div><p className="text-xs text-slate-300">{FUNDS_LABEL}</p><p className="text-lg font-bold">{formatFC(funds.availablePurchaseFunds)}</p></div>
+                  <div><p className="text-xs text-slate-300">{t("expenses.requestedAmount")}</p><p className="text-lg font-bold">{formatFC(Number(form.amount || 0))}</p></div>
+                  <div><p className="text-xs text-slate-300">{t("expenses.balanceAfter")}</p><p className={`text-lg font-bold ${funds.availablePurchaseFunds - Number(form.amount || 0) < 0 ? "text-red-300" : "text-emerald-300"}`}>{formatFC(funds.availablePurchaseFunds - Number(form.amount || 0))}</p></div>
                 </div>
                 <p className="mt-3 text-xs text-slate-300">{FUNDS_DEFINITION} {FUNDS_RULE[form.category]}</p>
                 {Number(funds.fundingShortfall || 0) > 0 && (
-                  <p className="mt-2 text-xs text-red-300">{t("expenses.shortfall", { amount: formatUSD(Number(funds.fundingShortfall)) })}</p>
+                  <p className="mt-2 text-xs text-red-300">{t("expenses.shortfall", { amount: formatFC(Number(funds.fundingShortfall)) })}</p>
                 )}
               </div>
             )}
@@ -551,11 +394,6 @@ export default function Sortie() {
                   <p>
                     {t("expenses.infoText")}
                   </p>
-                  {exchangeRate && (
-                    <p className="mt-2 font-medium">
-                      {t("expenses.rateUsed", { rate: new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate) })}
-                    </p>
-                  )}
                 </div>
               </div>
             </div>

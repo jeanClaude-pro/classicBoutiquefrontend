@@ -4,7 +4,7 @@ import { formatDateGMT2, formatDateTimeGMT2 } from "../../utils/dateUtils";
 import { useState, useEffect, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { serverUrl } from "../../utils/constants";
-import { formatUSD } from "../../utils/salePricing";
+import { formatFC } from "../../utils/salePricing";
 import { requestJson, toApiError } from "../../lib/apiError";
 import { notifyError, notifySuccess } from "../../lib/notify";
 import { MODULES } from "../../config/modules";
@@ -327,7 +327,7 @@ export default function Customers() {
             <div>
               <p className="text-sm text-gray-600">{t("customers.totalPurchases")}</p>
               <p className="text-xl font-semibold text-gray-900">
-                {formatUSD(calculateTotalRevenue())}
+                {formatFC(calculateTotalRevenue())}
               </p>
               <p className="text-xs text-gray-500 mt-1">
                 {t("customers.activeCustomers", { count: customers.filter((c) => c.totalSpent > 0).length })}
@@ -404,7 +404,7 @@ export default function Customers() {
                       <p className="mt-1 flex items-center gap-1 text-sm text-gray-600"><Phone className="h-3 w-3" aria-hidden="true" />{customer.phone || "—"}</p>
                       {customer.email && <p className="flex items-center gap-1 break-all text-sm text-gray-500"><Mail className="h-3 w-3" aria-hidden="true" />{customer.email}</p>}
                     </div>
-                    <p className="flex-none text-right text-sm font-semibold tabular-nums text-gray-900">{formatUSD(customer.totalSpent)}</p>
+                    <p className="flex-none text-right text-sm font-semibold tabular-nums text-gray-900">{formatFC(customer.totalSpent)}</p>
                   </div>
                   <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
                     <div><dt className="text-xs text-gray-500">{t("customers.columns.purchases")}</dt><dd className="tabular-nums text-gray-900">{customer.totalPurchases}</dd></div>
@@ -482,7 +482,7 @@ export default function Customers() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatUSD(customer.totalSpent)}
+                      {formatFC(customer.totalSpent)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(customer.lastPurchaseDate)}
@@ -567,7 +567,7 @@ export default function Customers() {
                     <div>
                       <p className="text-sm text-green-600">{t("customers.amountSpent")}</p>
                       <p className="text-xl font-semibold text-green-900">
-                        {formatUSD(selectedCustomer.totalSpent)}
+                        {formatFC(selectedCustomer.totalSpent)}
                       </p>
                     </div>
                   </div>

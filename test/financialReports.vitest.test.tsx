@@ -23,17 +23,17 @@ afterEach(() => {
 const figures = (revenue: number, cogs: number, sales: number) => ({
   revenue, costOfGoodsSold: cogs, grossProfit: revenue - cogs, companyExpenses: 0, netResult: revenue - cogs,
   grossMargin: revenue > 0 ? ((revenue - cogs) / revenue) * 100 : null,
-  revenueFC: revenue * 2800, costOfGoodsSoldFC: cogs * 2800, grossProfitFC: (revenue - cogs) * 2800, companyExpensesFC: 0, netResultFC: (revenue - cogs) * 2800,
   sales, unitsSold: sales,
 });
 function timeSeries(category: "CLOTHES" | "SHOES" | null) {
   const categories = category ? [category] : ["CLOTHES", "SHOES"];
-  const days = [["2026-09-21", 0, 0, 0], ["2026-09-22", 55, 30, 1], ["2026-09-23", 20, 8, 1]] as const;
+  // Every amount is FC.
+  const days = [["2026-09-21", 0, 0, 0], ["2026-09-22", 55000, 30000, 1], ["2026-09-23", 20000, 8000, 1]] as const;
   return {
     success: true, source: "mongodb-aggregation", paginated: false,
-    range: { from: "2026-09-21", to: "2026-09-23", start: "", end: "", days: 3 }, granularity: "day", currency: "USD", categories,
+    range: { from: "2026-09-21", to: "2026-09-23", start: "", end: "", days: 3 }, granularity: "day", currency: "FC", categories,
     series: days.map(([date, revenue, cogs, sales]) => ({ date, start: date, end: date, partial: false, ...figures(revenue, cogs, sales), byCategory: {} })),
-    totals: { ...figures(75, 38, 2), byCategory: {} },
+    totals: { ...figures(75000, 38000, 2), byCategory: {} },
   };
 }
 
@@ -71,16 +71,16 @@ const category = (overrides: Partial<CategoryReportDTO>): CategoryReportDTO => (
   profitUsedForPurchases: 0, distributableProfit: 0, shareholder1: 0, shareholder2: 0, ...overrides,
 });
 
-test("the Total column adds both categories to the cent and margins come from the shown values", async () => {
+test("the Total column adds both categories exactly and margins come from the shown values", async () => {
   const user = userEvent.setup();
   render(
     <CategoryAccountingTables
       periodLabel="Ce Mois"
       breakdown={{
-        CLOTHES: category({ revenue: 100.1, costOfGoodsSold: 60.05, grossProfit: 40.05, netProfit: 40.05, distributableProfit: 40.05, shareholder1: 40.05 }),
-        SHOES: category({ revenue: 0.2, costOfGoodsSold: 0.1, grossProfit: 0.1, companyExpenses: 5, netProfit: -4.9 }),
+        CLOTHES: category({ revenue: 100100, costOfGoodsSold: 60050, grossProfit: 40050, netProfit: 40050, distributableProfit: 40050, shareholder1: 40050 }),
+        SHOES: category({ revenue: 200, costOfGoodsSold: 100, grossProfit: 100, companyExpenses: 5000, netProfit: -4900 }),
       }}
-      inventory={{ CLOTHES: { products: 3, unitsInStock: 12, acquisitionValue: 120, retailValue: 300 } }}
+      inventory={{ CLOTHES: { products: 3, unitsInStock: 12, acquisitionValue: 120000, retailValue: 300000 } }}
     />,
   );
   expect(screen.getByRole("table", { name: "Vêtements" })).toBeInTheDocument();
@@ -90,8 +90,8 @@ test("the Total column adds both categories to the cent and margins come from th
   const row = (label: string) => within(period).getByRole("rowheader", { name: label }).closest("tr")!;
   const cells = (label: string) => within(row(label)).getAllByRole("cell").map((cell) => cell.querySelector(".fin-value")?.textContent?.replace(/\s/g, " "));
 
-  expect(cells("Chiffre d'affaires")).toEqual(["100,10 $US", "0,20 $US", "100,30 $US"]);
-  expect(cells("Résultat net")).toEqual(["40,05 $US", "-4,90 $US", "35,15 $US"]);
+  expect(cells("Chiffre d'affaires")).toEqual(["100 100 FC", "200 FC", "100 300 FC"]);
+  expect(cells("Résultat net")).toEqual(["40 050 FC", "-4 900 FC", "35 150 FC"]);
   expect(cells("Marge brute")).toEqual(["40,0 %", "50,0 %", "40,0 %"]);
   // Shares belong to different people: they are never totalled.
   expect(cells("Part actionnaire 1")[2]).toBe("—");
@@ -100,18 +100,10 @@ test("the Total column adds both categories to the cent and margins come from th
   expect(within(row("Résultat net")).getAllByRole("cell")[1]).toHaveClass("is-negative");
   // Phones read each value with its category label.
   expect(within(row("Chiffre d'affaires")).getAllByRole("cell").map((cell) => cell.getAttribute("data-label"))).toEqual(["Vêtements", "Chaussures", "Total"]);
-  expect(screen.getByRole("table", { name: "Valeur du stock (USD)" })).toBeInTheDocument();
-});
-
-test("the FC view shows historical FC amounts and keeps USD where no FC exists", async () => {
-  const user = userEvent.setup();
-  render(<CategoryAccountingTables periodLabel="Ce Mois" breakdown={{ SHOES: category({ revenue: 10, revenueFC: 28000, capitalUsedForPurchases: 4 }) }} />);
-  await user.click(screen.getByRole("button", { name: "Comprendre les chiffres" }));
-  await user.click(screen.getByRole("button", { name: "FC" }));
-  const period = screen.getByRole("table", { name: "Performance de la période" });
-  const value = (label: string) => within(within(period).getByRole("rowheader", { name: label }).closest("tr")!).getAllByRole("cell")[0].textContent?.replace(/\s/g, " ");
-  expect(value("Chiffre d'affaires")).toBe("28 000 FC");
-  expect(value("dont capital récupéré")).toBe("4,00 $US");
+  expect(screen.getByRole("table", { name: "Valeur du stock (FC)" })).toBeInTheDocument();
+  // FC is the only currency: no currency switch, no dollar amount.
+  expect(screen.queryByRole("group", { name: /devise/i })).not.toBeInTheDocument();
+  expect(document.body.textContent).not.toMatch(/\$|USD/);
 });
 
 test("the superadmin chart filters by category over the period it is given", async () => {
@@ -121,7 +113,7 @@ test("the superadmin chart filters by category over the period it is given", asy
   ]);
   const user = userEvent.setup();
   render(<FinancialTrendChart canFilterCategory from="2026-09-21" to="2026-09-23" />);
-  expect(await screen.findByText(/75,00/)).toBeInTheDocument();
+  expect(await screen.findByText(/^75\s000 FC$/)).toBeInTheDocument();
   // The chart has no period control of its own: it asks for the page's period.
   const first = new URL(api.calls[0].url).searchParams;
   expect([first.get("from"), first.get("to")]).toEqual(["2026-09-21", "2026-09-23"]);
@@ -131,8 +123,8 @@ test("the superadmin chart filters by category over the period it is given", asy
   await user.click(within(screen.getByRole("group", { name: "Catégorie" })).getByRole("button", { name: "Chaussures" }));
   await waitFor(() => expect(api.calls.at(-1)!.url).toContain("category=SHOES"));
 
-  // Peak and lowest are the real buckets (55 on the 22nd, 0 on the 21st).
-  expect(screen.getByText("55,00 $US")).toBeInTheDocument();
+  // Peak and lowest are the real buckets (55,000 FC on the 22nd, 0 on the 21st).
+  expect(screen.getByText(/^55\s000 FC$/)).toBeInTheDocument();
   expect(screen.getByText(/mardi 22 septembre 2026/i)).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "Afficher les données" }));

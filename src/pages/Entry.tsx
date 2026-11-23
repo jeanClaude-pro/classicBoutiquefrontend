@@ -1,18 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { currentLocale } from "../i18n";
 import { ENTRY_CATEGORIES, ENTRY_SOURCES, entryCategoryLabel, entrySourceLabel } from "../lib/entryOptions";
 import { apiErrorFromPayload, fetchWithTimeout, toApiError } from "../lib/apiError";
 import { newRequestKey } from "../lib/requestKey";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
-import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
+import { formatNowGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
-import { DollarSign, RefreshCw, FileText, User, Calculator } from "lucide-react";
+import { DollarSign, RefreshCw, FileText, User } from "lucide-react";
 import { serverUrl } from "../utils/constants";
 import { COMPANY_PHONE } from "../config/company";
-import { createAmountSnapshot, formatFC, formatUSD } from "../utils/salePricing";
+import { createAmountSnapshot, formatFC } from "../utils/salePricing";
 import { escapeHtmlDeep, printAndClose } from "../lib/saleReceipt";
 
 interface Entry {
@@ -34,12 +33,6 @@ interface Entry {
   };
   createdAt: string;
   status: string;
-}
-
-interface ExchangeRate {
-  rate: number;
-  effectiveFrom: string;
-  lastUpdated: string;
 }
 
 const API_BASE = serverUrl;
@@ -69,15 +62,13 @@ export default function Entry() {
   const submitLock = useRef(false);
   const requestKey = useRef(newRequestKey());
   const [receiptData, setReceiptData] = useState<any>(null);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
-  const [loadingRate, setLoadingRate] = useState(true);
   const receiptRef = useRef<HTMLDivElement>(null);
 
   const { user: currentUser } = useAuth();
 
   const [form, setForm] = useState({
+    // Amount in FC, the shop's only currency.
     amount: "",
-    amountInFC: "",
     source: "",
     category: "",
     paymentMethod: "cash" as UiPayment,
@@ -85,7 +76,6 @@ export default function Entry() {
     receivedFromName: "",
     receivedFromPhone: "",
     receivedFromEmail: "",
-    currencyMode: "fc" as "usd" | "fc"
   });
 
   const [message, setMessage] = useState<string | null>(null);
@@ -95,59 +85,8 @@ export default function Entry() {
   const sources = ENTRY_SOURCES;
   const categories = ENTRY_CATEGORIES;
   // Receipt helpers: labels in the language active when the receipt is printed.
-  const receiptAmount = (data: any) => data.enteredCurrency === "FC" ? `${data.enteredAmount.toLocaleString(currentLocale())} FC` : `$${data.enteredAmount.toFixed(2)}`;
+  const receiptAmount = (data: any) => formatFC(data.amountFC ?? data.amount);
   const receiptPayment = (data: any) => t(`entryOptions.payment.${data.paymentMethod}`, { defaultValue: data.paymentMethod }).toUpperCase();
-
-  // Load exchange rate
-  const loadExchangeRate = async () => {
-    try {
-      setLoadingRate(true);
-      const response = await fetch(`${API_BASE}/exchange-rates/current`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem("token") || ""}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setExchangeRate(data);
-      } else {
-        console.warn('Failed to load exchange rate');
-      }
-    } catch (error) {
-      console.error('Error loading exchange rate:', error);
-    } finally {
-      setLoadingRate(false);
-    }
-  };
-
-  useEffect(() => {
-    loadExchangeRate();
-  }, []);
-
-  // Calculate USD amount when FC amount changes
-  useEffect(() => {
-    if (form.currencyMode === "fc" && form.amountInFC && exchangeRate) {
-      const fcAmount = parseFloat(form.amountInFC) || 0;
-      const usdAmount = fcAmount / exchangeRate.rate;
-      setForm(prev => ({
-        ...prev,
-        amount: usdAmount.toFixed(2)
-      }));
-    }
-  }, [form.amountInFC, form.currencyMode, exchangeRate]);
-
-  // Calculate FC amount when USD amount changes
-  useEffect(() => {
-    if (form.currencyMode === "usd" && form.amount && exchangeRate) {
-      const usdAmount = parseFloat(form.amount) || 0;
-      const fcAmount = usdAmount * exchangeRate.rate;
-      setForm(prev => ({
-        ...prev,
-        amountInFC: Math.round(fcAmount).toString()
-      }));
-    }
-  }, [form.amount, form.currencyMode, exchangeRate]);
 
   const isFormValid = 
     parseFloat(form.amount) > 0 && 
@@ -162,19 +101,9 @@ export default function Entry() {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }));
   }
 
-  // Toggle between USD and FC input modes
-  const toggleCurrencyMode = () => {
-    setForm(prev => ({
-      ...prev,
-      currencyMode: prev.currencyMode === "usd" ? "fc" : "usd",
-      amount: "",
-      amountInFC: ""
-    }));
-  };
-
+  // The session is the httpOnly cookie the browser sends by itself.
   function authHeader(): Record<string, string> {
-    const token = localStorage.getItem("token") || "";
-    return token ? { Authorization: `Bearer ${token}` } : {};
+    return {};
   }
 
   // Print function for entry receipt only
@@ -471,14 +400,6 @@ export default function Entry() {
           <div><strong>${t("receipt.amountReceived")}:</strong></div>
           <div><strong>${receiptAmount(receiptData)}</strong></div>
         </div>
-        ${
-          safeReceipt.enteredCurrency === "FC"
-            ? `<div class="amount-row">
-                 <div><strong>${t("entryReceipt.usdEquivalent")}:</strong></div>
-                 <div><strong>$${safeReceipt.amountUSD.toFixed(2)}</strong></div>
-               </div>`
-            : ''
-        }
       </div>
       
       <div class="agent-info">
@@ -856,14 +777,10 @@ export default function Entry() {
     try {
       // Convert payment method to match backend model
       const normalizedPaymentMethod = uiToModelPayment(form.paymentMethod);
-      const amountSnapshot = createAmountSnapshot(
-        parseFloat(form.currencyMode === "fc" ? form.amountInFC : form.amount),
-        form.currencyMode === "fc" ? "FC" : "USD",
-        exchangeRate?.rate
-      );
+      const amountSnapshot = createAmountSnapshot(parseFloat(form.amount));
 
       const body = {
-        amount: amountSnapshot.amountUSD,
+        amount: amountSnapshot.amountFC,
         ...amountSnapshot,
         source: form.source,
         category: form.category,
@@ -905,7 +822,7 @@ export default function Entry() {
         shopAddress: "780 AV. Du 30 Juin Coin Tabora, Q/MAKUTANO, C/Lubumbashi",
         shopNumber: COMPANY_PHONE,
         shopRegistration: "LSH/RCCM/22-A-01266",
-        amount: amountSnapshot.amountUSD,
+        amount: amountSnapshot.amountFC,
         ...amountSnapshot,
         source: form.source,
         category: form.category,
@@ -920,7 +837,6 @@ export default function Entry() {
         date: formatNowGMT2(),
         receiptNumber: entryId,
         stubNumber: entryId,
-        exchangeRate: exchangeRate?.rate
       };
 
       setReceiptData(newReceiptData);
@@ -928,7 +844,6 @@ export default function Entry() {
       // Reset form
       setForm({
         amount: "",
-        amountInFC: "",
         source: "",
         category: "",
         paymentMethod: "cash",
@@ -936,7 +851,6 @@ export default function Entry() {
         receivedFromName: "",
         receivedFromPhone: "",
         receivedFromEmail: "",
-        currencyMode: "fc"
       });
 
       setMessage(
@@ -959,37 +873,16 @@ export default function Entry() {
   return (
     <div className="flex-1 p-6 overflow-auto">
       <div className="max-w-4xl mx-auto">
-        {/* Header with Exchange Rate */}
+        {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{MODULES.entry.label}</h2>
               <p className="text-gray-600 mt-1">{MODULES.entry.description}</p>
             </div>
-            
-            {/* Exchange Rate Display */}
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 min-w-[280px]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
-                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("entry.todayRate")}</span>
-                </div>
-                {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
-                ) : exchangeRate ? (
-                  <div className="text-right">
-                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
-                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t("entry.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-red-600 text-sm">{t("entry.rateUnavailable")}</span>
-                )}
-              </div>
-            </div>
+            <span className="self-start sm:self-auto rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-700">
+              {t("common.currencyFC")}
+            </span>
           </div>
         </div>
 
@@ -1012,58 +905,21 @@ export default function Entry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label htmlFor="entry-amount" className="block font-medium text-gray-700">
-                    {t("entry.amount")}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={toggleCurrencyMode}
-                    className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                  >
-                    <Calculator className="w-3 h-3" />
-                    {form.currencyMode === 'usd' ? 'USD → FC' : 'FC → USD'}
-                  </button>
-                </div>
-                
-                {form.currencyMode === 'usd' ? (
-                  <input
-                    id="entry-amount"
-                    type="number"
-                    step="0.01"
-                    name="amount"
-                    value={form.amount}
-                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                    placeholder={t("entry.amountUsdPlaceholder")}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    min="0.01"
-                    required
-                  />
-                ) : (
-                  <input
-                    id="entry-amount"
-                    type="number"
-                    name="amountInFC"
-                    value={form.amountInFC}
-                    onChange={(e) => setForm({ ...form, amountInFC: e.target.value })}
-                    placeholder={t("entry.amountFcPlaceholder")}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    min="1"
-                    required
-                  />
-                )}
-                
-                {/* Conversion Display */}
-                {form.amount && form.currencyMode === 'usd' && exchangeRate && (
-                  <p className="text-xs text-green-600 mt-1">
-                    ≈ {formatFC(parseFloat(form.amount) * exchangeRate.rate)}
-                  </p>
-                )}
-                {form.amountInFC && form.currencyMode === 'fc' && exchangeRate && (
-                  <p className="text-xs text-green-600 mt-1">
-                    ≈ {formatUSD(parseFloat(form.amountInFC) / exchangeRate.rate)}
-                  </p>
-                )}
+                <label htmlFor="entry-amount" className="block mb-2 font-medium text-gray-700">
+                  {t("entry.amountFC")}
+                </label>
+                <input
+                  id="entry-amount"
+                  type="number"
+                  inputMode="numeric"
+                  name="amount"
+                  value={form.amount}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  placeholder={t("entry.amountFcPlaceholder")}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  min="1"
+                  required
+                />
               </div>
 
               <div>

@@ -16,7 +16,7 @@ export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(() => window.innerWidth < 1180);
   const [now, setNow] = useState(new Date());
   const location = useLocation();
-  const { token, user, offline, clearAuth } = useAuth();
+  const { signedIn, user, offline, clearAuth } = useAuth();
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -28,10 +28,10 @@ export default function Sidebar() {
     .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user) && (!offline || ["pos", "sales"].includes(item.id))) }))
     .filter((section) => section.items.length), [user, offline]);
 
-  if ((!token && !offline) || !user) return null;
+  if (!signedIn || !user) return null;
   // Queued sales are sent first (at most a few seconds) so they do not wait
   // on this device for the cashier's next sign-in.
-  const logout = async () => { await flushBeforeSignOut(user?.id, token); await logoutSession(); clearAuth(); window.location.href = "/login"; };
+  const logout = async () => { await flushBeforeSignOut(user?.id, signedIn && !offline); await logoutSession(); clearAuth(); window.location.href = "/login"; };
 
   return (
     <aside className={`desktop-tablet-sidebar app-sidebar ${collapsed ? "is-collapsed" : ""}`}>

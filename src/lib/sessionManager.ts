@@ -5,8 +5,34 @@
  * depend on router/context.
  */
 
+/**
+ * Legacy localStorage key of the session token. The token now lives only in
+ * an httpOnly cookie set by the server (page scripts never see it); this key
+ * is only erased, for devices that signed in with an older version.
+ */
 export const AUTH_TOKEN_KEY = "token";
+const LEGACY_TOKEN_KEYS = [AUTH_TOKEN_KEY, "authToken"];
+/** Display copy of the signed-in user (not a credential: the server decides). */
 export const AUTH_USER_KEY = "user";
+/** When the server said the session expires (not a credential either). */
+export const SESSION_EXPIRES_KEY = "sessionExpiresAt";
+
+/** True when this device believes someone is signed in (to be confirmed by the server). */
+export function hasSessionHint(): boolean {
+  try {
+    const expiresAt = localStorage.getItem(SESSION_EXPIRES_KEY);
+    return Boolean(localStorage.getItem(AUTH_USER_KEY) && expiresAt && new Date(expiresAt).getTime() > Date.now());
+  } catch {
+    return false;
+  }
+}
+
+// Called when a session ends on this device, to ask the server to erase the
+// httpOnly cookie (set by AuthProvider; this module stays framework-free).
+let sessionEndHook: (() => void) | null = null;
+export function onSessionEnd(hook: (() => void) | null): void {
+  sessionEndHook = hook;
+}
 /** Legacy sessionStorage key of the retired offline PIN session. Every
  *  session now comes from the server; the key is only erased. */
 export const OFFLINE_SESSION_KEY = "offlineSession";
@@ -64,8 +90,9 @@ export function isTokenExpired(token: string | null | undefined): boolean {
 }
 
 export function clearAuthStorage(): void {
-  localStorage.removeItem(AUTH_TOKEN_KEY);
+  for (const key of LEGACY_TOKEN_KEYS) localStorage.removeItem(key);
   localStorage.removeItem(AUTH_USER_KEY);
+  localStorage.removeItem(SESSION_EXPIRES_KEY);
   try {
     sessionStorage.removeItem(OFFLINE_SESSION_KEY);
     sessionStorage.removeItem(REPORTS_REAUTH_KEY);
@@ -110,6 +137,7 @@ export function invalidateSession(reason: SessionInvalidationReason): void {
     }
 
     clearAuthStorage();
+    try { sessionEndHook?.(); } catch { /* best effort */ }
 
     const { pathname, search } = window.location;
     const returnTo = pathname === "/login" ? "" : `${pathname}${search}`;

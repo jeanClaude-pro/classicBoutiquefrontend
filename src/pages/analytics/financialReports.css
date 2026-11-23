@@ -18,7 +18,7 @@
 .fin-decision-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
 .fin-decision-grid.is-single { grid-template-columns: minmax(0, 1fr); max-width: 760px; }
 .fin-decision-card { min-width: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); }
-.fin-decision-card.is-clothes { border-top: 4px solid #7c3aed; }
+.fin-decision-card.is-clothes { border-top: 4px solid var(--color-navy); }
 .fin-decision-card.is-shoes { border-top: 4px solid var(--color-primary); }
 .fin-decision-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 18px 12px; }
 .fin-decision-header h3 { margin: 2px 0 0; color: var(--color-foreground); font-size: 18px; font-weight: 750; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import { describeTimeframeFr, formatDateTimeGMT2, formatMonthNameGMT2 } from "../../utils/dateUtils";
 import { paymentMethodLabel, saleStatusLabel, saleTypeLabel } from "../../lib/labels";
@@ -41,23 +41,18 @@ import {
   renderSaleReceiptHtml,
 } from "../../lib/saleReceipt";
 import {
+  CURRENCY,
   DISCOUNT_QUANTITY_THRESHOLD,
   createPriceSnapshot,
   formatFC,
-  formatUSD,
-  getItemOriginalCurrency,
-  getItemOriginalTotal,
-  getItemOriginalUnitPrice,
-  getItemFcTotal,
-  getSaleFcTotal,
-  getItemUsdTotal,
+  getItemTotal,
+  getItemUnitPrice,
   isDiscountedPrice,
-  productPriceAuthority,
+  productReferencePrice,
   totalCartQuantity,
   type PriceSnapshot,
   type ProductPricing,
   type ReferencePrice,
-  type SaleCurrency,
 } from "../../utils/salePricing";
 import {
   correctionLineReference,
@@ -76,14 +71,13 @@ interface SaleItem {
   price: number;
   total: number;
   _id: string;
+  // Every amount is FC; the server presents pre-cutover sales through their
+  // own historical FC snapshot.
   enteredPrice?: number;
-  enteredCurrency?: SaleCurrency;
-  priceUSD?: number;
+  enteredCurrency?: string;
   priceFC?: number;
-  exchangeRate?: number;
   unitSellingPrice?: number;
   referenceUnitSellingPrice?: number;
-  referenceUnitSellingPriceFC?: number;
   discountApplied?: boolean;
   discountPerUnit?: number;
 }
@@ -92,10 +86,8 @@ interface SaleItem {
 interface SalesSummary {
   totalRecords: number;
   revenue: number;
-  revenueFC?: number;
   expenses: number;
   net: number;
-  netFC?: number;
   salesCount: number;
   expensesCount: number;
   [key: string]: unknown;
@@ -140,7 +132,6 @@ interface Sale {
   editHistory?: EditHistoryEntry[];
   type?: string;
   isWalkIn?: boolean;
-  exchangeRate?: number;
   clientSaleId?: string;
   localSyncStatus?: string;
 }
@@ -195,10 +186,8 @@ interface SalesResponse {
   summary: {
     totalRecords: number;
     revenue: number;
-    revenueFC?: number;
     expenses: number;
     net: number;
-    netFC?: number;
     salesCount: number;
     expensesCount: number;
   };
@@ -241,19 +230,24 @@ function localSaleToHistory(local: LocalSale): Sale {
     customer: local.payload.isWalkIn
       ? { name: "Client de passage", phone: "", email: "" }
       : local.payload.customer || { name: "", phone: "", email: "" },
-    items: local.payload.items.map((item, index) => ({
-      _id: `${local.clientSaleId}-${index}`,
-      productId: item.productId,
-      name: String(item.name || ""),
-      quantity: item.quantity,
-      price: Number(item.price || 0),
-      total: Number(item.price || 0) * item.quantity,
-      enteredPrice: Number(item.enteredPrice || item.price || 0),
-      enteredCurrency: item.enteredCurrency as SaleCurrency | undefined,
-      priceUSD: Number(item.priceUSD || item.price || 0),
-      priceFC: item.priceFC === undefined ? undefined : Number(item.priceFC),
-      exchangeRate: local.payload.exchangeRate,
-    })),
+    items: local.payload.items.map((item, index) => {
+      // FC unit price; a line queued before the FC-only cutover in another
+      // currency shows its FC snapshot.
+      const unit = item.enteredCurrency === undefined || item.enteredCurrency === CURRENCY
+        ? Number(item.enteredPrice ?? item.price ?? 0)
+        : Number(item.priceFC ?? 0);
+      return {
+        _id: `${local.clientSaleId}-${index}`,
+        productId: item.productId,
+        name: String(item.name || ""),
+        quantity: item.quantity,
+        price: unit,
+        total: unit * item.quantity,
+        enteredPrice: unit,
+        enteredCurrency: CURRENCY,
+        priceFC: unit,
+      };
+    }),
     subtotal: local.payload.subtotal,
     total: local.payload.total,
     paymentMethod: local.payload.paymentMethod,
@@ -263,19 +257,12 @@ function localSaleToHistory(local: LocalSale): Sale {
     salesPerson: local.ownerName,
     type: "sale",
     isWalkIn: local.payload.isWalkIn,
-    exchangeRate: local.payload.exchangeRate,
   };
 }
 
 export default function SalesHistory() {
   const { t } = useTranslation();
-  const { token: authToken, user: authUser } = useAuth();
-
-  // Always prefer the React auth context token; fall back to localStorage
-  const getToken = useCallback(
-    () => authToken || localStorage.getItem("token") || "",
-    [authToken]
-  );
+  const { user: authUser } = useAuth();
 
   // Ref always points to the latest fetchSales — prevents stale closure in event listener
   const fetchSalesRef = useRef<() => void>(() => {});
@@ -356,8 +343,8 @@ export default function SalesHistory() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pagination, setPagination] = useState<SalesResponse["pagination"] | null>(null);
 
-  // Historical FC totals are never reconstructed with the current rate.
-  // Period FC summaries come from saved transaction snapshots.
+  // Every amount is FC. Historical sales are presented by the server through
+  // their own FC snapshot, never reconstructed at another rate.
 
   // Fetch current user on component mount
   useEffect(() => {
@@ -365,7 +352,7 @@ export default function SalesHistory() {
     fetchSales();
     fetchProducts();
     fetch(`${serverUrl}/settings/receipt`, {
-      headers: { Authorization: `Bearer ${getToken()}` },
+      headers: {},
     })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -422,7 +409,6 @@ export default function SalesHistory() {
       const res = await fetch(`${serverUrl}/users/me`, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
       });
 
@@ -508,7 +494,6 @@ export default function SalesHistory() {
       const res = await fetch(url, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
       });
 
@@ -661,7 +646,6 @@ export default function SalesHistory() {
       const res = await fetch(`${serverUrl}/products?limit=0`, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getToken()}`,
         },
       });
 
@@ -705,23 +689,13 @@ export default function SalesHistory() {
 
   const formatDate = (dateString: string) => formatDateTimeGMT2(dateString);
 
-  const formatCurrency = formatUSD;
   const formatFc = formatFC;
-  // Catalogue price in the currency it was defined in (never a sale snapshot).
-  const formatProductPrice = (product: ProductPricing) => {
-    const { currency, amount } = productPriceAuthority(product);
-    return currency === "FC" ? formatFc(amount) : formatCurrency(amount);
-  };
+  // Catalogue price (never a sale snapshot).
+  const formatProductPrice = (product: ProductPricing) => formatFC(productReferencePrice(product).priceFC);
 
-  const formatOriginalItemUnitPrice = (item: SaleItem) =>
-    getItemOriginalCurrency(item) === "FC"
-      ? formatFc(getItemOriginalUnitPrice(item))
-      : formatCurrency(getItemOriginalUnitPrice(item));
+  const formatOriginalItemUnitPrice = (item: SaleItem) => formatFC(getItemUnitPrice(item));
 
-  const formatOriginalItemTotal = (item: SaleItem) =>
-    getItemOriginalCurrency(item) === "FC"
-      ? formatFc(getItemOriginalTotal(item))
-      : formatCurrency(getItemOriginalTotal(item));
+  const formatOriginalItemTotal = (item: SaleItem) => formatFC(getItemTotal(item));
 
   // Get human-readable timeframe description
   const getTimeframeDescription = () => {
@@ -809,8 +783,8 @@ export default function SalesHistory() {
   };
 
   // Customer receipt of a stored sale (reprint and PDF), in the interface
-  // language. Every amount is FC from the sale's own snapshots, so an old
-  // sale reprints with the francs it was sold for, whatever today's rate.
+  // language. Every amount is FC, so an old sale reprints with the francs it
+  // was sold for.
   const saleReceiptDocument = (sale: Sale) => buildSaleReceipt({
     ...shopSettings,
     receiptNumber: sale.saleId,
@@ -819,7 +793,6 @@ export default function SalesHistory() {
     customerPhone: sale.customer?.phone || "",
     customerEmail: sale.customer?.email || "",
     items: sale.items,
-    exchangeRate: sale.exchangeRate,
     paymentMethod: sale.paymentMethod,
     salesPerson: sale.salesPerson || translate("salesHistory.notSpecified"),
   });
@@ -969,12 +942,12 @@ export default function SalesHistory() {
 
   // Normal price of a correction line, mirroring the server.
   const lineReference = (item: SaleItem): ReferencePrice | null =>
-    correctionLineReference(item, editingSale?.items, editingSale?.exchangeRate);
+    correctionLineReference(item, editingSale?.items);
 
   // A corrected cart under 5 pieces cannot keep a discount: every discounted
   // line returns to its normal price in its own currency, and the user is told.
   const withEligibleDiscounts = (items: SaleItem[]): SaleItem[] => {
-    const { lines, restored } = restoreCorrectionDiscounts(items, editingSale?.items, editingSale?.exchangeRate);
+    const { lines, restored } = restoreCorrectionDiscounts(items, editingSale?.items);
     setEditNotice(restored ? translate("pos.discountsRestored") : null);
     return lines;
   };
@@ -999,7 +972,7 @@ export default function SalesHistory() {
     }
 
     const updatedItems = withEligibleDiscounts(editForm.items.map((item, i) =>
-      i === index ? { ...item, quantity: newQuantity, total: newQuantity * (item.priceUSD ?? item.price) } : item
+      i === index ? { ...item, quantity: newQuantity, total: newQuantity * getItemUnitPrice(item) } : item
     ));
 
     setEditForm((prev) => ({
@@ -1009,14 +982,12 @@ export default function SalesHistory() {
     setError(null);
   };
 
-  // Commits the unit price of ONE line in the currency it was entered in, so
-  // an FC line stays an exact FC amount.
+  // Commits the FC unit price of ONE line.
   const updateItemPrice = (index: number, newPrice: number) => {
     const current = editForm.items[index];
-    const itemRate = current.exchangeRate ?? editingSale?.exchangeRate;
     let snapshot: PriceSnapshot;
     try {
-      snapshot = createPriceSnapshot(newPrice, getItemOriginalCurrency(current), itemRate);
+      snapshot = createPriceSnapshot(newPrice);
     } catch {
       setEditLineErrors((errors) => ({ ...errors, [current._id]: translate("pos.pricePositive") }));
       return;
@@ -1044,7 +1015,7 @@ export default function SalesHistory() {
   };
 
   const productLine = (product: Product, base: Pick<SaleItem, "_id" | "quantity">): SaleItem | null =>
-    productCorrectionLine(product, base, editingSale?.exchangeRate);
+    productCorrectionLine(product, base) as SaleItem | null;
 
   const addNewItem = () => {
     if (products.length === 0) {
@@ -1139,15 +1110,11 @@ export default function SalesHistory() {
           quantity: item.quantity,
           price: item.price,
           total: item.total,
-          enteredPrice: item.enteredPrice,
-          enteredCurrency: item.enteredCurrency,
-          priceUSD: item.priceUSD,
-          priceFC: item.priceFC,
-          exchangeRate: item.exchangeRate,
+          enteredPrice: getItemUnitPrice(item),
+          enteredCurrency: CURRENCY,
         })),
         subtotal: subtotal,
         total: total,
-        exchangeRate: editingSale.exchangeRate,
         paymentMethod: editForm.paymentMethod,
         reason: editForm.reason,
         // Include the original sale ID to ensure update, not create
@@ -1161,7 +1128,6 @@ export default function SalesHistory() {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
           },
           body: JSON.stringify(updateData),
         }
@@ -1268,9 +1234,8 @@ export default function SalesHistory() {
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.revenue")}</p>
                   <p className="text-2xl font-bold text-green-600">
-                    {summaryStats.revenueFC !== undefined ? formatFc(summaryStats.revenueFC) : "—"}
+                    {formatFc(summaryStats.revenue)}
                   </p>
-                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.revenue)}</p>
                 </div>
                 <Download className="w-8 h-8 text-green-500" />
               </div>
@@ -1281,8 +1246,7 @@ export default function SalesHistory() {
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.legacyExpenses")}</p>
                   <p className="text-[11px] text-gray-500">{t("salesHistory.summary.legacyExpensesHint")}</p>
-                  <p className="text-2xl font-bold text-red-600">—</p>
-                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.expenses)}</p>
+                  <p className="text-2xl font-bold text-red-600">{formatFc(summaryStats.expenses)}</p>
                 </div>
                 <Minus className="w-8 h-8 text-red-500" />
               </div>
@@ -1293,9 +1257,8 @@ export default function SalesHistory() {
                 <div>
                   <p className="text-sm text-gray-600">{t("salesHistory.summary.net")}</p>
                   <p className="text-2xl font-bold text-blue-600">
-                    {summaryStats.netFC !== undefined ? formatFc(summaryStats.netFC) : "—"}
+                    {formatFc(summaryStats.net)}
                   </p>
-                  <p className="text-xs text-gray-500">{formatCurrency(summaryStats.net)}</p>
                 </div>
                 <Package className="w-8 h-8 text-blue-500" />
               </div>
@@ -1336,7 +1299,7 @@ export default function SalesHistory() {
           </h3>
           
           <div className="flex flex-wrap gap-2">
-            <VoidedSalesDialog token={getToken()} queryString={buildQueryString("voided")} />
+            <VoidedSalesDialog queryString={buildQueryString("voided")} />
             <button
               onClick={() => setShowFilters(!showFilters)}
               className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded-lg flex items-center gap-2"
@@ -1687,8 +1650,7 @@ export default function SalesHistory() {
                         {t("salesHistory.itemCount", { count: sale.items.length })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {formatFc(getSaleFcTotal(sale.total, sale.items, sale.exchangeRate) ?? 0)}
-                        <div className="text-xs font-normal text-gray-500">≈ {formatCurrency(sale.total)}</div>
+                        {formatFc(sale.total)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -1992,20 +1954,6 @@ export default function SalesHistory() {
                         <div className="text-right">
                           <p className="font-medium text-gray-900">
                             {formatOriginalItemTotal(item)}
-                            {item.enteredCurrency === "FC" ? (
-                              <span className="block text-xs font-normal text-gray-500">
-                                {t("salesHistory.details.received")}: {formatCurrency(getItemUsdTotal(item))}
-                              </span>
-                            ) : (
-                              (() => {
-                                const fc = getItemFcTotal(item, selectedSale.exchangeRate);
-                                return fc !== undefined ? (
-                                  <span className="block text-xs font-normal text-gray-500">
-                                    ≈ {formatFc(fc)}
-                                  </span>
-                                ) : null;
-                              })()
-                            )}
                           </p>
                         </div>
                       </div>
@@ -2025,18 +1973,16 @@ export default function SalesHistory() {
                   <span className="text-sm text-gray-600">{t("salesHistory.details.subtotal")}:</span>
                   <span className="text-sm text-gray-900 text-right">
                     <span className="block">
-                      {formatFc(getSaleFcTotal(selectedSale.subtotal, selectedSale.items, selectedSale.exchangeRate) ?? 0)}
+                      {formatFc(selectedSale.subtotal ?? selectedSale.total)}
                     </span>
-                    <span className="block text-xs text-gray-500">≈ {formatCurrency(selectedSale.subtotal)}</span>
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold">
                   <span className="text-gray-900">{t("salesHistory.details.total")}:</span>
                   <span className="text-gray-900 text-right">
                     <span className="block">
-                      {formatFc(getSaleFcTotal(selectedSale.total, selectedSale.items, selectedSale.exchangeRate) ?? 0)}
+                      {formatFc(selectedSale.total)}
                     </span>
-                    <span className="block text-xs font-normal text-gray-500">≈ {formatCurrency(selectedSale.total)}</span>
                   </span>
                 </div>
               </div>
@@ -2133,8 +2079,7 @@ export default function SalesHistory() {
                       {t("salesHistory.edits.currentTotal")}
                     </span>
                     <p className="text-sm font-medium text-gray-900">
-                      {formatFc(getSaleFcTotal(selectedEditedSale.total, selectedEditedSale.items, selectedEditedSale.exchangeRate) ?? 0)}
-                      <span className="block text-xs font-normal text-gray-500">≈ {formatCurrency(selectedEditedSale.total)}</span>
+                      {formatFc(selectedEditedSale.total)}
                     </p>
                   </div>
                   <div>
@@ -2468,12 +2413,11 @@ export default function SalesHistory() {
 
                         <div className="md:col-span-2">
                           <label htmlFor={`sales-edit-item-${index}-price`} className="block text-sm font-medium text-gray-700 mb-1">
-                            {translate("pos.unitPriceIn", { currency: getItemOriginalCurrency(item) })}
+                            {translate("pos.unitPriceIn", { currency: CURRENCY })}
                           </label>
                           <UnitPriceInput
                             id={`sales-edit-item-${index}-price`}
-                            value={getItemOriginalUnitPrice(item)}
-                            currency={getItemOriginalCurrency(item)}
+                            value={getItemUnitPrice(item)}
                             ariaLabel={translate("pos.editUnitPriceNamed", { name: item.name })}
                             error={editLineErrors[item._id]}
                             className="w-full"
@@ -2484,11 +2428,7 @@ export default function SalesHistory() {
                             if (!reference) return null;
                             return (
                               <p className="mt-1 text-xs text-emerald-700">
-                                {translate("pos.normalPrice", {
-                                  price: getItemOriginalCurrency(item) === "FC" && reference.priceFC !== undefined
-                                    ? formatFc(reference.priceFC)
-                                    : formatCurrency(reference.priceUSD),
-                                })}
+                                {translate("pos.normalPrice", { price: formatFc(reference.priceFC) })}
                               </p>
                             );
                           })()}
@@ -2540,9 +2480,6 @@ export default function SalesHistory() {
                           </span>
                           <div className="p-2 bg-white border rounded font-medium">
                             {formatOriginalItemTotal(item)}
-                            {getItemOriginalCurrency(item) === "FC" && (
-                              <span className="block text-xs font-normal text-gray-500">≈ {formatCurrency(item.total)}</span>
-                            )}
                           </div>
                         </div>
 
@@ -2566,12 +2503,12 @@ export default function SalesHistory() {
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm text-gray-600">{t("salesHistory.details.subtotal")}:</span>
                   <span className="text-sm text-gray-900">
-                    {formatCurrency(subtotal)}
+                    {formatFc(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-lg font-semibold">
                   <span className="text-gray-900">{t("salesHistory.details.total")}:</span>
-                  <span className="text-gray-900">{formatCurrency(total)}</span>
+                  <span className="text-gray-900">{formatFc(total)}</span>
                 </div>
               </div>
 

@@ -9,10 +9,12 @@ import { API, confirmReportsPassword, mockApi, renderPage, signIn } from "./help
 import Analytics from "../src/pages/analytics/Analytics";
 import { RequireAuth } from "../src/components/RequireAuth";
 import { logoutSession, PENDING_LOGOUT_KEY, retryPendingLogout } from "../src/services/authService";
+import { clearReportsReauth } from "../src/lib/reportsReauth";
 
 beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
+  clearReportsReauth();
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
@@ -59,7 +61,7 @@ const reportsApi = () => mockApi([
 
 test("the superadmin restricts the whole Reports page to one category", async () => {
   signIn({ role: "superadmin" });
-  confirmReportsPassword();
+  await confirmReportsPassword();
   const api = reportsApi();
   const user = userEvent.setup();
   renderPage(<Analytics />, "/reports");
@@ -103,7 +105,7 @@ test("the Reports password is checked by the server and never opens a second ses
     { method: "POST", match: /^\/auth\/reauth$/, reply: ({ body }) => {
       attempts += 1;
       return (body as { password: string }).password === "bon-mot-de-passe"
-        ? { body: { reauthToken: "proof-1", expiresAt: new Date(Date.now() + 900_000).toISOString() } }
+        ? { body: { confirmed: true, expiresAt: new Date(Date.now() + 900_000).toISOString() } }
         : { status: 403, body: { error: "REAUTH_INVALID", code: "REAUTH_INVALID", message: "Mot de passe incorrect" } };
     } },
     { match: /^\/analytics\/summary\?/, reply: { body: summary(null) } },
@@ -120,7 +122,7 @@ test("the Reports password is checked by the server and never opens a second ses
   await user.click(screen.getByRole("button", { name: "Accéder" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Mot de passe incorrect");
   // A wrong password is not treated as an expired session.
-  expect(localStorage.getItem("token")).not.toBeNull();
+  expect(localStorage.getItem("user")).not.toBeNull();
 
   await user.type(screen.getByLabelText("Mot de passe administrateur"), "bon-mot-de-passe");
   await user.click(screen.getByRole("button", { name: "Accéder" }));
@@ -128,15 +130,20 @@ test("the Reports password is checked by the server and never opens a second ses
   expect(attempts).toBe(2);
   expect(api.calls.some((call) => call.url.endsWith("/auth/login"))).toBe(false);
 
-  // The proof travels with every reports request.
+  // No credential is ever handled by page code: the session and the proof are
+  // httpOnly cookies the browser sends by itself.
   const fetchMock = vi.mocked(fetch);
-  const summaryCall = fetchMock.mock.calls.find(([input]) => String(input).includes("/analytics/summary"))!;
-  expect((summaryCall[1]?.headers as Record<string, string>)["X-Reauth-Token"]).toBe("proof-1");
+  for (const [, init] of fetchMock.mock.calls) {
+    const headers = (init?.headers || {}) as Record<string, string>;
+    expect(Object.keys(headers).map((name) => name.toLowerCase())).not.toContain("authorization");
+  }
+  expect(JSON.stringify(localStorage)).not.toMatch(/bon-mot-de-passe/);
+  expect(JSON.stringify(sessionStorage)).not.toMatch(/bon-mot-de-passe/);
 });
 
 test("an expired confirmation brings the password screen back", async () => {
   signIn({ role: "superadmin" });
-  confirmReportsPassword();
+  await confirmReportsPassword();
   mockApi([
     { match: /^\/analytics\/summary\?/, reply: { status: 403, body: { error: "REAUTH_REQUIRED", code: "REAUTH_REQUIRED", message: "Confirmez votre mot de passe" } } },
     { match: /^\/analytics\/timeseries\?/, reply: { body: series(null) } },
@@ -150,7 +157,7 @@ test("the role stored in the browser is replaced by the server's answer", async 
   // Someone edited localStorage to look like the superadmin.
   signIn({ role: "superadmin" });
   mockApi([
-    { match: /^\/auth\/session$/, reply: { body: { user: { id: "u-self", username: "caissier", email: "t@test.local", role: "staff", permissions: ["/"] } } } },
+    { match: /^\/auth\/session$/, reply: { body: { user: { id: "u-self", username: "caissier", email: "t@test.local", role: "staff", permissions: ["/"] }, expiresAt: new Date(Date.now() + 3600_000).toISOString() } } },
   ]);
   renderPage(<Routes><Route path="/admin" element={<RequireAuth><p>Panneau admin</p></RequireAuth>} /></Routes>, "/admin");
   await waitFor(() => expect(JSON.parse(localStorage.getItem("user")!).role).toBe("staff"));
@@ -160,7 +167,7 @@ test("a session the server refuses is ended at start-up", async () => {
   signIn({ role: "superadmin" });
   mockApi([{ match: /^\/auth\/session$/, reply: { status: 401, body: { code: "SESSION_REVOKED", message: "Authentication required" } } }]);
   renderPage(<Routes><Route path="/" element={<RequireAuth><p>Caisse</p></RequireAuth>} /></Routes>, "/");
-  await waitFor(() => expect(localStorage.getItem("token")).toBeNull());
+  await waitFor(() => expect(localStorage.getItem("user")).toBeNull());
   expect(screen.queryByText("Caisse")).not.toBeInTheDocument();
 });
 
@@ -173,14 +180,25 @@ test("without the server, a stored session only opens the till until it is confi
 });
 
 test("a sign-out that cannot reach the server is finished on the next connection", async () => {
-  localStorage.setItem("token", "session-token");
   vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("Failed to fetch"); }));
   expect(await logoutSession()).toBe(false);
-  expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBe("session-token");
+  // Only a flag is kept: the session cookie is httpOnly, no token is stored.
+  expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBe("1");
 
   const revoke = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
   vi.stubGlobal("fetch", revoke);
   await retryPendingLogout();
-  expect(revoke).toHaveBeenCalledWith(`${API}/auth/logout`, expect.objectContaining({ method: "POST", headers: { Authorization: "Bearer session-token" } }));
+  expect(revoke).toHaveBeenCalledWith(`${API}/auth/logout`, expect.objectContaining({ method: "POST", credentials: "same-origin" }));
   expect(localStorage.getItem(PENDING_LOGOUT_KEY)).toBeNull();
+});
+
+test("a device signed out offline stays signed out at start-up", async () => {
+  signIn({ role: "staff", permissions: ["/"] });
+  localStorage.setItem(PENDING_LOGOUT_KEY, "1");
+  const api = mockApi([{ method: "POST", match: /^\/auth\/logout$/, reply: { body: { success: true } } }]);
+  renderPage(<Routes><Route path="/" element={<RequireAuth><p>Caisse</p></RequireAuth>} /></Routes>, "/");
+  await waitFor(() => expect(api.calls.some((call) => call.method === "POST" && call.url.endsWith("/auth/logout"))).toBe(true));
+  expect(screen.queryByText("Caisse")).not.toBeInTheDocument();
+  expect(api.calls.some((call) => call.url.endsWith("/auth/session"))).toBe(false);
+  expect(localStorage.getItem("user")).toBeNull();
 });

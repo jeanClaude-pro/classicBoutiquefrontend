@@ -14,9 +14,7 @@
       "customer": "Customer",
       "items": "Items",
       "source": "Source",
-      "email": "Email",
-      "currentRate": "Current rate",
-      "newRate": "New rate"
+      "email": "Email"
     },
     "pieces_one": "{{count}} item",
     "pieces_other": "{{count}} items",
@@ -138,17 +136,10 @@
       "deactivateSuccess": "Account deactivated.",
       "reactivateSuccess": "Account reactivated."
     },
-    "rate": {
-      "title": "Apply this new rate?",
-      "message": "1 USD = {{rate}} FC will be used for new sales, reservations, cash receipts and expenses.",
-      "history": "Transactions already recorded keep the rate in effect when they were entered.",
-      "confirm": "Apply rate",
-      "success": "Exchange rate updated."
-    },
     "loan": {
       "title": "Record this loan?",
       "message": "The debt owed to {{creditor}} will increase by {{amount}}.",
-      "consequence": "A recorded loan cannot be deleted. Check the amount and currency.",
+      "consequence": "A recorded loan cannot be deleted. Check the amount.",
       "confirm": "Record loan",
       "success": "Loan recorded."
     },
@@ -242,7 +233,8 @@
     "actions": "Actions",
     "email": "Email",
     "actionsMenu": "Actions",
-    "actionsFor": "Actions for {{name}}"
+    "actionsFor": "Actions for {{name}}",
+    "currencyFC": "All amounts in FC"
   },
   "navigation": {
     "main": "Main navigation",
@@ -298,11 +290,6 @@
     "historicsortie": {
       "label": "Expense History",
       "description": "Track, approve or reject expenses and view their status."
-    },
-    "rate": {
-      "label": "Exchange Rate",
-      "short": "Rate",
-      "description": "Set the USD → FC rate applied to new transactions. Past transactions keep their rate."
     },
     "remboursements": {
       "label": "Debts & Loans",
@@ -498,7 +485,6 @@
     "placeholder": "Select a category"
   },
   "debts": {
-    "invalidAmountOrRate": "Invalid amount or exchange rate.",
     "creditorAdded": "Creditor added.",
     "thisCreditor": "this creditor",
     "addCreditor": "Add a creditor",
@@ -517,52 +503,14 @@
     "selectCreditor": "Select a creditor",
     "selectCreditorHint": "Their history and the form for a new loan will appear here.",
     "newLoan": "New loan",
-    "amount": "Amount *",
-    "rate": "USD/FC rate",
     "recordLoan": "Record loan",
     "history": "History — {{name}}",
     "repaid": "Repaid",
     "currentBalance": "Current balance",
     "loanLine": "Loan · {{amount}}",
-    "repaymentLine": "Repayment · {{amount}}"
-  },
-  "rate": {
-    "noPermissionHistory": "You do not have permission to view the rate history",
-    "loadFailed": "Failed to load exchange rates",
-    "invalidRate": "Please enter a valid exchange rate",
-    "loading": "Loading exchange rates...",
-    "current": "Current Exchange Rate",
-    "fcToUsd": "FC → USD rate",
-    "usdToFc": "USD → FC rate",
-    "effectiveSince": "Effective since: {{date}}",
-    "setBy": "Set by: {{name}}",
-    "notes": "Notes:",
-    "noActiveRate": "No active exchange rate",
-    "pleaseSetRate": "Please set an exchange rate",
-    "updateTitle": "Update the Exchange Rate",
-    "newRate": "New Rate (1 USD = X FC) *",
-    "newRatePlaceholder": "E.g. 2500 for 1 USD = 2500 FC",
-    "newRateHint": "Enter how many Congolese francs equal 1 USD",
-    "effectiveDate": "Effective Date",
-    "effectiveDateHint": "Leave empty to use the current date",
-    "notesOptional": "Notes (Optional)",
-    "notesPlaceholder": "Reason for the change, rate source, etc.",
-    "saving": "Saving…",
-    "apply": "Apply the new rate",
-    "history": "Rate History",
-    "entries": "{{count}} entries",
-    "by": "By: {{name}}",
-    "noHistory": "No history available",
-    "noHistoryHint": "Rate changes will appear here",
-    "howTo": "💡 How to use exchange rates",
-    "forFcSales": "For sales in FC:",
-    "tipConverted": "Prices entered in FC are converted to USD",
-    "tipActive": "The system always uses the active rate",
-    "tipCareful": "Double-check before setting a new rate",
-    "bestPractices": "Best practices:",
-    "tipRegular": "Update the rate regularly",
-    "tipSource": "Note the source of the rate (bank, market, etc.)",
-    "tipOneActive": "Only one rate can be active at a time"
+    "repaymentLine": "Repayment · {{amount}}",
+    "amountFC": "Amount (FC)",
+    "invalidAmount": "Enter an amount greater than zero."
   },
   "customers": {
     "recalculated": "Customer statistics recalculated.",
@@ -600,14 +548,11 @@
     "title": "Expenses",
     "newExpense": "New Expense",
     "newExpenseHint": "Choose the transaction type, the category and the amount.",
-    "invalidAmount": "Invalid amount or exchange rate unavailable. Check the amount entered.",
+    "invalidAmount": "Invalid amount. Check the amount entered.",
     "savedValidated": "Expense saved and approved.",
     "submitted": "Expense submitted.",
     "savedValidatedBanner": "✅ Expense saved and approved.",
     "submittedBanner": "✅ Expense submitted: it will take effect once approved.",
-    "todayRate": "Today's rate:",
-    "effectiveSince": "Effective since {{date}}",
-    "rateUnavailable": "Rate unavailable",
     "operationType": "Transaction type *",
     "types": {
       "companyExpenseHint": "Reduces the category's profit",
@@ -631,7 +576,6 @@
     "fullName": "Full name",
     "beneficiaryPhone": "Beneficiary phone",
     "phoneNumber": "Phone number",
-    "amountLabel": "Amount *",
     "paymentMethod": "Payment method *",
     "payment": {
       "cash": "Cash",
@@ -640,8 +584,6 @@
       "card": "Card",
       "other": "Other"
     },
-    "amountUsd": "Amount in USD",
-    "equivalentFc": "Equivalent in FC",
     "requestedAmount": "Requested amount",
     "balanceAfter": "Balance after transaction",
     "shortfall": "Capital to replenish: {{amount}}. New sales must cover this amount first.",
@@ -653,42 +595,27 @@
     "save": "Save Expense",
     "importantInfo": "Important information",
     "infoText": "An expense is never counted in sales. Its receipt is printed from Expense History once approved.",
-    "rateUsed": "💱 Rate used: 1 USD = {{rate}} FC"
+    "amountLabelFC": "Amount (FC)"
   },
   "login": {
     "sessionExpired": "Your session has expired. Please sign in again.",
     "success": "Signed in successfully!",
-    "usernameRequired": "A username is required",
-    "passwordTooShort": "The password must be at least 10 characters",
-    "passwordMismatch": "The passwords do not match",
     "accountCreated": "Account created successfully!",
     "invalidCredentials": "Incorrect email or password",
-    "signupFailed": "Unable to create the account",
     "tagline": "Clothing · Shoes · Elegance",
     "signIn": "Sign in",
-    "createAccount": "Create an account",
     "signInHint": "Enter your credentials to access the system",
-    "signupHint": "Fill in your details to create your account",
-    "username": "Username",
-    "usernamePlaceholder": "e.g. Jean Claude",
     "email": "Email address",
     "emailPlaceholder": "e.g. user@example.com",
     "password": "Password",
     "passwordPlaceholder": "Your password",
     "showPassword": "Show password",
     "hidePassword": "Hide password",
-    "minLength": "At least 10 characters",
-    "confirmPassword": "Confirm password",
-    "confirmPasswordPlaceholder": "Confirm your password",
     "signingIn": "Signing in...",
-    "creating": "Creating account...",
     "submitSignIn": "Sign in",
-    "submitSignup": "Create my account",
-    "noAccount": "Don't have an account yet?",
-    "haveAccount": "Already have an account?",
-    "accountPendingActivation": "Account created. An administrator must activate it before your first sign-in.",
     "sessionIdle": "You were signed out after a period of inactivity. Please sign in again.",
-    "serverRequired": "The server cannot be reached. For your security, every sign-in is checked by the server: try again as soon as the internet is back. A till that is already signed in keeps recording sales."
+    "serverRequired": "The server cannot be reached. For your security, every sign-in is checked by the server: try again as soon as the internet is back. A till that is already signed in keeps recording sales.",
+    "accountsByAdmin": "No account? Accounts are created only by the shop administrator."
   },
   "products": {
     "saved": "Changes saved.",
@@ -728,12 +655,9 @@
     "brands": "Brands",
     "status": "Status",
     "pricingStock": "Price & Inventory",
-    "salePrice": "Sale price per item *",
-    "priceUsdPlaceholder": "Enter the price in USD",
     "priceFcPlaceholder": "Enter the price in FC",
     "priceHint": "This price prefills the sale; authorized users can change it.",
     "purchasedQuantity": "Quantity purchased (items) *",
-    "unitCost": "Acquisition cost per item *",
     "freePlaceholder": "0 if acquired for free",
     "costHint": "Enter the purchase/acquisition cost of a single item (0 if donated). Total value of the acquired stock:",
     "currentStock": "Current stock",
@@ -753,7 +677,9 @@
     "unitLabel": "Unit:",
     "physical": "Physical properties",
     "weightLabel": "Weight:",
-    "editButton": "Edit Item"
+    "editButton": "Edit Item",
+    "salePriceFC": "Selling price (FC)",
+    "unitCostFC": "Purchase cost per piece (FC)"
   },
   "entryOptions": {
     "sources": {
@@ -801,7 +727,6 @@
     "title": "Cash Receipt",
     "confirmed": "💰 CASH RECEIPT CONFIRMED 💰",
     "details": "RECEIPT DETAILS",
-    "usdEquivalent": "USD EQUIVALENT",
     "success": "CASH RECEIPT RECORDED!",
     "keep": "Keep this receipt as proof",
     "thanks": "Thank you for your trust",
@@ -820,12 +745,7 @@
     "agent": "Agent",
     "recordedPrinting": "✅ Cash receipt recorded! Printing the receipt and stub...",
     "recorded": "Cash receipt recorded.",
-    "todayRate": "Today's rate:",
-    "effectiveSince": "Effective since {{date}}",
-    "rateUnavailable": "Rate unavailable",
     "info": "Receipt Information",
-    "amount": "Amount *",
-    "amountUsdPlaceholder": "Enter the amount in USD",
     "amountFcPlaceholder": "Enter the amount in FC",
     "source": "Source *",
     "selectSource": "Select the source",
@@ -843,7 +763,8 @@
     "senderEmailPlaceholder": "Enter the sender's email",
     "saving": "Saving...",
     "save": "Save Cash Receipt",
-    "requiredFields": "* Please fill in all required fields (Amount, Source, Category, Name and Phone)"
+    "requiredFields": "* Please fill in all required fields (Amount, Source, Category, Name and Phone)",
+    "amountFC": "Amount (FC)"
   },
   "admin": {
     "actions": {
@@ -959,13 +880,30 @@
       "jwt": "JWT tokens expire and are validated on every request.",
       "deactivated": "Deactivated accounts cannot sign in or access the endpoints.",
       "protected": "A protected administrator account is hidden and cannot be changed by other admins.",
-      "signup": "Sign-up is public through the sign-in page, but every new account automatically receives the “{{role}}” role; only administrators can then change roles and permissions."
+      "signup": "There is no public sign-up: only superadministrators create accounts (\"Create account\" button), with their role and modules."
     },
     "availableActions": "Available action permissions",
     "signedInAs": "Signed in as",
     "unlockLogin": "Unlock sign-in",
     "unlockLoginNamed": "Unlock sign-in for {{name}}",
-    "loginUnlocked": "Sign-in unlocked for {{name}}"
+    "loginUnlocked": "Sign-in unlocked for {{name}}",
+    "create": {
+      "open": "Create account",
+      "title": "New account",
+      "hint": "The account is active as soon as it is created. Give the password to the person directly.",
+      "username": "Username",
+      "email": "Email address",
+      "password": "Password",
+      "passwordHint": "At least 10 characters.",
+      "confirmPassword": "Confirm password",
+      "role": "Role",
+      "modules": "Allowed modules",
+      "submit": "Create account",
+      "creating": "Creating…",
+      "created": "Account created.",
+      "passwordTooShort": "The password must be at least 10 characters long.",
+      "passwordMismatch": "The passwords do not match."
+    }
   },
   "reports": {
     "notEnoughData": "Not enough data",
@@ -1210,9 +1148,6 @@
     "agent": "Agent",
     "saleDonePrinting": "✅ Sale completed! Printing the receipt and stub...",
     "saleRecorded": "Sale recorded.",
-    "todayRate": "Today's rate:",
-    "effectiveSince": "Effective since {{date}}",
-    "rateUnavailable": "Rate unavailable",
     "addItems": "Add items",
     "items": "Items",
     "searchPlaceholder": "Search for an item...",
@@ -1220,7 +1155,6 @@
     "noItemFound": "No items found",
     "quantity": "Number of items",
     "quantityPlaceholder": "Enter the number of items",
-    "unitPrice": "Unit price",
     "priceLocked": "Price locked — permission required to change prices.",
     "discountLocked": "A unit-price discount becomes available when this cart reaches 5 items.",
     "discountQuantityRequired": "A discount requires at least 5 items in the cart.",
@@ -1232,11 +1166,7 @@
     "unitPriceIn": "Unit price ({{currency}})",
     "normalPrice": "Normal price: {{price}}",
     "invalidFcPrice": "Enter a whole FC amount greater than zero.",
-    "invalidUsdPrice": "Enter a USD amount greater than zero (at most 2 decimals).",
-    "exchangeRateChanged": "The exchange rate has changed. Cart prices were recalculated at the new rate: check them, then try again.",
     "editUnitPriceNamed": "Unit price for {{name}}",
-    "priceExample": "e.g. {{price}}",
-    "priceUsdPlaceholder": "Enter the price in USD",
     "priceFcPlaceholder": "Enter the price in FC",
     "addToCart": "Add to cart",
     "cartItems": "Cart items",
@@ -1249,7 +1179,6 @@
     "remove": "Remove",
     "removeNamed": "Remove {{name}} from the cart",
     "totalLabel": "Total:",
-    "totalReceived": "Total received ≈ {{amount}}",
     "customerInfo": "Customer information",
     "walkInOption": "Walk-in customer (sale without customer details)",
     "customerName": "Customer name",
@@ -1266,7 +1195,9 @@
     },
     "saving": "Saving...",
     "save": "Save sale",
-    "defaultFooter": "Thank you for your purchase! See you soon."
+    "defaultFooter": "Thank you for your purchase! See you soon.",
+    "unitPriceFC": "Unit price (FC)",
+    "currencyNotSupported": "The app now works only in Congolese francs (FC). Refresh the page, then enter the amount in FC."
   },
   "saleReceipt": {
     "title": "Sales receipt",
@@ -1319,7 +1250,6 @@
     "reservationNo": "RESERVATION #",
     "pcs": "Pcs",
     "subtotal": "Subtotal",
-    "usdEquivalent": "USD equiv.",
     "totalAmount": "TOTAL AMOUNT",
     "completedTitle": "RESERVATION COMPLETED",
     "pendingTitle": "RESERVATION AWAITING PICK-UP",
@@ -1453,7 +1383,6 @@
       "name": "Name",
       "items": "Items ({{count}})",
       "pieces": "Pieces: {{count}}",
-      "received": "Received",
       "subtotal": "Subtotal",
       "total": "Total"
     },
@@ -1492,7 +1421,6 @@
     "connectionFailed": "Could not connect to the server",
     "thisWeek": "This week",
     "thisMonth": "This month",
-    "equivalent": "Equiv. {{amount}}",
     "paymentMethod": "Payment method",
     "status": "Status",
     "senderInfo": "Sender information",
@@ -1500,7 +1428,6 @@
     "source": "Source",
     "category": "Category",
     "amount": "Amount",
-    "amountUsd": "Amount (USD)",
     "description": "Description",
     "recordedBy": "Recorded by",
     "notEditable": "A deleted entry can no longer be edited.",
@@ -1554,7 +1481,8 @@
       "byPaymentMethod": "Breakdown by payment method",
       "totalValue": "Total: {{amount}}",
       "topSources": "Top sources"
-    }
+    },
+    "amountFC": "Amount (FC)"
   },
   "expenseVoucher": {
     "title": "Expense voucher",
@@ -1781,8 +1709,7 @@
     "pending_one": "{{count}} sale pending",
     "pending_other": "{{count}} sales pending",
     "cachedProducts": "Products are from the last trusted cache.",
-    "cachedRate": "Using the last trusted exchange rate.",
-    "dataUnavailable": "Offline sales require cached products and an exchange rate.",
+    "dataUnavailable": "Offline sales require cached products.",
     "saleQueued": "Sale saved safely and awaiting synchronization. Receipt printing started.",
     "queuedSales": "Unsynchronized sales",
     "queuedSalesHint": "Local transactions remain here until the server confirms them.",
@@ -1813,7 +1740,7 @@
     "refusedCount_one": "{{count}} refused sale",
     "refusedCount_other": "{{count}} refused sales",
     "refusedTitle": "Sales refused by the server: they are NOT in the books",
-    "refusedHelp": "The server refused these sales (out of stock, rate changed, invalid date…). The money may have been collected: check the reason, record the sale again if needed, then mark it as handled. Every refusal is also kept in the audit log.",
+    "refusedHelp": "The server refused these sales (out of stock, invalid date…). The money may have been collected: check the reason, record the sale again if needed, then mark it as handled. Every refusal is also kept in the audit log.",
     "othersWaitingTitle": "Other cashiers' sales are waiting on this device",
     "othersWaiting": "{{names}} must sign in online on this device to send these sales ({{count}}).",
     "openQueue": "View sales",
@@ -1920,15 +1847,13 @@
     "tables": {
       "title": "Accounting by category",
       "subtitle": "Period “{{period}}”. Figures calculated by the server from recorded sales and expenses.",
-      "currency": "Display currency",
       "indicator": "Indicator",
       "total": "Total",
       "periodTitle": "Period performance",
-      "periodHint": "Amounts in USD (accounting currency). Sales are recognised on completion, expenses on validation.",
-      "periodHintFC": "Amounts in FC at each transaction's historical rate (informational); rows without an FC equivalent stay in USD.",
-      "positionTitle": "Current position (cumulative, USD)",
+      "periodHint": "Amounts in FC. Sales are recognised on completion, expenses on validation.",
+      "positionTitle": "Current position (cumulative, FC)",
       "positionHint": "Cumulative balance since the beginning, as of {{date}}: it does not depend on the selected period.",
-      "stockTitle": "Stock value (USD)",
+      "stockTitle": "Stock value (FC)",
       "stockHint": "Products active today, valued at unit purchase cost and at today's normal selling price.",
       "integrityWarning_one": "{{count}} sale line has a stored profit that differs from (revenue − purchase cost). The amounts shown always use revenue − purchase cost.",
       "integrityWarning_other": "{{count}} sale lines have a stored profit that differs from (revenue − purchase cost). The amounts shown always use revenue − purchase cost."
@@ -2057,7 +1982,7 @@
       "partialBucket": "Incomplete period (limited to the selected range)",
       "empty": "No recognised sales in this period",
       "barsLegend": "Bars: amount per {{per}}",
-      "source": "Completed sales and validated expenses, in USD.",
+      "source": "Completed sales and validated expenses, in FC.",
       "showData": "Show data",
       "hideData": "Hide data",
       "dataTitle": "Chart data",

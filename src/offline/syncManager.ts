@@ -1,5 +1,4 @@
 import { ApiError, apiErrorFromPayload, toApiError } from "../lib/apiError";
-import { isTokenExpired } from "../lib/sessionManager";
 import { serverUrl } from "../utils/constants";
 import { checkApiReachability } from "./connectivity";
 import { addLocalSale, deleteLocalSale, getLocalSale, getPendingSales, updateSaleStatus } from "./repositories/sales";
@@ -38,7 +37,7 @@ function isRetryable(error: ApiError): boolean {
   return status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 }
 
-async function submit(sale: LocalSale, token: string): Promise<SubmitOutcome> {
+async function submit(sale: LocalSale): Promise<SubmitOutcome> {
   await updateSaleStatus(sale.clientSaleId, "SYNCING", {
     lastAttemptAt: new Date().toISOString(), retryCount: sale.retryCount + 1, lastError: undefined,
   });
@@ -56,7 +55,9 @@ async function submit(sale: LocalSale, token: string): Promise<SubmitOutcome> {
     try {
       response = await fetch(`${serverUrl}/sales`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        // The session is the httpOnly cookie the browser sends by itself.
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify(sale.payload),
         signal: controller.signal,
       });
@@ -80,24 +81,23 @@ async function submit(sale: LocalSale, token: string): Promise<SubmitOutcome> {
   }
 }
 
-function canReachServer(token: string | null): token is string {
-  return Boolean(token) && !isTokenExpired(token);
-}
+// `signedIn`: a session the server has confirmed. An unconfirmed (offline)
+// session keeps queueing; the queue is sent once the server confirms it.
 
 /**
  * Drains this user's queue, oldest first. Concurrent callers share one run.
  * Stops at the first transient failure (the server or session is unusable,
  * so the following sales would fail the same way).
  */
-export function synchronizeSales(userId: string, token: string | null, force = false): Promise<void> {
+export function synchronizeSales(userId: string, signedIn: boolean, force = false): Promise<void> {
   if (activeSync) return activeSync;
   activeSync = exclusive(async () => {
-    if (!canReachServer(token) || !(await checkApiReachability())) return;
+    if (!signedIn || !(await checkApiReachability())) return;
     const queued = await getPendingSales(userId);
     for (const sale of queued) {
       const backoffMs = Math.min(5 * 60_000, 5_000 * 2 ** Math.min(sale.retryCount, 6));
       if (!force && sale.lastAttemptAt && Date.now() - new Date(sale.lastAttemptAt).getTime() < backoffMs) continue;
-      const outcome = await submit(sale, token);
+      const outcome = await submit(sale);
       if (outcome.kind === "queued") break;
     }
   }).finally(() => {
@@ -117,11 +117,11 @@ export function synchronizeSales(userId: string, token: string | null, force = f
  *   local copy is removed and the cart stays editable, exactly as before
  *   offline support existed.
  */
-export function submitNewSale(sale: LocalSale, token: string | null): Promise<SubmitOutcome> {
+export function submitNewSale(sale: LocalSale, signedIn: boolean): Promise<SubmitOutcome> {
   return exclusive(async () => {
     await addLocalSale(sale);
-    if (!canReachServer(token) || !(await checkApiReachability())) return { kind: "queued", sale } as const;
-    const outcome = await submit(sale, token);
+    if (!signedIn || !(await checkApiReachability())) return { kind: "queued", sale } as const;
+    const outcome = await submit(sale);
     if (outcome.kind === "rejected") await deleteLocalSale(sale.clientSaleId);
     return outcome;
   }).finally(() => window.dispatchEvent(new Event("offline-sales:changed")));
@@ -132,12 +132,12 @@ export function submitNewSale(sale: LocalSale, token: string | null): Promise<Su
  * sales now, waiting at most `maxWaitMs`. Whatever is not sent stays safely
  * queued on the device for the cashier's next online sign-in.
  */
-export async function flushBeforeSignOut(userId: string | undefined, token: string | null, maxWaitMs = 10_000): Promise<void> {
-  if (!userId || !token) return;
+export async function flushBeforeSignOut(userId: string | undefined, signedIn: boolean, maxWaitMs = 10_000): Promise<void> {
+  if (!userId || !signedIn) return;
   try {
     if (!(await getPendingSales(userId)).length) return;
     await Promise.race([
-      synchronizeSales(userId, token, true),
+      synchronizeSales(userId, signedIn, true),
       new Promise<void>((resolve) => setTimeout(resolve, maxWaitMs)),
     ]);
   } catch {

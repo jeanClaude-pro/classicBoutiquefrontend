@@ -1,12 +1,11 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import type { SaleCurrency } from "../utils/salePricing";
+import { CURRENCY } from "../utils/salePricing";
 
 interface UnitPriceInputProps {
   id: string;
-  /** The line's current unit price in `currency`. */
+  /** The line's current unit price, in FC. */
   value: number;
-  currency: SaleCurrency;
   ariaLabel: string;
   /** Error for this line coming from the server (e.g. "Prix trop bas…"). */
   error?: string | null;
@@ -16,18 +15,15 @@ interface UnitPriceInputProps {
   onCommit: (value: number) => void;
 }
 
-const displayValue = (value: number, currency: SaleCurrency) =>
-  currency === "FC" ? String(Math.round(value)) : String(Number(value.toFixed(2)));
+const displayValue = (value: number) => String(Math.round(value));
 
-// An FC amount is a whole number of francs and a USD amount has at most two
-// decimals: anything else would be displayed differently from what was typed.
-function parseUnitPrice(text: string, currency: SaleCurrency): number | "invalid" {
+// An FC amount is a whole number of francs: anything else would be displayed
+// differently from what was typed.
+function parseUnitPrice(text: string): number | "invalid" {
   const normalized = text.trim().replace(/\s/g, "").replace(",", ".");
   if (!/^\d+(\.\d+)?$/.test(normalized)) return "invalid";
   const amount = Number(normalized);
-  if (!Number.isFinite(amount) || amount <= 0) return "invalid";
-  if (currency === "FC" && !Number.isInteger(amount)) return "invalid";
-  if (currency === "USD" && Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-9) return "invalid";
+  if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) return "invalid";
   return amount;
 }
 
@@ -37,14 +33,14 @@ function parseUnitPrice(text: string, currency: SaleCurrency): number | "invalid
  * being re-priced on every keystroke; the price is committed on blur or Enter
  * (Escape cancels). Rendered by React only — no DOM is touched directly.
  */
-export default function UnitPriceInput({ id, value, currency, ariaLabel, error, disabled, className = "w-28", onCommit }: UnitPriceInputProps) {
+export default function UnitPriceInput({ id, value, ariaLabel, error, disabled, className = "w-28", onCommit }: UnitPriceInputProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
   const initial = useRef("");
   const cancelled = useRef(false);
-  const shown = draft ?? displayValue(value, currency);
-  const message = invalid ? t(currency === "FC" ? "pos.invalidFcPrice" : "pos.invalidUsdPrice") : error;
+  const shown = draft ?? displayValue(value);
+  const message = invalid ? t("pos.invalidFcPrice") : error;
   const messageId = `${id}-error`;
 
   const commit = () => {
@@ -57,7 +53,7 @@ export default function UnitPriceInput({ id, value, currency, ariaLabel, error, 
     }
     // Unchanged, or emptied and left: the line keeps its current price.
     if (text.trim() === initial.current || text.trim() === "") return;
-    const amount = parseUnitPrice(text, currency);
+    const amount = parseUnitPrice(text);
     if (amount === "invalid") {
       setInvalid(true);
       return;
@@ -81,7 +77,7 @@ export default function UnitPriceInput({ id, value, currency, ariaLabel, error, 
         <input
           id={id}
           type="text"
-          inputMode={currency === "FC" ? "numeric" : "decimal"}
+          inputMode="numeric"
           autoComplete="off"
           aria-label={ariaLabel}
           aria-invalid={message ? true : undefined}
@@ -89,7 +85,7 @@ export default function UnitPriceInput({ id, value, currency, ariaLabel, error, 
           value={shown}
           disabled={disabled}
           onFocus={() => {
-            const current = displayValue(value, currency);
+            const current = displayValue(value);
             initial.current = current;
             cancelled.current = false;
             setInvalid(false);
@@ -100,7 +96,7 @@ export default function UnitPriceInput({ id, value, currency, ariaLabel, error, 
           onKeyDown={handleKeyDown}
           className={`min-w-0 rounded-md border px-2 py-1.5 text-right tabular-nums ${message ? "border-red-500 bg-red-50" : "border-gray-300"} ${className}`}
         />
-        <span className="text-xs font-medium text-gray-600">{currency}</span>
+        <span className="text-xs font-medium text-gray-600">{CURRENCY}</span>
       </div>
       {message && (
         <p id={messageId} role="alert" className="mt-1 text-xs text-red-600 text-right">

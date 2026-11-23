@@ -20,18 +20,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const RATE = 2850;
 const now = new Date().toISOString();
-// Priced as 20,000 FC at 2,850 FC/USD. Staff never receive acquisition cost.
-const robe = { _id: "p-robe", name: "Robe soirée", category: "Robes", mainCategory: "CLOTHES", price: 20000 / RATE, priceFC: 20000, priceEnteredCurrency: "FC", priceExchangeRate: RATE, stock: 20, minStock: 1, status: "active" };
-const chemise = { _id: "p-chemise", name: "Chemise lin", category: "Chemises", mainCategory: "CLOTHES", price: 25, stock: 20, minStock: 1, status: "active" };
+// Every amount is FC. Staff never receive acquisition cost.
+const robe = { _id: "p-robe", name: "Robe soirée", category: "Robes", mainCategory: "CLOTHES", currency: "FC", price: 20000, priceFC: 20000, priceEnteredCurrency: "FC", stock: 20, minStock: 1, status: "active" };
+const chemise = { _id: "p-chemise", name: "Chemise lin", category: "Chemises", mainCategory: "CLOTHES", currency: "FC", price: 70000, priceFC: 70000, stock: 20, minStock: 1, status: "active" };
 const flat = (text: string | null | undefined) => (text || "").replace(/[\s\u202f\u00a0]/g, "");
 
 type Reply = Parameters<typeof mockApi>[0][number]["reply"];
 function posApi(saleReply: Reply) {
   return mockApi([
     { match: /^\/products/, reply: { body: [robe, chemise] } },
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: RATE, effectiveFrom: now } } },
     { match: /^\/settings\/receipt/, reply: { body: {} } },
     { method: "POST", match: /^\/print\//, reply: { body: { success: true } } },
     { method: "POST", match: /^\/sales$/, reply: saleReply },
@@ -73,7 +71,7 @@ test("Point de vente: under 5 pieces no unit price can be edited in the cart", a
 
 test("Point de vente: at 5 pieces an exact 18,000 FC unit price is sold as 5 x 18,000 FC", async () => {
   signIn({ role: "staff", username: "caissier" });
-  const api = posApi(({ body }) => ({ status: 201, body: { _id: "s1", saleId: "SALE-1", total: 31.6, exchangeRate: RATE, items: (body as { items: unknown[] }).items } }));
+  const api = posApi(({ body }) => ({ status: 201, body: { _id: "s1", saleId: "SALE-1", currency: "FC", total: 90000, items: (body as { items: unknown[] }).items } }));
   const user = userEvent.setup();
   renderPage(<NewSale />, "/");
   await addToCart(user, "Robe soirée", "5");
@@ -90,9 +88,9 @@ test("Point de vente: at 5 pieces an exact 18,000 FC unit price is sold as 5 x 1
   await user.click(screen.getByText("Client de passage (vente sans coordonnées client)"));
   await user.click(screen.getByRole("button", { name: "Enregistrer la vente" }));
   await waitFor(() => expect(salePosts(api)).toHaveLength(1));
-  const body = salePosts(api)[0].body as { items: Array<Record<string, unknown>>; exchangeRate: number; requestKey: string };
-  expect(body.items[0]).toMatchObject({ productId: "p-robe", quantity: 5, enteredPrice: 18000, enteredCurrency: "FC", priceFC: 18000, exchangeRate: RATE });
-  expect(body.exchangeRate).toBe(RATE);
+  const body = salePosts(api)[0].body as { items: Array<Record<string, unknown>>; exchangeRate?: number; currency: string; total: number; requestKey: string };
+  expect(body.items[0]).toEqual({ productId: "p-robe", name: "Robe soirée", quantity: 5, price: 18000, enteredPrice: 18000, enteredCurrency: "FC" });
+  expect([body.currency, body.total, body.exchangeRate]).toEqual(["FC", 90000, undefined]);
   expect(typeof body.requestKey).toBe("string");
   expect(JSON.stringify(body)).not.toMatch(/unitCost|acquisition|grossProfit|minimum/i);
 });
@@ -106,7 +104,7 @@ test("Point de vente: a product priced in FC is recorded at exactly 20,000 FC", 
   await user.click(screen.getByText("Client de passage (vente sans coordonnées client)"));
   await user.click(screen.getByRole("button", { name: "Enregistrer la vente" }));
   await waitFor(() => expect(salePosts(api)).toHaveLength(1));
-  expect((salePosts(api)[0].body as { items: Array<Record<string, unknown>> }).items[0]).toMatchObject({ enteredPrice: 20000, enteredCurrency: "FC", priceFC: 20000 });
+  expect((salePosts(api)[0].body as { items: Array<Record<string, unknown>> }).items[0]).toMatchObject({ price: 20000, enteredPrice: 20000, enteredCurrency: "FC" });
 });
 
 test("Point de vente: a refused price is shown on its line, without the hidden floor, and the cart is kept", async () => {
@@ -116,7 +114,7 @@ test("Point de vente: a refused price is shown on its line, without the hidden f
   renderPage(<NewSale />, "/");
   await addToCart(user, "Robe soirée", "3");
   await addToCart(user, "Chemise lin", "2");
-  await setUnitPrice(user, "Chemise lin", "1");
+  await setUnitPrice(user, "Chemise lin", "1000");
   await user.click(screen.getByText("Client de passage (vente sans coordonnées client)"));
   await user.click(screen.getByRole("button", { name: "Enregistrer la vente" }));
 
@@ -129,7 +127,7 @@ test("Point de vente: a refused price is shown on its line, without the hidden f
   expect(screen.getByRole("button", { name: "Enregistrer la vente" })).toBeEnabled();
 
   // Raising the price clears the line's refusal.
-  await setUnitPrice(user, "Chemise lin", "25");
+  await setUnitPrice(user, "Chemise lin", "70000");
   expect(within(row).queryByRole("alert")).not.toBeInTheDocument();
 });
 
@@ -165,18 +163,18 @@ test("Point de vente: removing pieces under 5 restores normal prices and says so
   expect(screen.queryByRole("textbox", { name: /Prix unitaire de/ })).not.toBeInTheDocument();
 });
 
-// A recorded FC sale: 20,000 FC entered, USD accounting rounded to $7.02.
-// 7.02 x 2,850 would print 20,007 FC; the stored snapshot must be used.
-const fcLine = { _id: "line-1", productId: "p-robe", name: "Robe soirée", quantity: 3, price: 20000 / RATE, total: 21.06, enteredPrice: 20000, enteredCurrency: "FC", priceUSD: 20000 / RATE, priceFC: 20000, exchangeRate: RATE, unitSellingPrice: 7.02 };
-const fcSale = { _id: "s-fc", saleId: "SALE-FC-1", customer: { name: "Awa", phone: "0990000000", email: "" }, items: [fcLine], subtotal: 21.06, total: 21.06, paymentMethod: "cash", status: "completed", type: "sale", createdAt: now, updatedAt: now, exchangeRate: RATE };
+// A recorded sale as the server returns it: in FC (a sale recorded before
+// the FC-only cutover is presented through its own FC snapshot).
+const fcLine = { _id: "line-1", productId: "p-robe", name: "Robe soirée", quantity: 3, price: 20000, total: 60000, enteredPrice: 20000, enteredCurrency: "FC", priceFC: 20000, unitSellingPrice: 20000 };
+const fcSale = { _id: "s-fc", saleId: "SALE-FC-1", customer: { name: "Awa", phone: "0990000000", email: "" }, items: [fcLine], subtotal: 60000, total: 60000, currency: "FC", paymentMethod: "cash", status: "completed", type: "sale", createdAt: now, updatedAt: now };
 const historyPage = (sale: unknown) => ({
   success: true, data: [sale],
   pagination: { page: 1, limit: 50, totalRecords: 1, totalPages: 1, hasNextPage: false, hasPreviousPage: false },
   timeframe: { description: "Today (default)", start: now, end: now, query: {} },
-  summary: { totalRecords: 1, revenue: 21.06, revenueFC: 60000, expenses: 0, net: 21.06, salesCount: 1, expensesCount: 0 }, filtersApplied: {},
+  summary: { totalRecords: 1, currency: "FC", revenue: 60000, expenses: 0, net: 60000, salesCount: 1, expensesCount: 0 }, filtersApplied: {},
 });
 
-test("Historique des ventes: history and reprint keep 20,000 FC and never call today's rate", async () => {
+test("Historique des ventes: history and reprint show the stored 20,000 FC and never a dollar amount", async () => {
   signIn({ role: "superadmin", username: "admin" });
   const api = mockApi([
     { match: /^\/sales\?/, reply: { body: historyPage(fcSale) } },
@@ -189,22 +187,21 @@ test("Historique des ventes: history and reprint keep 20,000 FC and never call t
   renderPage(<SalesHistory />, "/sales");
   const row = (await screen.findByText("SALE-FC-1")).closest("tr") as HTMLElement;
   expect(flat(row.textContent)).toContain("60000FC");
-  expect(flat(row.textContent)).not.toContain("60021");
+  expect(flat(row.textContent)).not.toMatch(/\$|USD/);
 
   await user.click(within(row).getByTitle("Réimprimer le reçu"));
   const receipt = flat(written.join(""));
   // Receipts print whole francs as "20,000 FC" and never a $ amount.
   expect(receipt).toContain("20,000FC");
   expect(receipt).toContain("60,000FC");
-  expect(receipt).not.toMatch(/20,?007|60,?021/);
   expect(receipt).not.toContain("$");
   expect(api.calls.some((call) => /exchange-rates/.test(call.url))).toBe(false);
 });
 
-test("Historique des ventes: a correction under 5 pieces restores the exact FC price and keeps the sale's rate", async () => {
+test("Historique des ventes: a correction under 5 pieces restores the exact FC price", async () => {
   signIn({ role: "superadmin", username: "admin" });
-  const discountedLine = { ...fcLine, quantity: 5, enteredPrice: 18000, priceFC: 18000, priceUSD: 18000 / RATE, price: 18000 / RATE, unitSellingPrice: 6.32, total: 31.6, referenceUnitSellingPrice: 7.02, referenceUnitSellingPriceFC: 20000, discountApplied: true, discountPerUnitFC: 2000 };
-  const sale = { ...fcSale, items: [discountedLine], total: 31.6, subtotal: 31.6 };
+  const discountedLine = { ...fcLine, quantity: 5, enteredPrice: 18000, priceFC: 18000, price: 18000, unitSellingPrice: 18000, total: 90000, referenceUnitSellingPrice: 20000, referenceUnitSellingPriceFC: 20000, discountApplied: true, discountPerUnit: 2000, discountPerUnitFC: 2000 };
+  const sale = { ...fcSale, items: [discountedLine], total: 90000, subtotal: 90000 };
   const api = mockApi([
     { match: /^\/sales\?/, reply: { body: historyPage(sale) } },
     { match: /^\/products/, reply: { body: [robe] } },
@@ -231,8 +228,10 @@ test("Historique des ventes: a correction under 5 pieces restores the exact FC p
   await user.type(screen.getByPlaceholderText(/raison pour la modification/), "Client a rendu une pièce");
   await user.click(screen.getByRole("button", { name: /Mettre à jour la vente/ }));
   await waitFor(() => expect(api.calls.some((call) => call.method === "PUT")).toBe(true));
-  const body = api.calls.find((call) => call.method === "PUT")?.body as { items: Array<Record<string, unknown>> };
-  expect(body.items[0]).toMatchObject({ _id: "line-1", quantity: 4, enteredPrice: 20000, enteredCurrency: "FC", priceFC: 20000, exchangeRate: RATE });
+  const body = api.calls.find((call) => call.method === "PUT")?.body as { items: Array<Record<string, unknown>>; exchangeRate?: number };
+  expect(body.items[0]).toMatchObject({ _id: "line-1", quantity: 4, price: 20000, enteredPrice: 20000, enteredCurrency: "FC" });
+  expect(body.items[0]).not.toHaveProperty("exchangeRate");
+  expect(body).not.toHaveProperty("exchangeRate");
 });
 
 test("Point de vente: a price typed then saved directly (no Tab) is the price that is sent", async () => {

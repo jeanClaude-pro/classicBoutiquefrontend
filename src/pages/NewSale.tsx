@@ -2,35 +2,32 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { setActivityHold } from "../lib/idleTimeout";
 import { useTranslation } from "react-i18next";
-import { currentLocale, t as translate } from "../i18n";
+import { t as translate } from "../i18n";
 import { apiErrorFromPayload, fetchWithTimeout, toApiError } from "../lib/apiError";
 import { MODULES } from "../config/modules";
 import { notifySuccess } from "../lib/notify";
-import { formatNowGMT2, formatDateGMT2 } from "../utils/dateUtils";
+import { formatNowGMT2 } from "../utils/dateUtils";
 import { useAuth } from "../hooks/useAuth";
-import { DollarSign, RefreshCw, Calculator, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import { serverUrl } from "../utils/constants";
 import { COMPANY_PHONE } from "../config/company";
 import UnitPriceInput from "../components/UnitPriceInput";
 import {
+  CURRENCY,
   DISCOUNT_QUANTITY_THRESHOLD,
   canAddCartQuantity,
   createPriceSnapshot,
   formatFC,
-  formatUSD,
-  getItemFcUnitPrice,
   isDiscountedPrice,
   productReferencePrice,
   totalCartQuantity,
   type PriceSnapshot,
-  type SaleCurrency,
 } from "../utils/salePricing";
 import {
   addCartLine,
-  cartEnteredTotals,
+  cartTotal as cartTotalFC,
   cartSaleItems,
   isLineDiscounted,
-  rebaseCartToRate,
   removeCartLine,
   repriceCartLine,
   restoreIneligibleDiscounts,
@@ -47,7 +44,6 @@ import {
 import type { Product as DomainProduct } from "../types";
 import { scopeForUser } from "../offline/db";
 import { cacheProducts, getCachedProducts, getProductCacheTime } from "../offline/repositories/products";
-import { cacheExchangeRate, getCachedExchangeRate } from "../offline/repositories/exchangeRates";
 import { pendingQuantityByProduct } from "../offline/repositories/sales";
 import { checkApiReachability } from "../offline/connectivity";
 import { submitNewSale, type SubmitOutcome } from "../offline/syncManager";
@@ -66,12 +62,6 @@ type CartItem = SaleCartLine;
 // A client registered as a family member in the Clients module. The server
 // re-checks the status at checkout; this is only the selection.
 type FamilyMember = { _id: string; name: string; phone?: string; email?: string; isFamilyMember: true };
-
-interface ExchangeRate {
-  rate: number;
-  effectiveFrom: string;
-  lastUpdated: string;
-}
 
 const API_BASE = serverUrl;
 
@@ -111,8 +101,6 @@ export default function NewSale() {
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [receiptData, setReceiptData] = useState<SaleReceiptDocument | null>(null);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
-  const [loadingRate, setLoadingRate] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showSearchResults, setShowSearchResults] = useState(false);
   const [shopSettings, setShopSettings] = useState({
@@ -126,7 +114,7 @@ export default function NewSale() {
   const searchRef = useRef<HTMLDivElement>(null);
 
   // Get the current user from your auth context
-  const { user: currentUser, token } = useAuth();
+  const { user: currentUser, signedIn, offline: sessionUnconfirmed } = useAuth();
   const scopeKey = currentUser ? scopeForUser(currentUser) : "anonymous";
   const [familyMode, setFamilyMode] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
@@ -144,14 +132,12 @@ export default function NewSale() {
   const [form, setForm] = useState({
     productId: "",
     quantity: "",
+    // Unit price in FC, the shop's only currency.
     unitPrice: "",
-    priceInFC: "",
     customerName: "",
     customerPhone: "",
     isWalkIn: false,
     paymentMethod: "cash" as UiPayment,
-    currencyMode: "fc" as "usd" | "fc",
-    priceSource: "USD" as SaleCurrency,
   });
 
   const [message, setMessage] = useState<string | null>(null);
@@ -178,7 +164,7 @@ export default function NewSale() {
   const loadShopSettings = async () => {
     try {
       const res = await fetch(`${API_BASE}/settings/receipt`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+        headers: {},
       });
       if (res.ok) {
         const data = await res.json();
@@ -195,33 +181,6 @@ export default function NewSale() {
     }
   };
 
-  // Load exchange rate
-  const loadExchangeRate = async () => {
-    try {
-      setLoadingRate(true);
-      const response = await fetch(`${API_BASE}/exchange-rates/current`, {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setExchangeRate(data);
-        try { await cacheExchangeRate(scopeKey, data); } catch (cacheError) { console.warn("Exchange-rate cache unavailable:", cacheError); }
-      } else {
-        const cached = await getCachedExchangeRate(scopeKey).catch(() => undefined);
-        if (cached) { setExchangeRate(cached); setNotice(t("offline.cachedRate")); }
-      }
-    } catch (error) {
-      console.error('Error loading exchange rate:', error);
-      const cached = await getCachedExchangeRate(scopeKey).catch(() => undefined);
-      if (cached) { setExchangeRate(cached); setNotice(t("offline.cachedRate")); }
-    } finally {
-      setLoadingRate(false);
-    }
-  };
-
   useEffect(() => {
     let cancelled = false;
     
@@ -230,10 +189,9 @@ export default function NewSale() {
       setError(null);
       
       try {
-        // Load products, exchange rate and shop settings concurrently
+        // Load products and shop settings concurrently
         await Promise.all([
           loadProducts(),
-          loadExchangeRate(),
           loadShopSettings(),
         ]);
       } catch (e: any) {
@@ -248,7 +206,6 @@ export default function NewSale() {
         const res = await fetch(`${API_BASE}/products`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
         });
         const data = await readJsonSafe(res);
@@ -297,33 +254,23 @@ export default function NewSale() {
   }, [products, searchTerm]);
 
   const quantity = parseInt(form.quantity) || 0;
-  const enteredPrice =
-    parseFloat(form.priceSource === "FC" ? form.priceInFC : form.unitPrice) || 0;
+  const enteredPrice = parseFloat(form.unitPrice) || 0;
   const currentPrice = useMemo<PriceSnapshot | null>(() => {
     if (enteredPrice <= 0) return null;
-
     try {
-      return createPriceSnapshot(
-        enteredPrice,
-        form.priceSource,
-        exchangeRate?.rate
-      );
+      return createPriceSnapshot(enteredPrice);
     } catch {
       return null;
     }
-  }, [enteredPrice, exchangeRate?.rate, form.priceSource]);
-  const cartTotal = cart.reduce((sum, item) => sum + item.total, 0);
+  }, [enteredPrice]);
+  const cartTotal = cartTotalFC(cart);
   const cartQuantity = totalCartQuantity(cart);
   const prospectiveCartQuantity = cartQuantity + quantity;
   const discountEligible = familyMode || cartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
   const canEditSelectedPrice = canEditPrice || prospectiveCartQuantity >= DISCOUNT_QUANTITY_THRESHOLD;
-  const cartOriginalTotals = cartEnteredTotals(cart);
-  // Cart unit prices are edited in the currency the cashier works in.
-  const editCurrency: SaleCurrency = form.currencyMode === "fc" && exchangeRate ? "FC" : "USD";
 
   const isFormValid =
     cart.length > 0 &&
-    exchangeRate !== null &&
     (!familyMode || selectedFamilyMember !== null) &&
     (familyMode || form.isWalkIn ||
       (form.customerName.trim() !== "" && form.customerPhone.trim() !== ""));
@@ -382,7 +329,7 @@ export default function NewSale() {
         const params = new URLSearchParams({ familyOnly: "true", limit: "20" });
         if (query) params.set("search", query);
         const response = await fetch(`${API_BASE}/customers?${params}`, {
-          headers: { Authorization: `Bearer ${token || ""}` },
+          headers: {},
           signal: controller.signal,
         });
         const data = await readJsonSafe(response);
@@ -399,7 +346,7 @@ export default function NewSale() {
       }
     }, query ? 250 : 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [familyMode, familySearch, selectedFamilyMember, token]);
+  }, [familyMode, familySearch, selectedFamilyMember]);
 
   function selectFamilyMember(member: FamilyMember) {
     setSelectedFamilyMember(member);
@@ -407,22 +354,10 @@ export default function NewSale() {
     setForm((current) => ({ ...current, isWalkIn: false, customerName: member.name, customerPhone: member.phone || "" }));
   }
 
-  // Normal price fields for a product, entered in its authoritative currency:
-  // a price defined as 20,000 FC is recorded as 20,000 FC at whatever rate is
-  // in force (only its USD value follows the rate); a $20 price stays $20.
-  // Without a rate yet, an FC price leaves the USD field empty; it is filled
-  // from the exact FC amount when the rate arrives.
+  // The price field starts at the product's normal FC price.
   const normalPriceFields = (selected: Product) => {
-    const rate = exchangeRate?.rate;
-    const reference = productReferencePrice(selected, rate);
-    const fcSource = reference.currency === "FC" && reference.priceFC !== undefined;
-    return {
-      unitPrice: fcSource
-        ? rate ? (reference.priceFC! / rate).toString() : ""
-        : reference.priceUSD ? reference.priceUSD.toString() : "",
-      priceInFC: reference.priceFC !== undefined ? reference.priceFC.toString() : "",
-      priceSource: (fcSource ? "FC" : "USD") as SaleCurrency,
-    };
+    const reference = productReferencePrice(selected);
+    return { unitPrice: reference.priceFC !== undefined ? String(Math.round(reference.priceFC)) : "" };
   };
 
   // Handle product selection from search
@@ -461,68 +396,6 @@ export default function NewSale() {
       quantityToAdd
     );
   };
-
-  // Toggle between USD and FC input modes
-  const toggleCurrencyMode = () => {
-    setForm(prev => ({
-      ...prev,
-      currencyMode: prev.currencyMode === "usd" ? "fc" : "usd",
-    }));
-  };
-
-  const handleUsdPriceChange = (value: string) => {
-    const usdPrice = parseFloat(value);
-    setForm((prev) => ({
-      ...prev,
-      unitPrice: value,
-      priceInFC:
-        exchangeRate && Number.isFinite(usdPrice)
-          ? Math.round(usdPrice * exchangeRate.rate).toString()
-          : "",
-      priceSource: "USD",
-    }));
-  };
-
-  const handleFcPriceChange = (value: string) => {
-    const fcPrice = parseFloat(value);
-    setForm((prev) => ({
-      ...prev,
-      priceInFC: value,
-      unitPrice:
-        exchangeRate && Number.isFinite(fcPrice)
-          ? (fcPrice / exchangeRate.rate).toString()
-          : "",
-      priceSource: "FC",
-    }));
-  };
-
-  // Populate a missing equivalent when the rate arrives without changing
-  // which manually entered currency owns the price.
-  useEffect(() => {
-    if (!exchangeRate) return;
-
-    setForm((prev) => {
-      if (prev.priceSource === "USD" && prev.unitPrice && !prev.priceInFC) {
-        return {
-          ...prev,
-          priceInFC: Math.round(
-            parseFloat(prev.unitPrice) * exchangeRate.rate
-          ).toString(),
-        };
-      }
-
-      if (prev.priceSource === "FC" && prev.priceInFC && !prev.unitPrice) {
-        return {
-          ...prev,
-          unitPrice: (
-            parseFloat(prev.priceInFC) / exchangeRate.rate
-          ).toString(),
-        };
-      }
-
-      return prev;
-    });
-  }, [exchangeRate]);
 
   // Function to display stock information based on user role
   const renderStockInfo = (product: Product) => {
@@ -624,7 +497,7 @@ export default function NewSale() {
       return;
     }
 
-    const reference = productReferencePrice(product, exchangeRate?.rate);
+    const reference = productReferencePrice(product);
     if (!familyMode && isDiscountedPrice(currentPrice, reference) && prospectiveCartQuantity < DISCOUNT_QUANTITY_THRESHOLD) {
       setError(t("pos.discountQuantityRequired"));
       return;
@@ -683,7 +556,7 @@ export default function NewSale() {
   // Sets the unit price of ONE line; its total is quantity x that unit price.
   function updateCartUnitPrice(lineId: string, amount: number) {
     try {
-      setCart(repriceCartLine(cart, lineId, amount, editCurrency, exchangeRate?.rate));
+      setCart(repriceCartLine(cart, lineId, amount));
       clearLineError(lineId);
       setError(null);
     } catch {
@@ -764,7 +637,7 @@ export default function NewSale() {
     const submittedCart = cart;
 
     try {
-      if (!currentUser || !exchangeRate) throw new Error(t("offline.dataUnavailable"));
+      if (!currentUser) throw new Error(t("offline.dataUnavailable"));
       const occurredAt = new Date().toISOString();
       const clientSaleId = requestKey.current;
       const receiptNumber = `POS-${clientSaleId}`;
@@ -782,8 +655,7 @@ export default function NewSale() {
         total: cartTotal,
         paymentMethod: uiToModelPayment(form.paymentMethod),
         salesPerson: currentUser?.username || "unknown",
-        // The rate the cart was priced at; the server refuses it if stale.
-        exchangeRate: exchangeRate.rate,
+        currency: CURRENCY,
         requestKey: clientSaleId,
         clientSaleId,
         receiptNumber,
@@ -808,28 +680,28 @@ export default function NewSale() {
         // A refusal throws to the error handling below with the cart intact.
         if (!(await checkApiReachability(true))) throw new Error(t("familySale.onlineRequired"));
         const response = await fetchWithTimeout(`${API_BASE}/sales`, {
-          method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         data = await readJsonSafe(response);
         if (!response.ok) throw apiErrorFromPayload(response.status, data);
         synced = true;
       } else try {
-        outcome = await submitNewSale(localSale, token);
+        outcome = await submitNewSale(localSale, signedIn && !sessionUnconfirmed);
       } catch (storageError) {
         // IndexedDB can be disabled by browser policy/private mode. Preserve
         // the established online path, but never pretend an offline sale was
         // saved when durable local storage is unavailable.
         console.warn("Offline storage unavailable; using online submission:", storageError);
         const response = await fetchWithTimeout(`${API_BASE}/sales`, {
-          method: "POST", headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
         data = await readJsonSafe(response);
         if (!response.ok) throw apiErrorFromPayload(response.status, data);
         synced = true;
       }
-      // A refusal at the till (stock, rate, discount floor) keeps the cart and
+      // A refusal at the till (stock, discount floor) keeps the cart and
       // goes through the established error handling below: nothing was sold.
       if (outcome?.kind === "rejected") throw outcome.error;
       if (outcome) {
@@ -840,8 +712,8 @@ export default function NewSale() {
       // Get the sale ID from the API response
       const saleId = receiptNumber;
       
-      // Receipt of the recorded sale: the server's stored items carry the FC
-      // snapshots printed on the receipt and stub.
+      // Receipt of the recorded sale: the server's stored FC lines are printed
+      // on the receipt and stub.
       const newReceiptData = buildSaleReceipt({
         shopName: shopSettings.shopName,
         shopAddress: shopSettings.shopAddress,
@@ -851,7 +723,6 @@ export default function NewSale() {
         customerName: form.isWalkIn ? t("pos.walkIn") : form.customerName,
         customerPhone: form.isWalkIn ? "" : form.customerPhone,
         items: Array.isArray(data.items) ? data.items : cart,
-        exchangeRate: typeof data.exchangeRate === "number" ? data.exchangeRate : body.exchangeRate,
         paymentMethod: form.paymentMethod,
         salesPerson: currentUser?.username || t("pos.agent"),
         date: formatNowGMT2(),
@@ -870,13 +741,10 @@ export default function NewSale() {
         productId: "",
         quantity: "",
         unitPrice: "",
-        priceInFC: "",
         customerName: "",
         customerPhone: "",
         isWalkIn: false,
         paymentMethod: form.paymentMethod,
-        currencyMode: "fc",
-        priceSource: "USD",
       });
       setCart([]);
       setSearchTerm("");
@@ -897,18 +765,6 @@ export default function NewSale() {
       const itemIndex = failure.details?.itemIndex;
       const refusedLine = typeof itemIndex === "number" ? submittedCart[itemIndex] : undefined;
       if (refusedLine) setLineErrors({ [refusedLine.lineId]: failure.message });
-
-      const serverRate = failure.details?.exchangeRate;
-      if (failure.code === "EXCHANGE_RATE_CHANGED" && typeof serverRate === "number") {
-        // Each line keeps the amount typed in its currency; the other currency
-        // and the normal prices are recomputed at the rate now in force.
-        setCart((current) => rebaseCartToRate(current, serverRate, (productId) => {
-          const source = products.find((candidate) => candidate._id === productId);
-          return source ? productReferencePrice(source, serverRate) : undefined;
-        }));
-        setExchangeRate((current) => current ? { ...current, rate: serverRate } : current);
-        void loadExchangeRate();
-      }
     } finally {
       submitLock.current = false;
       setSubmitting(false);
@@ -925,37 +781,16 @@ export default function NewSale() {
   return (
     <div className="pos-page flex-1 p-6 overflow-auto">
       <div className="pos-shell max-w-7xl mx-auto">
-        {/* Header with Exchange Rate */}
+        {/* Header */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h2 className="text-2xl font-bold text-gray-900">{MODULES.pos.label}</h2>
               <p className="text-gray-600 mt-1">{MODULES.pos.description}</p>
             </div>
-            
-            {/* Exchange Rate Display */}
-            <div className="bg-white border border-gray-200 rounded-lg px-4 py-3 w-full min-w-0 sm:w-auto sm:min-w-[280px]">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-primary" aria-hidden="true" />
-                  <span className="font-medium text-gray-700 whitespace-nowrap">{t("pos.todayRate")}</span>
-                </div>
-                {loadingRate ? (
-                  <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
-                ) : exchangeRate ? (
-                  <div className="text-right">
-                    <div className="font-bold text-gray-900 text-lg tabular-nums whitespace-nowrap">
-                      1 USD = {new Intl.NumberFormat(currentLocale()).format(exchangeRate.rate)} FC
-                    </div>
-                    <div className="text-xs text-gray-500">
-                      {t("pos.effectiveSince", { date: formatDateGMT2(exchangeRate.effectiveFrom) })}
-                    </div>
-                  </div>
-                ) : (
-                  <span className="text-red-600 text-sm">{t("pos.rateUnavailable")}</span>
-                )}
-              </div>
-            </div>
+            <span className="self-start sm:self-auto rounded-full border border-gray-200 bg-white px-3 py-1 text-sm font-medium text-gray-700">
+              {t("common.currencyFC")}
+            </span>
           </div>
         </div>
 
@@ -1053,61 +888,25 @@ export default function NewSale() {
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-2">
-                <label htmlFor="new-sale-unit-price" className="block font-medium text-gray-700">{t("pos.unitPrice")}</label>
-                <button
-                  type="button"
-                  onClick={toggleCurrencyMode}
-                  className="flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
-                >
-                  <Calculator className="w-3 h-3" />
-                  {form.currencyMode === 'usd' ? 'USD → FC' : 'FC → USD'}
-                </button>
-              </div>
-              
+              <label htmlFor="new-sale-unit-price" className="block mb-2 font-medium text-gray-700">{t("pos.unitPriceFC")}</label>
               {!canEditSelectedPrice && (
                 <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5 mb-2">
                   {t("pos.discountLocked")}
                 </p>
               )}
-              {form.currencyMode === 'usd' ? (
-                <input
-                  id="new-sale-unit-price"
-                  type="number"
-                  step="0.01"
-                  name="unitPrice"
-                  value={form.unitPrice}
-                  onChange={(e) => canEditSelectedPrice && handleUsdPriceChange(e.target.value)}
-                  readOnly={!canEditSelectedPrice}
-                  placeholder={product?.price ? t("pos.priceExample", { price: product.price }) : t("pos.priceUsdPlaceholder")}
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditSelectedPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
-                  min={0.01}
-                />
-              ) : (
-                <input
-                  id="new-sale-unit-price"
-                  type="number"
-                  name="priceInFC"
-                  value={form.priceInFC}
-                  onChange={(e) => canEditSelectedPrice && handleFcPriceChange(e.target.value)}
-                  readOnly={!canEditSelectedPrice}
-                  placeholder={t("pos.priceFcPlaceholder")}
-                  className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditSelectedPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
-                  min={1}
-                />
-              )}
-              
-              {/* Conversion Display */}
-              {form.unitPrice && form.currencyMode === 'usd' && exchangeRate && (
-                <p className="text-xs text-green-600 mt-1">
-                  ≈ {formatFC(parseFloat(form.unitPrice) * exchangeRate.rate)}
-                </p>
-              )}
-              {form.priceInFC && form.currencyMode === 'fc' && exchangeRate && (
-                <p className="text-xs text-green-600 mt-1">
-                  ≈ {formatUSD(parseFloat(form.priceInFC) / exchangeRate.rate)}
-                </p>
-              )}
+              <input
+                id="new-sale-unit-price"
+                type="number"
+                inputMode="numeric"
+                step="1"
+                name="unitPrice"
+                value={form.unitPrice}
+                onChange={(e) => canEditSelectedPrice && handleChange(e)}
+                readOnly={!canEditSelectedPrice}
+                placeholder={t("pos.priceFcPlaceholder")}
+                className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${!canEditSelectedPrice ? "bg-gray-50 border-gray-200 cursor-not-allowed text-gray-500" : "border-gray-300"}`}
+                min={1}
+              />
             </div>
           </div>
 
@@ -1155,64 +954,35 @@ export default function NewSale() {
                     {cart.map((item) => {
                       const discounted = isLineDiscounted(item);
                       const lineError = lineErrors[item.lineId];
-                      const fcUnit = getItemFcUnitPrice(item);
-                      const editorCurrency: SaleCurrency = editCurrency === "FC" && fcUnit !== undefined ? "FC" : "USD";
                       return (
                       <tr key={item.lineId} className={lineError ? "bg-red-50" : "hover:bg-gray-50"}>
                         <td className="px-4 py-3 text-sm text-gray-900">{item.name}</td>
                         <td className="px-4 py-3 text-sm text-center text-gray-600">{item.quantity}</td>
                         <td className="px-4 py-3 text-sm text-right text-gray-900">
-                          <span className="pos-cell-label">{t("pos.unitPriceIn", { currency: discountEligible ? editorCurrency : item.enteredCurrency })}</span>
+                          <span className="pos-cell-label">{t("pos.columns.unitPrice")}</span>
                           {discountEligible ? (
                             <UnitPriceInput
                               id={`pos-unit-price-${item.lineId}`}
-                              value={editorCurrency === "FC" ? fcUnit ?? item.enteredPrice : item.priceUSD}
-                              currency={editorCurrency}
+                              value={item.enteredPrice}
                               ariaLabel={t("pos.editUnitPriceNamed", { name: item.name })}
                               error={lineError}
                               onCommit={(amount) => updateCartUnitPrice(item.lineId, amount)}
                             />
                           ) : (
                             <>
-                              {item.enteredCurrency === "FC"
-                                ? formatFC(item.enteredPrice)
-                                : formatUSD(item.enteredPrice)}
+                              {formatFC(item.enteredPrice)}
                               {lineError && <p role="alert" className="mt-1 text-xs text-red-600">{lineError}</p>}
                             </>
                           )}
-                          {item.enteredCurrency === "FC" ? (
-                            <div className="text-xs text-gray-500">
-                              ≈ {formatUSD(item.priceUSD)}
-                            </div>
-                          ) : item.priceFC !== undefined ? (
-                            <div className="text-xs text-gray-500">
-                              ≈ {formatFC(item.priceFC)}
-                            </div>
-                          ) : null}
-                          {discounted && (
+                          {discounted && item.reference.priceFC !== undefined && (
                             <div className="text-xs text-emerald-700">
-                              {t("pos.normalPrice", {
-                                price: item.enteredCurrency === "FC" && item.reference.priceFC !== undefined
-                                  ? formatFC(item.reference.priceFC)
-                                  : formatUSD(item.reference.priceUSD),
-                              })}
+                              {t("pos.normalPrice", { price: formatFC(item.reference.priceFC) })}
                             </div>
                           )}
                         </td>
                         <td className="px-4 py-3 text-sm text-right text-gray-900">
                           <span className="pos-cell-label">{t("pos.columns.total")}</span>
-                          {item.enteredCurrency === "FC"
-                            ? formatFC(item.enteredPrice * item.quantity)
-                            : formatUSD(item.enteredPrice * item.quantity)}
-                          {item.enteredCurrency === "FC" ? (
-                            <div className="text-xs text-gray-500">
-                              ≈ {formatUSD(item.total)}
-                            </div>
-                          ) : item.priceFC !== undefined ? (
-                            <div className="text-xs text-gray-500">
-                              ≈ {formatFC(item.priceFC * item.quantity)}
-                            </div>
-                          ) : null}
+                          {formatFC(item.enteredPrice * item.quantity)}
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
@@ -1233,17 +1003,7 @@ export default function NewSale() {
                         {t("pos.totalLabel")}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-semibold text-gray-900">
-                        {cartOriginalTotals.USD > 0 && (
-                          <div>{formatUSD(cartOriginalTotals.USD)}</div>
-                        )}
-                        {cartOriginalTotals.FC > 0 && (
-                          <div>{formatFC(cartOriginalTotals.FC)}</div>
-                        )}
-                        {cartOriginalTotals.FC > 0 && (
-                          <div className="text-xs text-gray-500">
-                            {t("pos.totalReceived", { amount: formatUSD(cartTotal) })}
-                          </div>
-                        )}
+                        {formatFC(cartTotal)}
                       </td>
                       <td></td>
                     </tr>

@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import { serverUrl } from "../../utils/constants";
 import { formatNowGMT2 } from "../../utils/dateUtils";
 import { requestJson, toApiError } from "../../lib/apiError";
-import { formatFC, formatUSD } from "../../utils/salePricing";
+import { formatFC } from "../../utils/salePricing";
 import { downloadOperationalReportPdf } from "../reports/operationalReportPdf";
 import {
   categoryLabel,
@@ -17,17 +17,14 @@ import {
   productStockSheetPdfModel,
   type Money,
   type ProductStockSheetPayload,
-  type SellingPrice,
 } from "../reports/operationalReportModel";
 import { ReportFilterFields, SummaryCard } from "../reports/reportControls";
 import { periodLabelOf, useReportFilters, useShopIdentity } from "../reports/reportFilters";
 
-/** A price or value in the currency that defines the product's price first. */
-function inAuthority(money: Money | null | undefined, currency: SellingPrice["currency"] | undefined) {
-  if (!money) return { primary: "—", secondary: null as string | null };
-  const fc = money.fc === null ? null : formatFC(money.fc);
-  const usd = money.usd === null ? null : formatUSD(money.usd);
-  return currency === "USD" ? { primary: usd ?? fc ?? "—", secondary: usd ? fc : null } : { primary: fc ?? usd ?? "—", secondary: fc ? usd : null };
+/** A price or value, in FC. */
+function inFC(money: Money | null | undefined) {
+  if (!money || money.fc === null) return { primary: "—", secondary: null as string | null };
+  return { primary: formatFC(money.fc), secondary: null as string | null };
 }
 
 export default function ProductStockSheet() {
@@ -61,9 +58,8 @@ export default function ProductStockSheet() {
   const product = data?.product;
   const row = data?.row ?? null;
   const periodLabel = periodLabelOf(data?.period, range);
-  const authority = product?.sellingPrice?.currency;
-  const price = inAuthority(row?.sellingPrice ?? product?.sellingPrice, authority);
-  const value = inAuthority(row?.inventoryValue, authority);
+  const price = inFC(row?.sellingPrice ?? product?.sellingPrice);
+  const value = inFC(row?.inventoryValue);
 
   function exportPdf() {
     if (!data) return;
@@ -87,7 +83,7 @@ export default function ProductStockSheet() {
             <div><dt className="text-slate-600">{t("operationalReports.unit")}</dt><dd className="font-medium text-slate-900">{product.unit}</dd></div>
             <div><dt className="text-slate-600">{t("operationalReports.currentStock")}</dt><dd className="font-medium tabular-nums text-slate-900">{formatQuantity(product.currentStock)}</dd></div>
             <div><dt className="text-slate-600">{t("operationalReports.status")}</dt><dd className="font-medium text-slate-900">{product.status === "active" ? t("operationalReports.statusActive") : t("operationalReports.statusInactive")}</dd></div>
-            <div><dt className="text-slate-600">{t("operationalReports.sellingPrice")}</dt><dd className="font-medium tabular-nums text-slate-900">{inAuthority(product.sellingPrice, authority).primary}</dd></div>
+            <div><dt className="text-slate-600">{t("operationalReports.sellingPrice")}</dt><dd className="font-medium tabular-nums text-slate-900">{inFC(product.sellingPrice).primary}</dd></div>
           </dl>
         )}
       </header>

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 
-import { formatFC, formatUSD } from "../../utils/salePricing";
+import { formatFC } from "../../utils/salePricing";
 import { currentLocale } from "../../i18n";
 import { categoryPresentation, type AccountingCategory, type CategoryAccountingDTO } from "./accountingPresentation";
 import "./financialReports.css";
@@ -23,8 +23,6 @@ export interface CategoryReportDTO extends CategoryAccountingDTO {
   capitalUsedForPurchases?: number;
   lossCoveredByCapital?: number;
   generatedPurchaseFunds?: number;
-  goodsPurchasesFC?: number;
-  profitUsedForPurchasesFC?: number;
   activity?: { saleLines: number; unitsSold: number; companyExpenseTransactions: number; goodsPurchaseTransactions: number; reversals: number };
   integrity?: { grossProfitSnapshotMismatches: number };
 }
@@ -68,14 +66,14 @@ function CategoryDecisionTable({ category, row, view }: {
             {lines.map((line) => (
               <tr key={line.id} className={line.id === "purchaseFunds" ? "is-key-decision" : undefined}>
                 <th scope="row">{line.label}</th>
-                <td className={line.tone}>{formatUSD(line.value)}</td>
+                <td className={line.tone}>{formatFC(line.value)}</td>
               </tr>
             ))}
             <tr className="fin-decision-section"><th colSpan={2}>{t("financialReports.overview.shareholderPayout")}</th></tr>
             {shareholderLines.map((line) => (
               <tr key={line.id} className="is-shareholder">
                 <th scope="row">{line.label}</th>
-                <td>{formatUSD(line.value)}</td>
+                <td>{formatFC(line.value)}</td>
               </tr>
             ))}
           </tbody>
@@ -88,17 +86,14 @@ function CategoryDecisionTable({ category, row, view }: {
   );
 }
 
-type Currency = "USD" | "FC";
 type Kind = "money" | "percent" | "count";
 type Tone = "plain" | "signed" | "strong" | "funds" | "danger";
 
 interface RowDef<T> {
   id: string;
   label: string;
-  /** USD (or the count / percent). null = not applicable for that column. */
+  /** FC amount (or the count / percent). null = not applicable for that column. */
   value: (row: T, category: AccountingCategory | "TOTAL") => number | null | undefined;
-  /** Informational FC figure when one exists. */
-  fc?: (row: T) => number | undefined;
   kind?: Kind;
   tone?: Tone;
   /** How the Total column is filled: summed, a ratio of totals, or none. */
@@ -112,11 +107,11 @@ const cents = (value: number | null | undefined) => Math.round(Number(value || 0
 const ratio = (part: number | null | undefined, whole: number | null | undefined) =>
   whole && whole > 0 ? (Number(part || 0) / whole) * 100 : null;
 
-function formatValue(value: number | null | undefined, kind: Kind, currency: Currency | "USD-only"): string {
+function formatValue(value: number | null | undefined, kind: Kind): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";
   if (kind === "percent") return `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 1, minimumFractionDigits: 1 }).format(value)} %`;
   if (kind === "count") return new Intl.NumberFormat(currentLocale()).format(value);
-  return currency === "FC" ? formatFC(value) : formatUSD(value);
+  return formatFC(value);
 }
 
 function toneClass(tone: Tone | undefined, value: number | null | undefined): string {
@@ -128,13 +123,12 @@ function toneClass(tone: Tone | undefined, value: number | null | undefined): st
   return value < 0 ? "is-negative" : "";
 }
 
-function FinancialTable<T>({ caption, hint, columns, rows, data, currency, totalsEnabled, labelledBy }: {
+function FinancialTable<T>({ caption, hint, columns, rows, data, totalsEnabled, labelledBy }: {
   caption: string;
   hint?: string;
   columns: AccountingCategory[];
   rows: RowDef<T>[];
   data: Partial<Record<AccountingCategory, T>>;
-  currency: Currency | "USD-only";
   totalsEnabled: boolean;
   labelledBy?: string;
 }) {
@@ -145,29 +139,26 @@ function FinancialTable<T>({ caption, hint, columns, rows, data, currency, total
 
   const cellFor = (row: RowDef<T>, category: AccountingCategory) => {
     const source = data[category];
-    if (!source) return { text: "—", value: null as number | null, fcUsed: false };
+    if (!source) return { text: "—", value: null as number | null };
     const kind = row.kind ?? "money";
-    const fcValue = currency === "FC" && kind === "money" ? row.fc?.(source) : undefined;
     const value = row.value(source, category);
-    if (fcValue !== undefined && value !== null) return { text: formatValue(fcValue, kind, "FC"), value: fcValue, fcUsed: true };
-    return { text: formatValue(value, kind, "USD-only"), value: value ?? null, fcUsed: false };
+    return { text: formatValue(value, kind), value: value ?? null };
   };
 
   const totalFor = (row: RowDef<T>) => {
     if (!showTotal || row.total === false || row.total === undefined) return { text: "—", value: null as number | null };
     const kind = row.kind ?? "money";
-    const useFC = currency === "FC" && kind === "money" && row.fc !== undefined;
     if (row.total === "sum") {
       let sum = 0;
       for (const category of columns) {
         const source = data[category];
         if (!source) continue;
-        const raw = useFC ? row.fc!(source) : row.value(source, category);
+        const raw = row.value(source, category);
         if (raw === null || raw === undefined) return { text: "—", value: null };
         sum += kind === "money" ? cents(raw) : Number(raw);
       }
       const value = kind === "money" ? sum / 100 : sum;
-      return { text: formatValue(value, kind, useFC ? "FC" : "USD-only"), value };
+      return { text: formatValue(value, kind), value };
     }
     const totals: Record<string, number> = {};
     for (const definition of rows) {
@@ -180,7 +171,7 @@ function FinancialTable<T>({ caption, hint, columns, rows, data, currency, total
       totals[definition.id] = sum / 100;
     }
     const value = row.total(totals);
-    return { text: formatValue(value, kind, "USD-only"), value };
+    return { text: formatValue(value, kind), value };
   };
 
   let currentSection: string | undefined;
@@ -247,7 +238,6 @@ export default function CategoryAccountingTables({ breakdown, inventory, periodL
   periodLabel: string;
 }) {
   const { t } = useTranslation();
-  const [currency, setCurrency] = useState<Currency>("USD");
   const [showDetails, setShowDetails] = useState(false);
   const columns = CATEGORY_ORDER.filter((category) => breakdown?.[category]);
   if (!breakdown || columns.length === 0) return null;
@@ -272,19 +262,19 @@ export default function CategoryAccountingTables({ breakdown, inventory, periodL
     category === "CLOTHES" ? (second ? undefined : t("financialReports.notes.clothesOwner")) : t("financialReports.notes.shoesHalf");
 
   const periodRows: RowDef<CategoryReportDTO>[] = [
-    { id: "revenue", section: sections.results, label: m("revenue"), ...shared("revenue", (c) => c.revenue), fc: (c) => c.revenueFC, total: "sum" },
-    { id: "costOfGoodsSold", label: m("costOfGoodsSold"), ...shared("costOfGoodsSold", (c) => c.costOfGoodsSold), fc: (c) => c.costOfGoodsSoldFC, total: "sum" },
-    { id: "grossProfit", label: m("grossProfit"), ...shared("grossProfit", (c) => c.grossProfit), fc: (c) => c.grossProfitFC, tone: "strong", total: "sum" },
+    { id: "revenue", section: sections.results, label: m("revenue"), ...shared("revenue", (c) => c.revenue), total: "sum" },
+    { id: "costOfGoodsSold", label: m("costOfGoodsSold"), ...shared("costOfGoodsSold", (c) => c.costOfGoodsSold), total: "sum" },
+    { id: "grossProfit", label: m("grossProfit"), ...shared("grossProfit", (c) => c.grossProfit), tone: "strong", total: "sum" },
     { id: "grossMargin", label: r("grossMargin"), kind: "percent", value: (c) => ratio(c.grossProfit, c.revenue), total: (x) => ratio(x.grossProfit, x.revenue) },
-    { id: "companyExpenses", label: m("companyExpenses"), ...shared("companyExpenses", (c) => c.companyExpenses), fc: (c) => c.companyExpensesFC, total: "sum" },
-    { id: "netProfit", label: m("netProfit"), ...shared("netProfit", (c) => c.netProfit), fc: (c) => c.netProfitFC, tone: "strong", total: "sum" },
+    { id: "companyExpenses", label: m("companyExpenses"), ...shared("companyExpenses", (c) => c.companyExpenses), total: "sum" },
+    { id: "netProfit", label: m("netProfit"), ...shared("netProfit", (c) => c.netProfit), tone: "strong", total: "sum" },
     { id: "netMargin", label: r("netMargin"), kind: "percent", value: (c) => ratio(c.netProfit, c.revenue), total: (x) => ratio(x.netProfit, x.revenue) },
-    { id: "goodsPurchases", section: sections.purchases, label: m("goodsPurchases"), ...shared("goodsPurchases", (c) => c.goodsPurchases), fc: (c) => c.goodsPurchasesFC, total: "sum" },
+    { id: "goodsPurchases", section: sections.purchases, label: m("goodsPurchases"), ...shared("goodsPurchases", (c) => c.goodsPurchases), total: "sum" },
     { id: "capitalUsedForPurchases", label: r("capitalUsedForPurchases"), value: (c) => c.capitalUsedForPurchases ?? null, total: "sum" },
-    { id: "profitUsedForPurchases", label: r("profitUsedForPurchases"), value: (c, category) => (category === "SHOES" ? null : metricOf(category, "profitUsedForPurchases")?.value ?? c.profitUsedForPurchases), fc: (c) => c.profitUsedForPurchasesFC, total: false, note: (category) => (category === "SHOES" ? t("financialReports.notes.shoesNoProfitPurchases") : undefined) },
-    { id: "distributableProfit", section: sections.distribution, label: m("distributableProfit"), ...shared("distributableProfit", (c) => c.distributableProfit), fc: (c) => c.distributableProfitFC, tone: "strong", total: "sum" },
-    { id: "shareholder1", label: m("shareholder1"), value: (c, category) => (category === "CLOTHES" ? metricOf(category, "distributableProfit")?.value ?? c.shareholder1 : metricOf(category, "shareholder1")?.value ?? c.shareholder1), fc: (c) => c.shareholder1FC, total: false, note: (category) => shareNote(category) },
-    { id: "shareholder2", label: m("shareholder2"), value: (c, category) => (category === "CLOTHES" ? null : metricOf(category, "shareholder2")?.value ?? c.shareholder2), fc: (c) => c.shareholder2FC, total: false, note: (category) => shareNote(category, true) },
+    { id: "profitUsedForPurchases", label: r("profitUsedForPurchases"), value: (c, category) => (category === "SHOES" ? null : metricOf(category, "profitUsedForPurchases")?.value ?? c.profitUsedForPurchases), total: false, note: (category) => (category === "SHOES" ? t("financialReports.notes.shoesNoProfitPurchases") : undefined) },
+    { id: "distributableProfit", section: sections.distribution, label: m("distributableProfit"), ...shared("distributableProfit", (c) => c.distributableProfit), tone: "strong", total: "sum" },
+    { id: "shareholder1", label: m("shareholder1"), value: (c, category) => (category === "CLOTHES" ? metricOf(category, "distributableProfit")?.value ?? c.shareholder1 : metricOf(category, "shareholder1")?.value ?? c.shareholder1), total: false, note: (category) => shareNote(category) },
+    { id: "shareholder2", label: m("shareholder2"), value: (c, category) => (category === "CLOTHES" ? null : metricOf(category, "shareholder2")?.value ?? c.shareholder2), total: false, note: (category) => shareNote(category, true) },
     { id: "unitsSold", section: sections.activity, label: r("unitsSold"), kind: "count", value: (c) => c.activity?.unitsSold ?? null, total: "sum" },
     { id: "saleLines", label: r("saleLines"), kind: "count", value: (c) => c.activity?.saleLines ?? null, total: "sum" },
     { id: "expenseTransactions", label: r("expenseTransactions"), kind: "count", value: (c) => c.activity ? c.activity.companyExpenseTransactions + c.activity.goodsPurchaseTransactions : null, total: "sum" },
@@ -358,23 +348,15 @@ export default function CategoryAccountingTables({ breakdown, inventory, periodL
               <h3>{t("financialReports.overview.detailsTitle")}</h3>
               <p>{t("financialReports.overview.detailsHint")}</p>
             </div>
-            <div className="fin-segmented" role="group" aria-label={t("financialReports.tables.currency")}>
-              {(["USD", "FC"] as const).map((option) => (
-                <button key={option} type="button" aria-pressed={currency === option} className={currency === option ? "is-active" : undefined} onClick={() => setCurrency(option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
           </div>
 
           <FinancialTable
             caption={t("financialReports.tables.periodTitle")}
-            hint={currency === "FC" ? t("financialReports.tables.periodHintFC") : t("financialReports.tables.periodHint")}
+            hint={t("financialReports.tables.periodHint")}
             labelledBy="fin-period-title"
             columns={columns}
             rows={periodRows}
             data={breakdown}
-            currency={currency}
             totalsEnabled
           />
 
@@ -386,7 +368,6 @@ export default function CategoryAccountingTables({ breakdown, inventory, periodL
               columns={columns}
               rows={positionRows}
               data={balances}
-              currency="USD-only"
               totalsEnabled
             />
           )}
@@ -399,7 +380,6 @@ export default function CategoryAccountingTables({ breakdown, inventory, periodL
               columns={columns}
               rows={stockRows}
               data={inventory}
-              currency="USD-only"
               totalsEnabled
             />
           )}

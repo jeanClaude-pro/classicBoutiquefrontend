@@ -49,6 +49,12 @@ test("the misleading historical names are gone from user-facing text", () => {
   }
 });
 
+test("the exchange-rate module is gone: the shop works in FC only", () => {
+  assert.equal("rate" in MODULES, false);
+  assert.equal(PERMISSION_MODULE_IDS.includes("rate" as never), false);
+  assert.doesNotMatch(read("App.tsx"), /pages\/Rate|path="\/rate"/);
+});
+
 test("page headers read their title from the registry", () => {
   const expectations: Record<string, string> = {
     "pages/Sortie.tsx": "MODULES.sortie.label",
@@ -57,7 +63,6 @@ test("page headers read their title from the registry", () => {
     "pages/EntryHistory.tsx": "MODULES.entryhistory.label",
     "pages/products/products.tsx": "MODULES.products.label",
     "pages/customers/Customers.tsx": "MODULES.customers.label",
-    "pages/Rate.tsx": "MODULES.rate.label",
     "pages/Remboursements.tsx": "MODULES.remboursements.label",
     "pages/analytics/Analytics.tsx": "MODULES.reports.label",
     "pages/NewSale.tsx": "MODULES.pos.label",

@@ -24,10 +24,11 @@ const CATEGORY_LABEL: Record<string, string> = Object.defineProperties({} as Rec
   SHOES: { enumerable: true, get: () => t("confirm.categories.SHOES") },
 });
 
-export function formatMoneyUSD(value: unknown): string {
+/** "30 000 FC" — every amount is in Congolese francs. */
+export function formatMoney(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
-  return `${new Intl.NumberFormat(currentLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
+  return `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(Math.round(amount))} FC`;
 }
 
 // ---------------------------------------------------------------- décaissements
@@ -37,7 +38,6 @@ export interface ExpenseLike {
   reason?: string;
   recipientName?: string;
   amount?: number;
-  amountUSD?: number;
   expenseType?: string;
   category?: string;
   status?: string;
@@ -65,7 +65,7 @@ export function expenseTypeLabel(type?: string): string {
 function expenseDetails(expense: ExpenseLike): CopyDetail[] {
   const details: CopyDetail[] = [
     { label: t("confirm.details.operation"), value: expenseTypeLabel(expense.expenseType) },
-    { label: t("confirm.details.amount"), value: formatMoneyUSD(expense.amountUSD ?? expense.amount) },
+    { label: t("confirm.details.amount"), value: formatMoney(expense.amount) },
   ];
   if (expense.category) details.push({ label: t("confirm.details.category"), value: CATEGORY_LABEL[expense.category] ?? expense.category });
   if (expense.reason) details.push({ label: t("confirm.details.reason"), value: expense.reason });
@@ -110,7 +110,7 @@ export function expenseValidationCopy(expense: ExpenseLike): ConfirmationCopy {
     return {
       ...base,
       title: t("confirm.expense.repaymentTitle"),
-      message: t("confirm.expense.repaymentMessage", { creditor, amount: formatMoneyUSD(expense.amountUSD ?? expense.amount) }),
+      message: t("confirm.expense.repaymentMessage", { creditor, amount: formatMoney(expense.amount) }),
       consequences: [t("confirm.expense.repaymentConsequence")],
       confirmLabel: t("confirm.expense.repaymentConfirm"),
       successMessage: t("confirm.expense.repaymentSuccess"),
@@ -167,8 +167,8 @@ export function expenseReversalCopy(expense: ExpenseLike): ConfirmationCopy {
   return {
     title: t("confirm.expense.reverseTitle"),
     message: expense.expenseType === "GOODS_PURCHASE"
-      ? t("confirm.expense.reversePurchase", { amount: formatMoneyUSD(expense.amountUSD ?? expense.amount), category })
-      : t("confirm.expense.reverseCompany", { amount: formatMoneyUSD(expense.amountUSD ?? expense.amount), category }),
+      ? t("confirm.expense.reversePurchase", { amount: formatMoney(expense.amount), category })
+      : t("confirm.expense.reverseCompany", { amount: formatMoney(expense.amount), category }),
     consequences: [t("confirm.expense.reverseVisible"), t("confirm.expense.reverseOnce")],
     details: expenseDetails(expense),
     confirmLabel: t("confirm.expense.reverseConfirm"),
@@ -213,7 +213,7 @@ function saleDetails(sale: SaleLike): CopyDetail[] {
   const details: CopyDetail[] = [];
   if (sale.saleId) details.push({ label: t("confirm.details.reference"), value: sale.saleId });
   if (sale.customer?.name) details.push({ label: t("confirm.details.customer"), value: sale.customer.name });
-  details.push({ label: t("confirm.details.amount"), value: formatMoneyUSD(sale.total) });
+  details.push({ label: t("confirm.details.amount"), value: formatMoney(sale.total) });
   const count = units(sale);
   if (count > 0) details.push({ label: t("confirm.details.items"), value: t("confirm.pieces", { count }) });
   return details;
@@ -261,14 +261,14 @@ export function deleteSaleCopy(sale: SaleLike): ConfirmationCopy {
 // ------------------------------------------------------------------ autres modules
 
 /** DELETE /entries/:id — superadmin only; soft delete (status "deleted"). */
-export function deleteEntryCopy(entry: { entryId?: string; amount?: number; amountUSD?: number; source?: string }): ConfirmationCopy {
+export function deleteEntryCopy(entry: { entryId?: string; amount?: number; source?: string }): ConfirmationCopy {
   return {
     title: t("confirm.entry.deleteTitle"),
     message: t("confirm.entry.deleteMessage"),
     consequences: [],
     details: [
       ...(entry.entryId ? [{ label: t("confirm.details.reference"), value: entry.entryId }] : []),
-      { label: t("confirm.details.amount"), value: formatMoneyUSD(entry.amountUSD ?? entry.amount) },
+      { label: t("confirm.details.amount"), value: formatMoney(entry.amount) },
       ...(entry.source ? [{ label: t("confirm.details.source"), value: entry.source }] : []),
     ],
     confirmLabel: t("confirm.entry.deleteConfirm"),
@@ -323,20 +323,6 @@ export function toggleUserStatusCopy(user: { username?: string; isActive?: boole
   };
 }
 
-/** POST /exchange-rates — new operations only; history keeps its own rate. */
-export function exchangeRateCopy(rate: number, current?: number): ConfirmationCopy {
-  const format = (value: number) => new Intl.NumberFormat(currentLocale()).format(value);
-  return {
-    title: t("confirm.rate.title"),
-    message: t("confirm.rate.message", { rate: format(rate) }),
-    consequences: [t("confirm.rate.history")],
-    details: current ? [{ label: t("confirm.details.currentRate"), value: `1 USD = ${format(current)} FC` }, { label: t("confirm.details.newRate"), value: `1 USD = ${format(rate)} FC` }] : [],
-    confirmLabel: t("confirm.rate.confirm"),
-    pendingLabel: t("confirm.pending.saving"),
-    successMessage: t("confirm.rate.success"),
-    variant: "primary",
-  };
-}
 
 /** POST /creditors/:id/loans — increases the outstanding debt; no delete route. */
 export function loanCopy(creditorName: string, amountLabel: string): ConfirmationCopy {

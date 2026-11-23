@@ -29,11 +29,12 @@ import CategoryAccountingTables, { type CategoryReportDTO, type InventoryValuati
 import { Link, useSearchParams } from "react-router-dom";
 import { serverUrl } from "../../utils/constants";
 import { COMPANY_PHONE } from "../../config/company";
-import { formatFC, formatUSD } from "../../utils/salePricing";
+import { formatFC } from "../../utils/salePricing";
 import { apiErrorFromResponse, toApiError, userError } from "../../lib/apiError";
 import { MODULES } from "../../config/modules";
 import { ReauthGate } from "../../components/ReauthGate";
-import { confirmPassword, hasReportsReauth, isReauthRequired, reauthHeaders } from "../../lib/reportsReauth";
+import { SecretInput } from "../../components/SecretInput";
+import { confirmPassword, hasReportsReauth, isReauthRequired } from "../../lib/reportsReauth";
 import { MAX_BUCKETS, bucketCount, businessToday, validateRange } from "./financialTimeSeries";
 import {
   PERIOD_TYPES, canGoForward, chartRange, describePeriod, periodAround, shiftPeriod, summaryTimeframe,
@@ -54,16 +55,10 @@ interface AnalyticsData {
   clothesShareholderProfit: number;
   shoeShareholder1Profit: number;
   shoeShareholder2Profit: number;
-  costOfGoodsSoldFC: number;
-  grossProfitFC: number;
-  clothesShareholderProfitFC: number;
-  shoeShareholder1ProfitFC: number;
-  shoeShareholder2ProfitFC: number;
   categoryBreakdown?: Partial<Record<AccountingCategory, CategoryReportDTO>>;
   inventoryValuation?: Partial<Record<AccountingCategory, InventoryValuationDTO>>;
   assignedCategory?: "CLOTHES" | "SHOES";
   shareholderEntitlement?: number;
-  shareholderEntitlementFC?: number;
   totalCustomers: number;
   totalProducts: number;
   totalValidatedExpenses: number;
@@ -205,10 +200,8 @@ const shouldSeeOnlyTodayData = (): boolean => {
 
 // Helper function to get headers
 const getHeaders = () => {
-  const token = localStorage.getItem("token");
   return {
     "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 };
 
@@ -325,7 +318,7 @@ export default function Analytics() {
       });
       if (scope !== "ALL") params.set("category", scope);
       const response = await fetch(`${serverUrl}/analytics/summary?${params}`, {
-        headers: { ...getHeaders(), ...reauthHeaders() },
+        headers: getHeaders(),
       });
       if (!response.ok) throw await apiErrorFromResponse(response);
       const payload = await response.json();
@@ -435,7 +428,9 @@ export default function Analytics() {
     setPrintPasswordLoading(true);
     try {
       // Checked by the server; never opens a new session.
-      const result = await confirmPassword(printPassword);
+      const submitted = printPassword;
+      setPrintPassword("");
+      const result = await confirmPassword(submitted);
       if (result === "confirmed") {
         setShowPrintPasswordModal(false);
         setPrintPassword("");
@@ -474,7 +469,7 @@ export default function Analytics() {
         hasSignature,
         hasStamp,
         timeframeLabel: getTimeframeLabel(),
-        formatCurrency: formatUSD,
+        formatCurrency: formatFC,
         companyAddress: shopSettings.shopAddress,
         companyPhone: shopSettings.shopPhone,
         companyRegistration: shopSettings.shopRegistration,
@@ -771,7 +766,7 @@ export default function Analytics() {
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">{t("reports.salesReceipts")}</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {formatUSD(analytics.totalRevenue)}
+                  {formatFC(analytics.totalRevenue)}
                 </p>
                 <p className="text-[11px] text-gray-500">{t("reports.salesReceiptsHint")}</p>
                 <TrendIndicator value={analytics.recentTrends.revenueGrowth} />
@@ -793,7 +788,7 @@ export default function Analytics() {
                   {t("reports.cashEntries")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {formatUSD(analytics.totalEntries)}
+                  {formatFC(analytics.totalEntries)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">{t("reports.totalReceived")}</p>
               </div>
@@ -814,7 +809,7 @@ export default function Analytics() {
                   {t("reports.validatedExpenses")}
                 </p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {formatUSD(analytics.totalValidatedExpenses)}
+                  {formatFC(analytics.totalValidatedExpenses)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">{categoryView ? t("reports.categoryFilter.expensesHint") : t("reports.totalValidated")}</p>
               </div>
@@ -824,8 +819,7 @@ export default function Analytics() {
             </div>
           </div> : <div className="metric-card bg-white p-4 sm:p-6 rounded-lg border border-emerald-200">
             <p className="text-xs sm:text-sm text-gray-600">{t("reports.shareholderShare")}</p>
-            <p className="mt-2 text-xl font-bold text-emerald-800">{formatFC(analytics.shareholderEntitlementFC || 0)}</p>
-            <p className="mt-1 text-xs text-gray-500">≈ {formatUSD(analytics.shareholderEntitlement || 0)}</p>
+            <p className="mt-2 text-xl font-bold text-emerald-800">{formatFC(analytics.shareholderEntitlement || 0)}</p>
           </div>}
         </div>
 
@@ -837,32 +831,27 @@ export default function Analytics() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="rounded-xl bg-stone-50 border border-stone-200 p-4">
               <p className="text-xs text-gray-600">{t("reports.cogs")}</p>
-              <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.costOfGoodsSoldFC || 0)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.costOfGoodsSold || 0)}</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.costOfGoodsSold || 0)}</p>
             </div>
             <div className="rounded-xl bg-white border border-gray-200 p-4">
               <p className="text-xs text-gray-600">{t("reports.grossProfit")}</p>
-              <p className="text-xl font-bold text-primary mt-1">{formatFC(analytics.grossProfitFC || 0)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.grossProfit || 0)}</p>
+              <p className="text-xl font-bold text-primary mt-1">{formatFC(analytics.grossProfit || 0)}</p>
             </div>
             {isAdmin() ? (
               <>
                 {shownScope !== "SHOES" && <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.clothesShareholder")}</p>
-                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.clothesShareholderProfitFC || 0)}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.clothesShareholderProfit || 0)}</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.clothesShareholderProfit || 0)}</p>
                 </div>}
                 {shownScope !== "CLOTHES" && <div className="rounded-xl bg-white border border-gray-200 p-4">
                   <p className="text-xs text-gray-600">{t("reports.shoesShareholder")}</p>
-                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.shoeShareholder1ProfitFC || 0)}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">≈ {formatUSD(analytics.shoeShareholder1Profit || 0)}</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">{formatFC(analytics.shoeShareholder1Profit || 0)}</p>
                 </div>}
               </>
             ) : (
               <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-4 sm:col-span-2">
                 <p className="text-xs text-gray-600">{t("reports.myShare")}</p>
-                <p className="text-xl font-bold text-emerald-800 mt-1">{formatFC(analytics.shareholderEntitlementFC || 0)}</p>
-                <p className="text-xs text-emerald-700/70 mt-0.5">≈ {formatUSD(analytics.shareholderEntitlement || 0)}</p>
+                <p className="text-xl font-bold text-emerald-800 mt-1">{formatFC(analytics.shareholderEntitlement || 0)}</p>
               </div>
             )}
           </div>
@@ -881,9 +870,9 @@ export default function Analytics() {
           <section className="bg-white p-4 sm:p-6 rounded-lg border border-gray-200">
             <h2 className="font-bold text-lg mb-4">{t("reports.debts")}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="rounded-lg bg-blue-50 p-4"><p className="text-sm text-gray-600">{t("reports.borrowedPeriod")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.borrowedDuringPeriod)}</p></div>
-              <div className="rounded-lg bg-emerald-50 p-4"><p className="text-sm text-gray-600">{t("reports.repaidPeriod")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.repaidDuringPeriod)}</p><p className="text-xs text-gray-500">{t("reports.repaymentCount", { count: analytics.reimbursement.repaymentCount })}</p></div>
-              <div className="rounded-lg bg-orange-50 p-4"><p className="text-sm text-gray-600">{t("reports.currentDebt")}</p><p className="text-xl font-bold">{formatUSD(analytics.reimbursement.currentOutstanding)}</p></div>
+              <div className="rounded-lg bg-blue-50 p-4"><p className="text-sm text-gray-600">{t("reports.borrowedPeriod")}</p><p className="text-xl font-bold">{formatFC(analytics.reimbursement.borrowedDuringPeriod)}</p></div>
+              <div className="rounded-lg bg-emerald-50 p-4"><p className="text-sm text-gray-600">{t("reports.repaidPeriod")}</p><p className="text-xl font-bold">{formatFC(analytics.reimbursement.repaidDuringPeriod)}</p><p className="text-xs text-gray-500">{t("reports.repaymentCount", { count: analytics.reimbursement.repaymentCount })}</p></div>
+              <div className="rounded-lg bg-orange-50 p-4"><p className="text-sm text-gray-600">{t("reports.currentDebt")}</p><p className="text-xl font-bold">{formatFC(analytics.reimbursement.currentOutstanding)}</p></div>
             </div>
           </section>
         )}
@@ -895,7 +884,7 @@ export default function Analytics() {
               <div>
                 <p className="text-xs sm:text-sm text-gray-600">{t("reports.netCash")}</p>
                 <p className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {formatUSD(analytics.netRevenue)}
+                  {formatFC(analytics.netRevenue)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">{categoryView ? t("reports.categoryFilter.netCashHint") : t("reports.netCashHint")}</p>
               </div>
@@ -964,7 +953,7 @@ export default function Analytics() {
                     </div>
                     <div className="text-right ml-2">
                       <p className="font-medium text-gray-900 text-sm sm:text-base whitespace-nowrap">
-                        {formatUSD(product.revenue)}
+                        {formatFC(product.revenue)}
                       </p>
                     </div>
                   </div>
@@ -1011,7 +1000,7 @@ export default function Analytics() {
                     </div>
                     <div className="text-right ml-2 flex-shrink-0">
                       <p className="font-medium text-gray-900 text-sm sm:text-base whitespace-nowrap">
-                        {formatUSD(customer.totalSpent)}
+                        {formatFC(customer.totalSpent)}
                       </p>
                     </div>
                   </div>
@@ -1280,9 +1269,8 @@ export default function Analytics() {
               {t("reports.confirmPassword")}
             </p>
           </div>
-          <form onSubmit={handlePrintPasswordVerify} className="space-y-4">
-            <input
-              type="password"
+          <form onSubmit={handlePrintPasswordVerify} className="space-y-4" autoComplete="off">
+            <SecretInput
               value={printPassword}
               onChange={(e) => setPrintPassword(e.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"

@@ -9,14 +9,15 @@
 // - realised sales (Fiche des ventes): revenue = purchase cost + profit =
 //   actual selling amount, from each sale line's immutable snapshots.
 import { currentLocale, t } from "../../i18n/index.ts";
-import { formatFC, formatUSD } from "../../utils/salePricing.ts";
+import { formatFC } from "../../utils/salePricing.ts";
 
 export type ReportPeriod = "today" | "week" | "month" | "custom";
 export type ReportCategory = "ALL" | "CLOTHES" | "SHOES";
 
 export interface ShopIdentity { shopName: string; shopAddress?: string; shopNumber?: string; shopRegistration?: string }
-export interface Money { usd: number | null; fc: number | null }
-export interface SellingPrice extends Money { currency: "USD" | "FC" }
+/** Every amount of these reports is FC (the shop's only currency). */
+export interface Money { fc: number | null }
+export interface SellingPrice extends Money { currency: "FC" }
 export interface ReportPeriodRange { start: string; end: string }
 
 export interface StockSheetRow {
@@ -41,7 +42,7 @@ export interface ProductStockSheetPayload {
 }
 
 /** One price a product was actually sold at, and the pieces that left at it. */
-export interface SoldPrice { currency: "USD" | "FC"; unitPrice: Money; quantity: number; revenue: Money }
+export interface SoldPrice { currency: "FC"; unitPrice: Money; quantity: number; revenue: Money }
 export interface SalesSheetRow {
   productId: string; product: string; category: string; unit: string;
   prices: SoldPrice[];
@@ -109,30 +110,25 @@ export function formatSignedChange(value: number, sign: "+" | "-"): string {
   return `${effective}${magnitude}`;
 }
 
-/** FC first (the till currency), USD equivalent second; "—" when unknown. */
+/** An FC amount; "—" when unknown. `secondary` is kept for layout callers. */
 export function formatMoney(money: Money | null | undefined): { primary: string; secondary: string | null } {
-  if (!money || (money.fc === null && money.usd === null)) return { primary: "—", secondary: null };
-  if (money.fc === null) return { primary: formatUSD(money.usd), secondary: null };
-  return { primary: formatFC(money.fc), secondary: money.usd === null ? null : formatUSD(money.usd) };
+  if (!money || money.fc === null || money.fc === undefined) return { primary: "—", secondary: null };
+  return { primary: formatFC(money.fc), secondary: null };
 }
 
-/** One PDF cell: FC on the first line, USD on the second. */
+/** One PDF cell. */
 export function moneyCell(money: Money | null | undefined): string {
-  const { primary, secondary } = formatMoney(money);
-  return secondary ? `${primary}\n${secondary}` : primary;
+  return formatMoney(money).primary;
 }
 
-/** The selling price in its authoritative currency first. */
+/** The product's current selling price. */
 export function sellingPriceCell(price: SellingPrice | null | undefined): string {
-  if (!price) return "—";
-  if (price.currency === "USD" && price.usd !== null) return price.fc === null ? formatUSD(price.usd) : `${formatUSD(price.usd)}\n${formatFC(price.fc)}`;
-  return moneyCell(price);
+  return price ? moneyCell(price) : "—";
 }
 
-/** "20 000 FC × 2" — a sold unit price in the currency it was sold in. */
+/** "20 000 FC × 2" — a sold unit price and the pieces sold at it. */
 export function soldPriceLine(price: SoldPrice, unit: string): string {
-  const amount = price.currency === "FC" ? formatFC(price.unitPrice.fc) : formatUSD(price.unitPrice.usd);
-  return `${amount} × ${formatQuantity(price.quantity)} ${unit}`;
+  return `${formatFC(price.unitPrice.fc)} × ${formatQuantity(price.quantity)} ${unit}`;
 }
 
 export interface PdfTableModel {

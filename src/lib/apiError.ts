@@ -59,7 +59,7 @@ const CODE_MESSAGES: Record<string, string> = {
   PRICE_TOO_LOW: "pos.priceTooLow",
   DISCOUNT_QUANTITY_REQUIRED: "pos.discountQuantityRequired",
   DISCOUNT_ATTEMPTS_LIMITED: "pos.discountAttemptsLimited",
-  EXCHANGE_RATE_CHANGED: "pos.exchangeRateChanged",
+  CURRENCY_NOT_SUPPORTED: "pos.currencyNotSupported",
   FAMILY_SALE_ONLINE_REQUIRED: "familySale.onlineRequired",
   FAMILY_MEMBER_REQUIRED: "familySale.memberRequired",
   FAMILY_MEMBER_INVALID: "familySale.memberInvalid",
@@ -127,10 +127,10 @@ const TRANSLATIONS: Array<[RegExp, string, string[]?]> = [
 const TECHNICAL = /mongo|e11000|replica set|cast to|objectid|validationerror|stack|exception|\bat\s+\S+\s+\(|undefined|null|typeerror|econn|timeout|syntaxerror/i;
 const FRENCH = /[àâçéèêëîïôûùüœ]|\b(le|la|les|des|une|un|est|pas|pour|de|du|au|aux|vous|cette|ce)\b/i;
 
-function formatUSD(value: unknown): string {
+function formatFC(value: unknown): string {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
-  return `${new Intl.NumberFormat(currentLocale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount)} $`;
+  return `${new Intl.NumberFormat(currentLocale(), { maximumFractionDigits: 0 }).format(Math.round(amount))} FC`;
 }
 
 /** Picks a safe, user-facing message from a server-provided string, if possible. */
@@ -171,7 +171,7 @@ export function apiErrorFromPayload(status: number, payload: unknown): ApiError 
     return new ApiError({
       status, code,
       title: t("apiErrors.titles.insufficientFunds"),
-      message: t("apiErrors.insufficientFunds", { requested: formatUSD(body.requested), available: formatUSD(body.available) }),
+      message: t("apiErrors.insufficientFunds", { requested: formatFC(body.requested), available: formatFC(body.available) }),
       details: { requested: body.requested, available: body.available, category: body.category },
     });
   }
@@ -187,10 +187,9 @@ export function apiErrorFromPayload(status: number, payload: unknown): ApiError 
   const translated = translateServerMessage(body.error) ?? translateServerMessage(body.message)
     ?? (code && CODE_MESSAGES[code] ? t(CODE_MESSAGES[code]) : null);
   const isConflictStatus = status === 409 && (!translated || translated === MESSAGES.conflict);
-  // Which sale line was refused (never why in numbers), and the server's rate.
+  // Which sale line was refused (never why in numbers).
   const details: Record<string, unknown> = {};
   if (Number.isInteger(body.itemIndex)) details.itemIndex = body.itemIndex;
-  if (typeof body.exchangeRate === "number") details.exchangeRate = body.exchangeRate;
   return new ApiError({
     status, code,
     title: isConflictStatus ? t("apiErrors.titles.dataChanged") : title(status) ?? t(status >= 500 ? "apiErrors.titles.server" : "apiErrors.titles.impossible"),
@@ -226,22 +225,13 @@ export function toApiError(error: unknown): ApiError {
   return new ApiError({ status: -1, title: t("apiErrors.titles.unexpected"), message: MESSAGES.unexpected });
 }
 
+/**
+ * Headers of an API request. The session is NOT a header: the browser sends
+ * the httpOnly session cookie by itself (same origin), so page code never
+ * handles a credential.
+ */
 export function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  const token = typeof localStorage !== "undefined" ? localStorage.getItem("token") : null;
-  return { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
-}
-
-// The reports password confirmation (lib/reportsReauth.ts), read inline to
-// avoid an import cycle. Sent only with reports requests to this app's API.
-function reportsProofHeader(url: string): Record<string, string> {
-  if (!url.includes("/analytics/")) return {};
-  try {
-    const saved = JSON.parse(sessionStorage.getItem("reportsReauth") || "null") as { token?: string; expiresAt?: string } | null;
-    if (!saved?.token || !saved.expiresAt || new Date(saved.expiresAt).getTime() - 5_000 <= Date.now()) return {};
-    return { "X-Reauth-Token": saved.token };
-  } catch {
-    return {};
-  }
+  return { "Content-Type": "application/json", ...extra };
 }
 
 export interface RequestOptions extends Omit<RequestInit, "body"> {
@@ -260,7 +250,8 @@ export async function requestJson<T = unknown>(url: string, { body, timeoutMs = 
   try {
     const response = await fetch(url, {
       ...init,
-      headers: authHeaders({ ...reportsProofHeader(url), ...((headers as Record<string, string>) || {}) }),
+      headers: authHeaders((headers as Record<string, string>) || {}),
+      credentials: "same-origin",
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: init.signal ?? controller.signal,
     });

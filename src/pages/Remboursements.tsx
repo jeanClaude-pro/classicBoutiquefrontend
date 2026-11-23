@@ -11,17 +11,20 @@ import { useConfirmAction } from "../hooks/useConfirmAction";
 import { MODULES } from "../config/modules";
 import { currentLocale } from "../i18n";
 import { expenseStatusLabel } from "../lib/labels";
+import { CURRENCY, formatFC } from "../utils/salePricing";
 
 type Creditor = { _id: string; name: string; type: "person" | "bank" | "company"; phone: string; address: string; isActive: boolean; totalBorrowed: number; totalRepaid: number; remainingBalance: number };
-type Loan = { _id: string; amountUSD: number; borrowedAt: string; reference?: string };
-type Repayment = { _id: string; amountUSD: number; status: string; createdAt?: string };
+// Every amount is FC: the server presents pre-cutover loans and repayments
+// through their own FC amount.
+type Loan = { _id: string; amountFC: number; borrowedAt: string; reference?: string };
+type Repayment = { _id: string; amount: number; status: string; createdAt?: string };
 type History = { creditor: Creditor; loans: Loan[]; repayments: Repayment[]; reconciliation: { borrowed: number; repaid: number; storedOutstanding: number } };
 type CreditorForm = { name: string; type: Creditor["type"]; phone: string; address: string };
-type LoanForm = { enteredAmount: string; enteredCurrency: "USD" | "FC"; exchangeRate: string; borrowedAt: string; reference: string; note: string };
+type LoanForm = { enteredAmount: string; borrowedAt: string; reference: string; note: string };
 
-const money = (value: number) => new Intl.NumberFormat(currentLocale(), { style: "currency", currency: "USD" }).format(value || 0);
+const money = (value: number) => formatFC(value || 0);
 const initialCreditor: CreditorForm = { name: "", type: "person", phone: "", address: "" };
-const initialLoan = (): LoanForm => ({ enteredAmount: "", enteredCurrency: "USD", exchangeRate: "", borrowedAt: new Date().toISOString().slice(0, 10), reference: "", note: "" });
+const initialLoan = (): LoanForm => ({ enteredAmount: "", borrowedAt: new Date().toISOString().slice(0, 10), reference: "", note: "" });
 
 export default function Remboursements() {
   const { t } = useTranslation();
@@ -70,13 +73,10 @@ export default function Remboursements() {
   const addLoan = (event: React.FormEvent) => {
     event.preventDefault();
     const amount = Number(loan.enteredAmount);
-    const rate = loan.enteredCurrency === "FC" ? Number(loan.exchangeRate) : (Number(loan.exchangeRate) || 1);
-    if (!(amount > 0) || !(rate > 0)) { notifyError(userError(t("debts.invalidAmountOrRate"))); return; }
-    const body = { ...loan, enteredAmount: amount, exchangeRate: rate, amount, amountUSD: loan.enteredCurrency === "FC" ? amount / rate : amount, amountFC: loan.enteredCurrency === "FC" ? amount : amount * rate };
+    if (!(amount > 0)) { notifyError(userError(t("debts.invalidAmount"))); return; }
+    const body = { ...loan, enteredAmount: amount, enteredCurrency: CURRENCY, amount };
     const creditor = creditors.find((item) => item._id === selected);
-    const amountLabel = loan.enteredCurrency === "FC"
-      ? `${new Intl.NumberFormat(currentLocale()).format(amount)} FC (${money(body.amountUSD)})`
-      : money(amount);
+    const amountLabel = money(amount);
     confirmAction.request({
       ...loanCopy(creditor?.name || t("debts.thisCreditor"), amountLabel),
       action: async () => {
@@ -121,9 +121,7 @@ export default function Remboursements() {
           <Card className="p-5">
             <div className="flex items-center gap-2 mb-4"><Landmark className="w-5 h-5 text-blue-700" /><h2 className="font-semibold">{t("debts.newLoan")}</h2></div>
             <form onSubmit={addLoan} className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div><label htmlFor="loan-amount" className="block mb-1.5">{t("debts.amount")}</label><input id="loan-amount" required type="number" min="0.01" step="0.01" className="w-full px-3 py-2" value={loan.enteredAmount} onChange={(e) => setLoan({ ...loan, enteredAmount: e.target.value })} /></div>
-              <div><label htmlFor="loan-currency" className="block mb-1.5">{t("common.currency")}</label><select id="loan-currency" className="w-full px-3 py-2" value={loan.enteredCurrency} onChange={(e) => setLoan({ ...loan, enteredCurrency: e.target.value as LoanForm["enteredCurrency"] })}><option>USD</option><option>FC</option></select></div>
-              <div><label htmlFor="loan-rate" className="block mb-1.5">{t("debts.rate")} {loan.enteredCurrency === "FC" && "*"}</label><input id="loan-rate" required={loan.enteredCurrency === "FC"} type="number" className="w-full px-3 py-2" value={loan.exchangeRate} onChange={(e) => setLoan({ ...loan, exchangeRate: e.target.value })} /></div>
+              <div><label htmlFor="loan-amount" className="block mb-1.5">{t("debts.amountFC")}</label><input id="loan-amount" required type="number" inputMode="numeric" min="1" step="1" className="w-full px-3 py-2" value={loan.enteredAmount} onChange={(e) => setLoan({ ...loan, enteredAmount: e.target.value })} /></div>
               <div><label htmlFor="loan-date" className="block mb-1.5">{t("common.date")}</label><input id="loan-date" type="date" className="w-full px-3 py-2" value={loan.borrowedAt} onChange={(e) => setLoan({ ...loan, borrowedAt: e.target.value })} /></div>
               <div><label htmlFor="loan-reference" className="block mb-1.5">{t("common.reference")}</label><input id="loan-reference" className="w-full px-3 py-2" value={loan.reference} onChange={(e) => setLoan({ ...loan, reference: e.target.value })} /></div>
               <div className="flex items-end"><Button className="w-full" type="submit" disabled={confirmAction.busy}><Landmark className="w-4 h-4" />{t("debts.recordLoan")}</Button></div>
@@ -132,7 +130,7 @@ export default function Remboursements() {
           {history && <Card className="p-5">
             <div className="flex items-center gap-2 mb-4"><ReceiptText className="w-5 h-5 text-gray-500" /><h2 className="font-semibold">{t("debts.history", { name: history.creditor.name })}</h2></div>
             <div className="debt-kpis grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5"><div><span>{t("debts.borrowed")}</span><strong>{money(history.reconciliation.borrowed)}</strong></div><div><span>{t("debts.repaid")}</span><strong>{money(history.reconciliation.repaid)}</strong></div><div><span>{t("debts.currentBalance")}</span><strong>{money(history.reconciliation.storedOutstanding)}</strong></div></div>
-            <div className="space-y-2">{history.loans.map((item) => <div key={item._id} className="debt-event"><span className="debt-event-icon is-loan"><Landmark /></span><div><strong>{t("debts.loanLine", { amount: money(item.amountUSD) })}</strong><span><CalendarDays />{new Date(item.borrowedAt).toLocaleDateString(currentLocale())}</span></div></div>)}{history.repayments.map((item) => <div key={item._id} className="debt-event"><span className="debt-event-icon is-payment"><ReceiptText /></span><div><strong>{t("debts.repaymentLine", { amount: money(item.amountUSD) })}</strong><StatusBadge tone={item.status === "validated" ? "success" : item.status === "rejected" ? "danger" : "warning"}>{expenseStatusLabel(item.status)}</StatusBadge></div></div>)}</div>
+            <div className="space-y-2">{history.loans.map((item) => <div key={item._id} className="debt-event"><span className="debt-event-icon is-loan"><Landmark /></span><div><strong>{t("debts.loanLine", { amount: money(item.amountFC) })}</strong><span><CalendarDays />{new Date(item.borrowedAt).toLocaleDateString(currentLocale())}</span></div></div>)}{history.repayments.map((item) => <div key={item._id} className="debt-event"><span className="debt-event-icon is-payment"><ReceiptText /></span><div><strong>{t("debts.repaymentLine", { amount: money(item.amount) })}</strong><StatusBadge tone={item.status === "validated" ? "success" : item.status === "rejected" ? "danger" : "warning"}>{expenseStatusLabel(item.status)}</StatusBadge></div></div>)}</div>
           </Card>}
         </>}
       </div>

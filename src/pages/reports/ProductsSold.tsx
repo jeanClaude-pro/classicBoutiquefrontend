@@ -143,7 +143,7 @@ export default function ProductsSold() {
                         <td className={td}>{categoryLabel(row.category)}</td>
                         <td className={tdNum}>
                           <ul className="space-y-0.5">
-                            {row.prices.map((price) => <li key={`${price.currency}-${price.unitPrice.usd}-${price.unitPrice.fc}`}>{soldPriceLine(price, row.unit)}</li>)}
+                            {row.prices.map((price) => <li key={`${price.currency}-${price.unitPrice.fc}`}>{soldPriceLine(price, row.unit)}</li>)}
                           </ul>
                         </td>
                         <td className={`${tdNum} font-semibold text-slate-900`}>{formatQuantity(row.quantitySold)} {row.unit}</td>
@@ -175,7 +175,7 @@ export default function ProductsSold() {
                     <dl className="mt-2 grid grid-cols-2 gap-2 text-sm">
                       <div className="col-span-2">
                         <dt className="text-xs text-slate-600">{t("operationalReports.soldAt")}</dt>
-                        <dd className="tabular-nums">{row.prices.map((price) => <span key={`${price.currency}-${price.unitPrice.usd}-${price.unitPrice.fc}`} className="block">{soldPriceLine(price, row.unit)}</span>)}</dd>
+                        <dd className="tabular-nums">{row.prices.map((price) => <span key={`${price.currency}-${price.unitPrice.fc}`} className="block">{soldPriceLine(price, row.unit)}</span>)}</dd>
                       </div>
                       <div><dt className="text-xs text-slate-600">{t("operationalReports.quantitySold")}</dt><dd className="text-lg font-semibold tabular-nums">{formatQuantity(row.quantitySold)} {row.unit}</dd></div>
                       <div><dt className="text-xs text-slate-600">{t("operationalReports.revenue")}</dt><dd><MoneyValue money={row.revenue} strong align="left" /></dd></div>

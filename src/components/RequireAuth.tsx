@@ -7,23 +7,23 @@ import { useTranslation } from "react-i18next";
 export const RequireAuth: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
-  const { token, user, offline, loading } = useAuth();
+  const { signedIn, user, offline, loading } = useAuth();
   const location = useLocation();
   const { t } = useTranslation();
 
   // If not logged in, show toast once
   useEffect(() => {
-    if (!loading && !token && !offline) {
+    if (!loading && !signedIn) {
       toast.error(t("system.loginRequired"), { toastId: "login-required" });
     }
-  }, [loading, token, offline, t]);
+  }, [loading, signedIn, t]);
 
   if (loading) return (
     <div className="route-loading" role="status" aria-live="polite">
       <span className="route-loading-spinner" /><span>{t("common.loading")}</span>
     </div>
   );
-  if (!token && !offline)
+  if (!signedIn)
     return <Navigate to="/login" replace state={{ from: location }} />;
   if (offline && !["/", "/new-sale", "/sales", "/offline-sales"].includes(location.pathname)) {
     return (

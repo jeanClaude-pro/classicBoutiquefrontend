@@ -22,11 +22,6 @@ export interface SeriesFigures {
   companyExpenses: number;
   netResult: number;
   grossMargin: number | null;
-  revenueFC: number;
-  costOfGoodsSoldFC: number;
-  grossProfitFC: number;
-  companyExpensesFC: number;
-  netResultFC: number;
   sales: number;
   unitsSold: number;
 }
@@ -48,17 +43,12 @@ export interface TimeSeriesResponse {
   source: string;
   range: { from: string; to: string; start: string; end: string; days: number };
   granularity: Granularity;
-  currency: "USD";
+  /** Every amount is FC. */
+  currency: "FC";
   categories: AccountingCategory[];
   series: SeriesBucket[];
   totals: SeriesFigures & { byCategory: Partial<Record<AccountingCategory, SeriesFigures>> };
 }
-
-export const FC_FIELD: Record<SeriesMetric, keyof SeriesFigures> = {
-  revenue: "revenueFC",
-  grossProfit: "grossProfitFC",
-  netResult: "netResultFC",
-};
 
 // ------------------------------------------------------------- calendar
 const DAY_MS = 86_400_000;

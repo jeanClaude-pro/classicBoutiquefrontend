@@ -1,22 +1,20 @@
 /**
- * Centralizes 401 handling for authenticated API requests without requiring
- * every page (most of which call `fetch` directly with a manual
- * `Authorization` header — see SortieHistory,
- * Reservation, etc.) to be rewritten to go through a shared request wrapper.
+ * Centralizes 401 handling for API requests without requiring every page to
+ * go through a shared request wrapper.
  *
- * Only requests to our own API that actually carried an Authorization header
- * are considered "authenticated requests". /auth/login and /auth/register
- * are excluded explicitly: login already returns 401 for wrong credentials,
- * and that must never be treated as a session expiration.
+ * The session is an httpOnly cookie the browser sends by itself, so any 401
+ * from our own API while this device believes it is signed in means the
+ * server ended the session (expired, revoked, account disabled): the device
+ * is signed out and sent to the login page. /auth/login, /auth/logout,
+ * /auth/reauth and /auth/session are excluded: their 401/403 answers are
+ * handled where they are called (wrong password, start-up check...).
  *
  * Import this module once (see main.tsx) before the app renders.
  */
 import { serverUrl } from "../utils/constants";
-import { invalidateSession } from "./sessionManager";
+import { hasSessionHint, invalidateSession } from "./sessionManager";
 
-// The password confirmation of the Reports module answers a wrong password
-// with 403, never 401, but it is excluded too: it must never sign anyone out.
-const EXCLUDED_PATHS = ["/auth/login", "/auth/register", "/auth/logout", "/auth/reauth"];
+const EXCLUDED_PATHS = ["/auth/login", "/auth/logout", "/auth/reauth", "/auth/session"];
 
 function resolveUrl(input: RequestInfo | URL): string {
   if (typeof input === "string") return input;
@@ -24,16 +22,16 @@ function resolveUrl(input: RequestInfo | URL): string {
   return input.url;
 }
 
-function hasAuthorizationHeader(input: RequestInfo | URL, init?: RequestInit): boolean {
-  if (init?.headers) {
-    if (init.headers instanceof Headers) return init.headers.has("Authorization");
-    if (Array.isArray(init.headers)) {
-      return init.headers.some(([key]) => key.toLowerCase() === "authorization");
-    }
-    return Object.keys(init.headers).some((key) => key.toLowerCase() === "authorization");
+function isOwnApi(url: string): boolean {
+  if (url.startsWith(serverUrl)) return true;
+  // serverUrl is relative ("/api") in production: compare same-origin URLs too.
+  try {
+    const resolved = new URL(url, window.location.origin);
+    const base = new URL(serverUrl, window.location.origin);
+    return resolved.origin === base.origin && resolved.pathname.startsWith(base.pathname);
+  } catch {
+    return false;
   }
-  if (input instanceof Request) return input.headers.has("Authorization");
-  return false;
 }
 
 let installed = false;
@@ -50,9 +48,7 @@ export function installAuthFetchInterceptor(): void {
     if (response.status === 401) {
       const url = resolveUrl(input);
       const isExcluded = EXCLUDED_PATHS.some((path) => url.includes(path));
-      const isOwnApi = url.startsWith(serverUrl);
-
-      if (isOwnApi && !isExcluded && hasAuthorizationHeader(input, init)) {
+      if (!isExcluded && isOwnApi(url) && hasSessionHint()) {
         invalidateSession("unauthorized");
       }
     }

@@ -54,7 +54,7 @@ export function SummaryCard({ label, value, secondary, tone = "text-slate-900", 
   );
 }
 
-/** FC amount with its USD equivalent underneath. */
+/** An FC amount. */
 export function MoneyValue({ money, strong = false, align = "right" }: { money: Money | null | undefined; strong?: boolean; align?: "left" | "right" }) {
   const { primary, secondary } = formatMoney(money);
   return (

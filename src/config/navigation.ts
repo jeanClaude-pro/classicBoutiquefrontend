@@ -52,7 +52,6 @@ export const navigationSections: NavigationSection[] = [
     item("sortie", Wallet, ["superadmin", "cashier_supervisor", "inventory_manager", "manager"]),
     item("entryhistory", CircleDollarSign, ["superadmin", "cashier_supervisor", "inventory_manager", "manager"]),
     item("historicsortie", Wallet, ["superadmin", "cashier_supervisor", "inventory_manager", "manager"]),
-    item("rate", CircleDollarSign, ["superadmin"]),
     item("remboursements", Landmark, ["superadmin"]),
   ]),
   section("navigation.sections.management", [

@@ -5,7 +5,6 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { mockApi, renderPage, signIn } from "./helpers/pageHarness";
 import Sortie from "../src/pages/Sortie";
-import Rate from "../src/pages/Rate";
 
 beforeEach(() => {
   localStorage.clear();
@@ -30,38 +29,23 @@ function expectLabelsAssociated() {
 }
 
 const sortieApi = () => mockApi([
-  { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
   { match: /^\/creditors\/selector/, reply: { body: [{ _id: "c1", name: "Banque", type: "bank" }] } },
   { match: /^\/expenses\/funds\//, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
 ]);
 
-test("Décaissements: every label names its control in both currency modes and for repayments", async () => {
+test("Décaissements: every label names its control, for expenses and repayments", async () => {
   signIn({ role: "manager", username: "tester" });
   sortieApi();
   const user = userEvent.setup();
   renderPage(<Sortie />, "/sortie");
   await user.type(await screen.findByLabelText("Motif du décaissement *"), "Transport");
-  await user.type(screen.getByLabelText(/^Montant/), "2850");
-  expect(screen.getByLabelText(/^Montant/)).toHaveValue(2850);
-  expectLabelsAssociated();
-
-  await user.click(screen.getByRole("button", { name: "FC → USD" }));
-  await user.type(screen.getByLabelText(/^Montant/), "12.5");
-  expect(screen.getByLabelText(/^Montant/)).toHaveValue(12.5);
+  await user.type(screen.getByLabelText("Montant (FC)"), "28500");
+  expect(screen.getByLabelText("Montant (FC)")).toHaveValue(28500);
+  // FC is the only currency: there is no currency switch any more.
+  expect(screen.queryByRole("button", { name: /USD/ })).not.toBeInTheDocument();
   expectLabelsAssociated();
 
   await user.click(screen.getByRole("radio", { name: /Remboursement/i }));
   expect(await screen.findByLabelText("Créancier actif *")).toHaveProperty("tagName", "SELECT");
-  expectLabelsAssociated();
-});
-
-test("Taux de change: every label names its control", async () => {
-  signIn({ role: "superadmin" });
-  mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850, effectiveFrom: new Date().toISOString(), notes: "" } } },
-    { match: /^\/exchange-rates\/history/, reply: { body: { history: [] } } },
-  ]);
-  renderPage(<Rate />, "/rate");
-  expect(await screen.findByLabelText(/Nouveau Taux/)).toHaveProperty("tagName", "INPUT");
   expectLabelsAssociated();
 });

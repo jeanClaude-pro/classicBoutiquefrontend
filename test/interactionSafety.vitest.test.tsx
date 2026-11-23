@@ -144,7 +144,6 @@ async function fillWalkInSale(user: ReturnType<typeof userEvent.setup>) {
 function posApi(saleReply: Parameters<typeof mockApi>[0][number]["reply"]) {
   return mockApi([
     { match: /^\/products/, reply: { body: [product] } },
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/settings\/receipt/, reply: { body: {} } },
     { method: "POST", match: /^\/print\//, reply: { body: { success: true } } },
     { method: "POST", match: /^\/sales$/, reply: saleReply },

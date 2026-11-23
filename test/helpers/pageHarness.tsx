@@ -16,14 +16,20 @@ export function fakeJwt(): string {
   return `${base64Url({ alg: "HS256", typ: "JWT" })}.${base64Url({ id: "u1", exp: Math.floor(Date.now() / 1000) + 3600 })}.signature`;
 }
 
+/** A signed-in browser: the server holds the session (httpOnly cookie, never
+ *  visible to page code); the device only keeps a display copy of the user. */
 export function signIn(user: Record<string, unknown>): void {
-  localStorage.setItem("token", fakeJwt());
   localStorage.setItem("user", JSON.stringify({ id: "u-self", username: "tester", email: "t@test.local", permissions: [], ...user }));
+  localStorage.setItem("sessionExpiresAt", new Date(Date.now() + 3600_000).toISOString());
 }
 
-/** The superadmin confirmed the Reports password (a valid server proof is stored). */
-export function confirmReportsPassword(): void {
-  sessionStorage.setItem("reportsReauth", JSON.stringify({ token: "test-reauth-proof", expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }));
+/** The superadmin confirmed the Reports password: the server answers as if
+ *  its httpOnly proof cookie were present (POST /auth/reauth succeeds). */
+export async function confirmReportsPassword(): Promise<void> {
+  const { confirmPassword } = await import("../../src/lib/reportsReauth");
+  const previous = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify({ confirmed: true, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() }), { status: 200, headers: { "Content-Type": "application/json" } })) as typeof fetch;
+  try { await confirmPassword("test-password"); } finally { globalThis.fetch = previous; }
 }
 
 type Handler = (request: { method: string; url: string; body: unknown }) => { status?: number; body?: unknown; networkError?: boolean };
@@ -45,7 +51,8 @@ export function mockApi(routes: Route[]) {
     // Unless a test mocks it, the server confirms the user signed in by signIn().
     if (!route && method === "GET" && url.replace(API, "") === "/auth/session") {
       const user = JSON.parse(localStorage.getItem("user") || "null");
-      return new Response(JSON.stringify(user ? { user } : { message: "Authentication required" }), { status: user ? 200 : 401, headers: { "Content-Type": "application/json" } });
+      const expiresAt = localStorage.getItem("sessionExpiresAt");
+      return new Response(JSON.stringify(user ? { user, expiresAt } : { message: "Authentication required" }), { status: user ? 200 : 401, headers: { "Content-Type": "application/json" } });
     }
     if (!route) {
       unmatched.push(`${method} ${url.replace(API, "")}`);

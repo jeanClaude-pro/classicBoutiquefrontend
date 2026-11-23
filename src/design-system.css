@@ -58,7 +58,26 @@ button:disabled { cursor: not-allowed; }
 .unsent-alert.is-warning { border-color: var(--color-warning-border); background: var(--color-warning-soft); color: var(--color-warning-strong); }
 @media (max-width: 640px) { .unsent-alert { margin: 8px 12px 0; flex-wrap: wrap; } .unsent-alert p { display: none; } .unsent-alert > a { width: 100%; text-align: center; } }
 
-/* Desktop navigation — ivory rail; a green-tinted pill marks where you are. */
+/* Desktop navigation — navy rail; an emerald pill marks where you are.
+   The rail re-scopes the surface tokens, so every sidebar rule below (and
+   any utility used inside it) reads light-on-navy without its own colours.
+   Every pair stays above WCAG AA: white 17:1, #c9d1d9 11:1, cool gray
+   #9aa3a8 6.7:1 and the light emerald #5ccfac 7:1 on the active pill. */
+.app-sidebar {
+  --color-foreground: #ffffff;
+  --color-text-secondary: #c9d1d9;
+  --color-muted-foreground: #9aa3a8;
+  --color-border: #1c3146;
+  --color-border-strong: #2a4259;
+  --color-surface: #12263a;
+  --color-surface-hover: #163049;
+  --color-surface-muted: #091726;
+  --color-primary: #5ccfac;
+  --color-primary-soft: #103531;
+  --color-primary-border: #1f7a63;
+  --color-primary-foreground: #0b1c2d;
+  --color-accent: #1f7a63;
+}
 .app-sidebar {
   position: sticky; inset-block-start: 0; width: 256px; height: 100dvh; flex: 0 0 256px;
   display: flex; flex-direction: column; overflow: hidden;
@@ -107,6 +126,10 @@ button:disabled { cursor: not-allowed; }
 .sidebar-account button:hover { border-color: var(--color-danger-border); background: var(--color-danger-soft); color: var(--color-danger); }
 .is-collapsed .sidebar-account { justify-content: center; flex-direction: column; }
 
+/* SecretInput on computers: a text field drawn as dots, so that no browser
+   recognises a password field and offers to save what was typed. */
+input.secret-masked { -webkit-text-security: disc; }
+
 /* Interface language switch (components/LanguageToggle.tsx) */
 .language-toggle { display: inline-flex; flex: 0 0 auto; gap: 2px; padding: 2px; border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface); }
 .language-toggle button { min-width: 2.35rem; min-height: 1.9rem; padding: 0 .5rem; border: 0; border-radius: 6px; background: transparent; color: var(--color-text-secondary); font-size: 12px; font-weight: 700; letter-spacing: .05em; cursor: pointer; }
@@ -137,7 +160,7 @@ button:disabled { cursor: not-allowed; }
 .app-content h2.text-2xl { font-size: clamp(1.25rem, 2vw, 1.375rem); font-weight: 700; }
 .app-content h2.text-xl, .app-content h2.text-lg, .app-content h3.text-lg { font-size: 1.125rem; font-weight: 600; }
 
-/* Forms: white field, forest-green focus, red error. */
+/* Forms: white field, emerald focus, red error. */
 .app-content input:not([type="checkbox"]):not([type="radio"]), .app-content select, .app-content textarea,
 .confirm-dialog-layer input:not([type="checkbox"]):not([type="radio"]), .confirm-dialog-layer select, .confirm-dialog-layer textarea {
   min-height: 42px; border: 1px solid var(--color-border-strong) !important; border-radius: var(--radius-control) !important;
@@ -155,7 +178,7 @@ button:disabled { cursor: not-allowed; }
 .app-content label { color: var(--color-text-secondary); font-size: 14px; font-weight: 500; }
 
 /* Actions: the solid action colours of legacy screens become the primary
-   forest green; outlined legacy buttons become neutral secondary buttons. */
+   emerald; outlined legacy buttons become neutral secondary buttons. */
 .app-content :is(button, a)[class*="bg-blue-500"], .app-content :is(button, a)[class*="bg-blue-600"], .app-content :is(button, a)[class*="bg-blue-700"],
 .app-content :is(button, a)[class*="bg-indigo-600"],
 .app-content :is(button, a)[class*="bg-green-600"], .app-content :is(button, a)[class*="bg-green-700"],

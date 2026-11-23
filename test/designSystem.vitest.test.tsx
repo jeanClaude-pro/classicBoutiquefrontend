@@ -32,13 +32,12 @@ function phoneViewport() {
 
 const now = new Date().toISOString();
 const products = [
-  { _id: "pA", name: "Chemise Classic", category: "Chemises", mainCategory: "CLOTHES", price: 20, unitCost: 10, stock: 2, minStock: 3, status: "active", unit: "pcs" },
-  { _id: "pB", name: "Nike Air", category: "Baskets", mainCategory: "SHOES", price: 50, unitCost: 30, stock: 9, minStock: 1, status: "active", unit: "paire" },
+  { _id: "pA", name: "Chemise Classic", category: "Chemises", mainCategory: "CLOTHES", currency: "FC", price: 20000, unitCost: 10000, stock: 2, minStock: 3, status: "active", unit: "pcs" },
+  { _id: "pB", name: "Nike Air", category: "Baskets", mainCategory: "SHOES", currency: "FC", price: 50000, unitCost: 30000, stock: 9, minStock: 1, status: "active", unit: "paire" },
 ];
 const productsApi = () => mockApi([
   { match: /^\/products/, reply: { body: products } },
   { match: /^\/categories/, reply: { body: [] } },
-  { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850, effectiveFrom: now } } },
 ]);
 
 test("ActionMenu: keyboard opens on the first item, arrows move, Escape closes and returns focus", async () => {
@@ -107,8 +106,9 @@ test("Produits: the superadmin's menu adds edit and the destructive delete", asy
     .toEqual(["Voir l'article", "Fiche de stock de Nike Air", "Modifier l'article", "Supprimer Nike Air"]);
   expect(screen.getByRole("columnheader", { name: "Prix de vente" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Prix d'achat" })).toBeInTheDocument();
-  expect(screen.getByText("50,00 $US")).toBeInTheDocument();
-  expect(screen.getByText("30,00 $US")).toBeInTheDocument();
+  expect(screen.getByText(/^50\s000 FC$/)).toBeInTheDocument();
+  expect(screen.getByText(/^30\s000 FC$/)).toBeInTheDocument();
+  expect(screen.queryByText(/\$|USD/)).not.toBeInTheDocument();
 });
 
 test("Produits on a phone: one card per product, every action still reachable, no wide table", async () => {

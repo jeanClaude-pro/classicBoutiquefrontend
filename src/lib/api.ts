@@ -6,14 +6,13 @@ export async function apiFetch<T>(
     path: string,
     options: RequestInit = {}
 ): Promise<T> {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
-
+    // The session is the httpOnly cookie the browser sends by itself.
     const res = await fetch(`${serverUrl}/${path}`, {
         ...options,
+        credentials: "same-origin",
         headers: {
             "Content-Type": "application/json",
             ...(options.headers || {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
     });
 

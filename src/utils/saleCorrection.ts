@@ -1,12 +1,11 @@
 // Pure helpers for the sale correction dialog. They mirror the
 // server's rules (server/routes/sales.js) so the dialog shows what will be
 // accepted; the server re-validates everything and remains the authority.
+// Every amount is FC: the server presents a sale recorded before the FC-only
+// cutover through its own historical FC snapshot.
 import {
   DISCOUNT_QUANTITY_THRESHOLD,
-  getItemFcUnitPrice,
-  getItemOriginalCurrency,
-  getItemOriginalUnitPrice,
-  getItemUsdUnitPrice,
+  getItemUnitPrice,
   isDiscountedPrice,
   normalPriceSnapshot,
   productReferencePrice,
@@ -15,7 +14,6 @@ import {
   type PriceSnapshot,
   type ProductPricing,
   type ReferencePrice,
-  type SaleCurrency,
 } from "./salePricing.ts";
 
 export interface CorrectionLine {
@@ -26,26 +24,18 @@ export interface CorrectionLine {
   price: number;
   total: number;
   enteredPrice?: number;
-  enteredCurrency?: SaleCurrency;
-  priceUSD?: number;
+  enteredCurrency?: string;
   priceFC?: number;
-  exchangeRate?: number;
   unitSellingPrice?: number;
   referenceUnitSellingPrice?: number;
-  referenceUnitSellingPriceFC?: number;
   discountApplied?: boolean;
   discountPerUnit?: number;
 }
 
-/** The line's current price as an entry snapshot (legacy lines included). */
+/** The line's current FC price as an entry snapshot. */
 export function correctionLinePrice(line: CorrectionLine): PriceSnapshot {
-  return {
-    enteredPrice: getItemOriginalUnitPrice(line),
-    enteredCurrency: getItemOriginalCurrency(line),
-    priceUSD: line.priceUSD ?? line.price,
-    priceFC: line.priceFC,
-    exchangeRate: line.exchangeRate,
-  };
+  const price = getItemUnitPrice(line);
+  return { enteredPrice: price, enteredCurrency: "FC", priceFC: price };
 }
 
 /**
@@ -53,19 +43,13 @@ export function correctionLinePrice(line: CorrectionLine): PriceSnapshot {
  * original price in the sale being corrected — never today's product price,
  * so an old custom price is not reinterpreted as a new discount.
  */
-export function correctionLineReference(
-  line: CorrectionLine,
-  originalLines: CorrectionLine[] = [],
-  saleRate?: number
-): ReferencePrice | null {
-  if (line.referenceUnitSellingPrice !== undefined) {
-    return { priceUSD: line.referenceUnitSellingPrice, priceFC: line.referenceUnitSellingPriceFC };
+export function correctionLineReference(line: CorrectionLine, originalLines: CorrectionLine[] = []): ReferencePrice | null {
+  if (line.referenceUnitSellingPrice !== undefined && line.referenceUnitSellingPrice !== null) {
+    return { priceFC: line.referenceUnitSellingPrice };
   }
   const original = originalLines.find((candidate) =>
     candidate._id === line._id && String(candidate.productId) === String(line.productId));
-  return original
-    ? { priceUSD: getItemUsdUnitPrice(original), priceFC: getItemFcUnitPrice(original, saleRate) }
-    : null;
+  return original ? { priceFC: getItemUnitPrice(original) } : null;
 }
 
 export function isCorrectionLineDiscounted(line: CorrectionLine, reference: ReferencePrice | null): boolean {
@@ -78,33 +62,29 @@ export function withCorrectionPrice<T extends CorrectionLine>(line: T, price: Pr
     ...line,
     enteredPrice: price.enteredPrice,
     enteredCurrency: price.enteredCurrency,
-    priceUSD: price.priceUSD,
     priceFC: price.priceFC,
-    exchangeRate: price.exchangeRate,
-    price: price.priceUSD,
-    // The server recomputes the cent-rounded accounting price.
+    price: price.enteredPrice,
+    // The server recomputes the rounded accounting price.
     unitSellingPrice: undefined,
-    total: price.priceUSD * line.quantity,
+    total: price.enteredPrice * line.quantity,
     discountApplied: reference ? isDiscountedPrice(price, reference) : false,
   };
 }
 
 /**
  * A corrected cart under 5 pieces cannot keep a discount: each discounted
- * line returns to its normal price in its own entered currency (exact FC
- * reference for an FC line). `restored` lets the dialog say so.
+ * line returns to its normal price. `restored` lets the dialog say so.
  */
 export function restoreCorrectionDiscounts<T extends CorrectionLine>(
   lines: T[],
-  originalLines: CorrectionLine[] = [],
-  saleRate?: number
+  originalLines: CorrectionLine[] = []
 ): { lines: T[]; restored: number } {
   if (totalCartQuantity(lines) >= DISCOUNT_QUANTITY_THRESHOLD) return { lines, restored: 0 };
   let restored = 0;
   const next = lines.map((line) => {
-    const reference = correctionLineReference(line, originalLines, saleRate);
+    const reference = correctionLineReference(line, originalLines);
     if (!isCorrectionLineDiscounted(line, reference) || !reference) return line;
-    const normal = referencePriceSnapshot(reference, getItemOriginalCurrency(line), line.exchangeRate ?? saleRate);
+    const normal = referencePriceSnapshot(reference);
     if (!normal) return line;
     restored += 1;
     return withCorrectionPrice(line, normal, reference);
@@ -113,26 +93,24 @@ export function restoreCorrectionDiscounts<T extends CorrectionLine>(
 }
 
 /**
- * A line (re)assigned to a product starts at that product's normal price at
- * the sale's own historical rate — exactly what the server validates against.
+ * A line (re)assigned to a product starts at that product's normal FC price —
+ * exactly what the server validates against.
  */
 export function productCorrectionLine(
   product: ProductPricing & { _id: string; name: string },
-  base: { _id: string; quantity: number },
-  saleRate?: number
+  base: { _id: string; quantity: number }
 ): CorrectionLine | null {
-  const price = normalPriceSnapshot(product, saleRate);
+  const price = normalPriceSnapshot(product);
   if (!price) return null;
-  const reference = productReferencePrice(product, saleRate);
+  const reference = productReferencePrice(product);
   return {
     ...base,
     productId: product._id,
     name: product.name,
     ...price,
-    price: price.priceUSD,
-    total: price.priceUSD * base.quantity,
-    referenceUnitSellingPrice: reference.priceUSD,
-    referenceUnitSellingPriceFC: reference.priceFC,
+    price: price.enteredPrice,
+    total: price.enteredPrice * base.quantity,
+    referenceUnitSellingPrice: reference.priceFC,
     discountApplied: false,
     discountPerUnit: 0,
   };

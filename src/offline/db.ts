@@ -1,11 +1,10 @@
 import Dexie, { type Table } from "dexie";
-import type { CachedExchangeRate, CachedProduct, LocalSale, OfflineAuthProfile } from "./types";
+import type { CachedProduct, LocalSale, OfflineAuthProfile } from "./types";
 
 export interface OfflineMetadata { key: string; value: string; updatedAt: string }
 
 export class BoutiqueOfflineDatabase extends Dexie {
   products!: Table<CachedProduct, [string, string]>;
-  exchangeRates!: Table<CachedExchangeRate, [string, string]>;
   authProfiles!: Table<OfflineAuthProfile, string>;
   sales!: Table<LocalSale, string>;
   metadata!: Table<OfflineMetadata, string>;
@@ -19,6 +18,9 @@ export class BoutiqueOfflineDatabase extends Dexie {
       sales: "clientSaleId, idempotencyKey, ownerUserId, scopeKey, syncStatus, queuedAt, [ownerUserId+syncStatus]",
       metadata: "key, updatedAt",
     });
+    // FC-only cutover: the exchange-rate cache is no longer used. Dexie
+    // deletes the table on upgrade; queued sales are kept untouched.
+    this.version(2).stores({ exchangeRates: null });
   }
 }
 

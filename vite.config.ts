@@ -5,24 +5,32 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const apiUrl = loadEnv(mode, '.', '').VITE_API_URL?.trim()
-  const usesLocalBackend = /^https?:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/i.test(
-    apiUrl || '',
-  )
+  const env = loadEnv(mode, '.', '')
+  const apiUrl = env.VITE_API_URL?.trim()
 
-  if (mode === 'production' && (!apiUrl || usesLocalBackend)) {
+  // The API is reached on the site's own origin ("/api"): Netlify forwards it
+  // to the server (netlify.toml) and the Vite dev server does the same locally.
+  // Same origin is what lets the session live in an httpOnly, SameSite=Strict
+  // cookie that page scripts never see (and that iPhones accept).
+  if (mode === 'production' && apiUrl !== '/api') {
     throw new Error(
-      'Production VITE_API_URL must point to the deployed backend, not localhost.',
+      'Production VITE_API_URL must be "/api" (same origin, proxied by Netlify to the server).',
     )
   }
-  if (mode === 'production' && !apiUrl?.startsWith('https://')) {
-    throw new Error('Production VITE_API_URL must use HTTPS.')
-  }
+  const devApiTarget = env.VITE_DEV_API_TARGET?.trim() || 'http://localhost:5000'
 
   return {
     // Production bundles never publish source maps (they would expose the
     // original source to anyone).
     build: { sourcemap: false },
+    // Development: /api is forwarded to the local server, keeping the browser
+    // on one origin exactly like production. The Origin header is kept so the
+    // server's CLIENT_URL check applies.
+    server: {
+      proxy: {
+        '/api': { target: devApiTarget, changeOrigin: false },
+      },
+    },
     // Production bundles carry no console output or debugger statements:
     // diagnostics stay in development and are never shown to shop users.
     esbuild: mode === 'production' ? { drop: ['console', 'debugger'], legalComments: 'none' } : undefined,
@@ -42,8 +50,8 @@ export default defineConfig(({ mode }) => {
         scope: '/',
         display: 'standalone',
         orientation: 'any',
-        background_color: '#fbf7f2',
-        theme_color: '#3b102b',
+        background_color: '#f5f7fa',
+        theme_color: '#0b1c2d',
         icons: [
           {
             src: '/pwa-192x192.png',

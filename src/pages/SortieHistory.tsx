@@ -7,7 +7,7 @@ import { describeTimeframeFr, formatDateTimeGMT2, formatTimeGMT2, formatMonthNam
 import { expenseStatusLabel, paymentMethodLabel } from "../lib/labels";
 import { serverUrl } from "../utils/constants";
 import { COMPANY_PHONE } from "../config/company";
-import { formatFC, formatUSD } from "../utils/salePricing";
+import { formatFC } from "../utils/salePricing";
 import { apiErrorFromResponse, requestJson, toApiError, type ApiError } from "../lib/apiError";
 import { notifyInfo, notifySuccess } from "../lib/notify";
 import { useConfirmAction } from "../hooks/useConfirmAction";
@@ -48,12 +48,8 @@ interface ExpenseItem {
   reason: string;
   recipientName: string;
   recipientPhone: string;
+  /** FC (the server presents pre-cutover cash-outs in FC). */
   amount: number;
-  enteredAmount?: number;
-  enteredCurrency?: "USD" | "FC";
-  amountUSD?: number;
-  amountFC?: number;
-  exchangeRate?: number;
   paymentMethod: string;
   status: string;
   recordedBy: string;
@@ -324,7 +320,6 @@ export default function SortieHistory() {
       const res = await fetch(`${serverUrl}/expenses/permissions/me`, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
       });
 
@@ -350,7 +345,6 @@ export default function SortieHistory() {
       const res = await fetch(url, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
       });
 
@@ -490,10 +484,7 @@ export default function SortieHistory() {
 
   const formatDate = (dateString: string) => formatDateTimeGMT2(dateString);
 
-  const formatOriginalAmount = (expense: ExpenseItem) =>
-    expense.enteredCurrency === "FC"
-      ? `${formatFC(expense.enteredAmount ?? expense.amountFC ?? 0)} (${t("entryHistory.equivalent", { amount: formatUSD(expense.amountUSD ?? expense.amount) })})`
-      : formatUSD(expense.enteredAmount ?? expense.amount);
+  const formatOriginalAmount = (expense: ExpenseItem) => formatFC(expense.amount);
 
   const filteredExpenses = expenses.filter(
     (expense) =>
@@ -614,7 +605,6 @@ export default function SortieHistory() {
         {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
         }
       );
@@ -654,7 +644,6 @@ export default function SortieHistory() {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
           body: JSON.stringify({
             reason: editForm.reason,
@@ -699,12 +688,7 @@ export default function SortieHistory() {
     const printWindow = window.open("", "_blank", "width=320,height=600");
     if (printWindow) {
       // Format the amount directly for the print window
-      const formattedAmount = expense.enteredCurrency === "FC"
-        ? `${(expense.enteredAmount ?? expense.amountFC ?? 0).toLocaleString(currentLocale())} FC (${t("entryHistory.equivalent", { amount: `$${(expense.amountUSD ?? expense.amount).toFixed(2)}` })})`
-        : new Intl.NumberFormat(currentLocale(), {
-            style: "currency",
-            currency: "USD",
-          }).format(expense.enteredAmount ?? expense.amount);
+      const formattedAmount = formatFC(expense.amount);
 
       const formattedDate = formatDateTimeGMT2(expense.createdAt);
       const validatedDate = expense.validatedAt
@@ -1040,7 +1024,7 @@ export default function SortieHistory() {
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.total")}</p>
                 <p className="text-2xl font-bold text-blue-600">{summaryStats.totalRecords}</p>
-                <p className="text-sm text-gray-500">{formatUSD(summaryStats.totalAmount)}</p>
+                <p className="text-sm text-gray-500">{formatFC(summaryStats.totalAmount)}</p>
               </div>
               <FileText className="w-8 h-8 text-blue-500" />
             </div>
@@ -1051,7 +1035,7 @@ export default function SortieHistory() {
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.validated")}</p>
                 <p className="text-2xl font-bold text-green-600">{summaryStats.validated.count}</p>
-                <p className="text-sm text-green-600">{formatUSD(summaryStats.validated.amount)}</p>
+                <p className="text-sm text-green-600">{formatFC(summaryStats.validated.amount)}</p>
               </div>
               <CheckCircle className="w-8 h-8 text-green-500" />
             </div>
@@ -1062,7 +1046,7 @@ export default function SortieHistory() {
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.pending")}</p>
                 <p className="text-2xl font-bold text-yellow-600">{summaryStats.pending.count}</p>
-                <p className="text-sm text-yellow-600">{formatUSD(summaryStats.pending.amount)}</p>
+                <p className="text-sm text-yellow-600">{formatFC(summaryStats.pending.amount)}</p>
               </div>
               <AlertCircle className="w-8 h-8 text-yellow-500" />
             </div>
@@ -1073,7 +1057,7 @@ export default function SortieHistory() {
               <div>
                 <p className="text-sm text-gray-600">{t("expenseHistory.summary.rejected")}</p>
                 <p className="text-2xl font-bold text-red-600">{summaryStats.rejected?.count || 0}</p>
-                <p className="text-sm text-red-600">{formatUSD(summaryStats.rejected?.amount || 0)}</p>
+                <p className="text-sm text-red-600">{formatFC(summaryStats.rejected?.amount || 0)}</p>
               </div>
               <XCircle className="w-8 h-8 text-red-500" />
             </div>
@@ -1090,21 +1074,21 @@ export default function SortieHistory() {
                   <span className="text-sm text-gray-600">{t("expenseHistory.summary.validated")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-green-600">{summaryStats.validated.count}</span>
-                    <div className="text-xs text-gray-500">{formatUSD(summaryStats.validated.amount)}</div>
+                    <div className="text-xs text-gray-500">{formatFC(summaryStats.validated.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">{t("expenseHistory.summary.pending")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-yellow-600">{summaryStats.pending.count}</span>
-                    <div className="text-xs text-gray-500">{formatUSD(summaryStats.pending.amount)}</div>
+                    <div className="text-xs text-gray-500">{formatFC(summaryStats.pending.amount)}</div>
                   </div>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">{t("expenseHistory.summary.rejected")} :</span>
                   <div className="text-right">
                     <span className="font-semibold text-red-600">{summaryStats.rejected?.count || 0}</span>
-                    <div className="text-xs text-gray-500">{formatUSD(summaryStats.rejected?.amount || 0)}</div>
+                    <div className="text-xs text-gray-500">{formatFC(summaryStats.rejected?.amount || 0)}</div>
                   </div>
                 </div>
               </div>
@@ -1115,14 +1099,14 @@ export default function SortieHistory() {
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">{t("expenseHistory.summary.grandTotal")}:</span>
-                  <span className="font-bold text-blue-600">{formatUSD(summaryStats.totalAmount)}</span>
+                  <span className="font-bold text-blue-600">{formatFC(summaryStats.totalAmount)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-600">{t("expenseHistory.summary.average")}:</span>
                   <span className="font-medium text-gray-900">
                     {summaryStats.totalRecords > 0 
-                      ? formatUSD(summaryStats.totalAmount / summaryStats.totalRecords)
-                      : formatUSD(0)
+                      ? formatFC(summaryStats.totalAmount / summaryStats.totalRecords)
+                      : formatFC(0)
                     }
                   </span>
                 </div>
@@ -1762,7 +1746,7 @@ export default function SortieHistory() {
                           {t("entryHistory.amount")}
                         </span>
                         <p className="text-lg font-semibold text-gray-900">
-                          {formatUSD(selectedExpense.amount)}
+                          {formatFC(selectedExpense.amount)}
                         </p>
                       </div>
                     </div>
@@ -1979,12 +1963,13 @@ export default function SortieHistory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="sortie-edit-montant" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t("entryHistory.amountUsd")} *
+                      {t("entryHistory.amountFC")} *
                     </label>
                     <input
                       id="sortie-edit-montant"
                       type="number"
-                      step="0.01"
+                      inputMode="numeric"
+                      step="1"
                       min="0"
                       value={editForm.amount}
                       onChange={(e) =>

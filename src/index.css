@@ -2,9 +2,9 @@
 
 /* ==========================================================================
    DOUBLE M visual system — single source of design tokens.
-   Flat retail ERP/POS in ivory, white, forest green, and charcoal:
-   an ivory canvas, white working surfaces, neutral borders, and a restrained
-   forest-green primary used for navigation and high-value actions.
+   Flat retail ERP/POS in navy, emerald, soft white and cool gray:
+   a soft-white canvas, white working surfaces, cool hairlines, a navy
+   navigation rail and a restrained emerald primary for high-value actions.
    No shadows, no gradients, no translucency.
    `@theme static` makes every token both a CSS variable (var(--color-primary))
    and a Tailwind utility (bg-primary, text-muted-foreground, border-border…).
@@ -12,34 +12,45 @@
 @theme static {
   --font-sans: Inter, "Segoe UI Variable", "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 
-  --color-background: #fafaf7;
+  /* Official palette (November 2026): Navy Blue #0B1C2D, Emerald Green
+     #1F7A63, Soft White #F5F7FA, Cool Gray #9AA3A8. Navy carries text and
+     the navigation rail, emerald carries actions and the active state, soft
+     white is the canvas and cool gray the strong hairline and disabled ink.
+     Cool gray is too light for reading text (2.6:1 on white), so muted text
+     uses a darker step of the same cool family (#5f6b74, 5.5:1). */
+  --color-background: #f5f7fa;
   --color-surface: #ffffff;
-  --color-surface-muted: #f5f5f0;
-  --color-surface-hover: #f0f1eb;
-  --color-sidebar: #f5f5f0;
-  --color-table-head: #f5f5f0;
-  --color-row-border: #e4e4de;
-  --color-foreground: #27272a;
-  --color-text-secondary: #52525b;
-  --color-muted-foreground: #71717a;
-  --color-disabled: #a1a1aa;
-  --color-border: #e4e4de;
-  --color-border-strong: #d4d4cd;
+  --color-surface-muted: #eef1f5;
+  --color-surface-hover: #e9edf2;
+  --color-sidebar: #0b1c2d;
+  --color-table-head: #eef1f5;
+  --color-row-border: #dde2e7;
+  --color-foreground: #0b1c2d;
+  --color-text-secondary: #3d4d5c;
+  --color-muted-foreground: #5f6b74;
+  --color-disabled: #9aa3a8;
+  --color-border: #dde2e7;
+  --color-border-strong: #9aa3a8;
 
-  --color-primary: #166534;
-  --color-primary-interactive: #15803d;
-  --color-primary-hover: #14532d;
-  --color-primary-soft: #f0fdf4;
-  --color-primary-hover-soft: #dcfce7;
-  --color-primary-border: #bbf7d0;
+  --color-navy: #0b1c2d;
+  --color-emerald: #1f7a63;
+  --color-soft-white: #f5f7fa;
+  --color-cool-gray: #9aa3a8;
+
+  --color-primary: #1f7a63;
+  --color-primary-interactive: #1a6d58;
+  --color-primary-hover: #17614f;
+  --color-primary-soft: #e8f4f0;
+  --color-primary-hover-soft: #d2ebe3;
+  --color-primary-border: #a9d6c8;
   --color-primary-foreground: #ffffff;
 
-  --color-accent: #166534;
+  --color-accent: #1f7a63;
 
-  --color-success: #15803d;
-  --color-success-soft: #f0fdf4;
-  --color-success-strong: #15803d;
-  --color-success-border: #bbf7d0;
+  --color-success: #1f7a63;
+  --color-success-soft: #e8f4f0;
+  --color-success-strong: #17614f;
+  --color-success-border: #a9d6c8;
   --color-warning: #b45309;
   --color-warning-soft: #fffbeb;
   --color-warning-strong: #b45309;
@@ -52,52 +63,52 @@
   --color-info-soft: #f0f9ff;
   --color-info-strong: #075985;
   --color-info-border: #bae6fd;
-  --color-overlay: rgb(24 24 27 / 0.48);
+  --color-overlay: rgb(11 28 45 / 0.55);
 
   --radius-control: 9px;
   --radius-card: 14px;
   --radius-dialog: 16px;
 
-  /* One ivory-and-charcoal neutral family. Legacy gray/slate/stone/neutral
+  /* One cool navy-and-gray neutral family. Legacy gray/slate/stone/neutral
      classes resolve to it, so text, muted text and hairlines
      match the tokens above everywhere. */
-  --color-gray-50: #fafaf7;  --color-slate-50: #fafaf7;  --color-stone-50: #fafaf7;  --color-neutral-50: #fafaf7;
-  --color-gray-100: #f5f5f0; --color-slate-100: #f5f5f0; --color-stone-100: #f5f5f0; --color-neutral-100: #f5f5f0;
-  --color-gray-200: #e4e4de; --color-slate-200: #e4e4de; --color-stone-200: #e4e4de; --color-neutral-200: #e4e4de;
-  --color-gray-300: #d4d4cd; --color-slate-300: #d4d4cd; --color-stone-300: #d4d4cd; --color-neutral-300: #d4d4cd;
-  --color-gray-400: #a1a1aa; --color-slate-400: #a1a1aa; --color-stone-400: #a1a1aa; --color-neutral-400: #a1a1aa;
-  --color-gray-500: #71717a; --color-slate-500: #71717a; --color-stone-500: #71717a; --color-neutral-500: #71717a;
-  --color-gray-600: #52525b; --color-slate-600: #52525b; --color-stone-600: #52525b; --color-neutral-600: #52525b;
-  --color-gray-700: #3f3f46; --color-slate-700: #3f3f46; --color-stone-700: #3f3f46; --color-neutral-700: #3f3f46;
-  --color-gray-800: #27272a; --color-slate-800: #27272a; --color-stone-800: #27272a; --color-neutral-800: #27272a;
-  --color-gray-900: #27272a; --color-slate-900: #27272a; --color-stone-900: #27272a; --color-neutral-900: #27272a;
-  --color-gray-950: #18181b; --color-slate-950: #18181b; --color-stone-950: #18181b; --color-neutral-950: #18181b;
+  --color-gray-50: #f5f7fa;  --color-slate-50: #f5f7fa;  --color-stone-50: #f5f7fa;  --color-neutral-50: #f5f7fa;
+  --color-gray-100: #eef1f5;  --color-slate-100: #eef1f5;  --color-stone-100: #eef1f5;  --color-neutral-100: #eef1f5;
+  --color-gray-200: #dde2e7;  --color-slate-200: #dde2e7;  --color-stone-200: #dde2e7;  --color-neutral-200: #dde2e7;
+  --color-gray-300: #c4cbd1;  --color-slate-300: #c4cbd1;  --color-stone-300: #c4cbd1;  --color-neutral-300: #c4cbd1;
+  --color-gray-400: #9aa3a8;  --color-slate-400: #9aa3a8;  --color-stone-400: #9aa3a8;  --color-neutral-400: #9aa3a8;
+  --color-gray-500: #5f6b74;  --color-slate-500: #5f6b74;  --color-stone-500: #5f6b74;  --color-neutral-500: #5f6b74;
+  --color-gray-600: #3d4d5c;  --color-slate-600: #3d4d5c;  --color-stone-600: #3d4d5c;  --color-neutral-600: #3d4d5c;
+  --color-gray-700: #2a3a4a;  --color-slate-700: #2a3a4a;  --color-stone-700: #2a3a4a;  --color-neutral-700: #2a3a4a;
+  --color-gray-800: #0b1c2d;  --color-slate-800: #0b1c2d;  --color-stone-800: #0b1c2d;  --color-neutral-800: #0b1c2d;
+  --color-gray-900: #0b1c2d;  --color-slate-900: #0b1c2d;  --color-stone-900: #0b1c2d;  --color-neutral-900: #0b1c2d;
+  --color-gray-950: #07121d;  --color-slate-950: #07121d;  --color-stone-950: #07121d;  --color-neutral-950: #07121d;
 
   /* Decorative hues of older screens (purple print buttons, role chips,
-     the family-sale panel…) fold into the forest-green primary scale, so the
+     the family-sale panel…) fold into the emerald primary scale, so the
      interface keeps one brand colour instead of five. */
-  --color-purple-50: #f0fdf4;  --color-violet-50: #f0fdf4;  --color-indigo-50: #f0fdf4;  --color-fuchsia-50: #f0fdf4;  --color-pink-50: #f0fdf4;
-  --color-purple-100: #dcfce7; --color-violet-100: #dcfce7; --color-indigo-100: #dcfce7; --color-fuchsia-100: #dcfce7; --color-pink-100: #dcfce7;
-  --color-purple-200: #bbf7d0; --color-violet-200: #bbf7d0; --color-indigo-200: #bbf7d0; --color-fuchsia-200: #bbf7d0; --color-pink-200: #bbf7d0;
-  --color-purple-300: #86efac; --color-violet-300: #86efac; --color-indigo-300: #86efac; --color-fuchsia-300: #86efac; --color-pink-300: #86efac;
-  --color-purple-400: #4ade80; --color-violet-400: #4ade80; --color-indigo-400: #4ade80; --color-fuchsia-400: #4ade80; --color-pink-400: #4ade80;
-  --color-purple-500: #22c55e; --color-violet-500: #22c55e; --color-indigo-500: #22c55e; --color-fuchsia-500: #22c55e; --color-pink-500: #22c55e;
-  --color-purple-600: #166534; --color-violet-600: #166534; --color-indigo-600: #166534; --color-fuchsia-600: #166534; --color-pink-600: #166534;
-  --color-purple-700: #14532d; --color-violet-700: #14532d; --color-indigo-700: #14532d; --color-fuchsia-700: #14532d; --color-pink-700: #14532d;
-  --color-purple-800: #14532d; --color-violet-800: #14532d; --color-indigo-800: #14532d; --color-fuchsia-800: #14532d; --color-pink-800: #14532d;
-  --color-purple-900: #052e16; --color-violet-900: #052e16; --color-indigo-900: #052e16; --color-fuchsia-900: #052e16; --color-pink-900: #052e16;
+  --color-purple-50: #e8f4f0;  --color-violet-50: #e8f4f0;  --color-indigo-50: #e8f4f0;  --color-fuchsia-50: #e8f4f0;  --color-pink-50: #e8f4f0;
+  --color-purple-100: #d2ebe3;  --color-violet-100: #d2ebe3;  --color-indigo-100: #d2ebe3;  --color-fuchsia-100: #d2ebe3;  --color-pink-100: #d2ebe3;
+  --color-purple-200: #a9d6c8;  --color-violet-200: #a9d6c8;  --color-indigo-200: #a9d6c8;  --color-fuchsia-200: #a9d6c8;  --color-pink-200: #a9d6c8;
+  --color-purple-300: #7cc0ab;  --color-violet-300: #7cc0ab;  --color-indigo-300: #7cc0ab;  --color-fuchsia-300: #7cc0ab;  --color-pink-300: #7cc0ab;
+  --color-purple-400: #4ea68c;  --color-violet-400: #4ea68c;  --color-indigo-400: #4ea68c;  --color-fuchsia-400: #4ea68c;  --color-pink-400: #4ea68c;
+  --color-purple-500: #2f8f75;  --color-violet-500: #2f8f75;  --color-indigo-500: #2f8f75;  --color-fuchsia-500: #2f8f75;  --color-pink-500: #2f8f75;
+  --color-purple-600: #1f7a63;  --color-violet-600: #1f7a63;  --color-indigo-600: #1f7a63;  --color-fuchsia-600: #1f7a63;  --color-pink-600: #1f7a63;
+  --color-purple-700: #17614f;  --color-violet-700: #17614f;  --color-indigo-700: #17614f;  --color-fuchsia-700: #17614f;  --color-pink-700: #17614f;
+  --color-purple-800: #17614f;  --color-violet-800: #17614f;  --color-indigo-800: #17614f;  --color-fuchsia-800: #17614f;  --color-pink-800: #17614f;
+  --color-purple-900: #0e3d32;  --color-violet-900: #0e3d32;  --color-indigo-900: #0e3d32;  --color-fuchsia-900: #0e3d32;  --color-pink-900: #0e3d32;
 
-  /* Legacy utility families retain meaning: green is success, blue is
-     information, amber/orange/yellow are warning, and red is danger. */
-  --color-green-50: #f0fdf4; --color-emerald-50: #f0fdf4;
-  --color-green-100: #dcfce7; --color-emerald-100: #dcfce7;
-  --color-green-200: #bbf7d0; --color-emerald-200: #bbf7d0;
-  --color-green-300: #86efac; --color-emerald-300: #86efac;
-  --color-green-500: #22c55e; --color-emerald-500: #22c55e;
-  --color-green-600: #15803d; --color-emerald-600: #15803d;
-  --color-green-700: #166534; --color-emerald-700: #166534;
-  --color-green-800: #14532d; --color-emerald-800: #14532d;
-  --color-green-900: #052e16; --color-emerald-900: #052e16;
+  /* Legacy utility families retain meaning: green is success (emerald),
+     blue is information, amber/orange/yellow are warning, and red is danger. */
+  --color-green-50: #e8f4f0;  --color-emerald-50: #e8f4f0;
+  --color-green-100: #d2ebe3;  --color-emerald-100: #d2ebe3;
+  --color-green-200: #a9d6c8;  --color-emerald-200: #a9d6c8;
+  --color-green-300: #7cc0ab;  --color-emerald-300: #7cc0ab;
+  --color-green-500: #2f8f75;  --color-emerald-500: #2f8f75;
+  --color-green-600: #1f7a63;  --color-emerald-600: #1f7a63;
+  --color-green-700: #17614f;  --color-emerald-700: #17614f;
+  --color-green-800: #17614f;  --color-emerald-800: #17614f;
+  --color-green-900: #0e3d32;  --color-emerald-900: #0e3d32;
 
   --color-blue-50: #f0f9ff; --color-sky-50: #f0f9ff;
   --color-blue-100: #e0f2fe; --color-sky-100: #e0f2fe;
@@ -168,7 +179,7 @@
   --warning: var(--color-warning);
   --danger: var(--color-danger);
   --info: var(--color-info);
-  --focus-ring: rgb(22 101 52 / 0.2);
+  --focus-ring: rgb(31 122 99 / 0.2);
   --danger-focus-ring: rgb(220 38 38 / 0.16);
   font-family: var(--font-sans);
 }

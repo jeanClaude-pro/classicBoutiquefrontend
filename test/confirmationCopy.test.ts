@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   deleteEntryCopy, deleteProductCopy, deleteSaleCopy, deleteUserCopy,
-  exchangeRateCopy, expenseCreationCopy, expenseDeletionCopy, expenseRejectionCopy, expenseReversalCopy,
+  expenseCreationCopy, expenseDeletionCopy, expenseRejectionCopy, expenseReversalCopy,
   expenseValidationCopy, toggleUserStatusCopy, voidSaleCopy,
 } from "../src/lib/confirmationCopy.ts";
 
@@ -19,22 +19,23 @@ test("company expense validation names the affected category", () => {
 });
 
 test("goods purchase validation follows each category's funding rule", () => {
-  const shoes = expenseValidationCopy({ expenseType: "GOODS_PURCHASE", category: "SHOES", amount: 700 });
+  const shoes = expenseValidationCopy({ expenseType: "GOODS_PURCHASE", category: "SHOES", amount: 700000 });
   assert.equal(shoes.title, "Valider cet achat de marchandises ?");
   assert.match(shoes.message, /fonds de réapprovisionnement CHAUSSURES disponibles\. Le bénéfice des actionnaires ne sera pas utilisé\./);
-  const clothes = expenseValidationCopy({ expenseType: "GOODS_PURCHASE", category: "CLOTHES", amount: 700 });
+  const clothes = expenseValidationCopy({ expenseType: "GOODS_PURCHASE", category: "CLOTHES", amount: 700000 });
   assert.match(clothes.message, /d'abord sur le capital récupéré, puis, si nécessaire, sur le bénéfice disponible/);
   for (const copy of [shoes, clothes]) {
     assert.match(all(copy), /Le stock n'est pas modifié/, "purchases never change stock");
     assert.match(all(copy), /refusée et rien n'est enregistré/);
     assert.equal(copy.successMessage, "Achat de marchandises validé avec succès.");
-    assert.deepEqual(copy.details.find((detail) => detail.label === "Montant")?.value, "700,00 $");
+    // Every amount is FC, the shop's only currency.
+    assert.match(String(copy.details.find((detail) => detail.label === "Montant")?.value), /^700\s000 FC$/);
   }
 });
 
 test("repayment validation names the creditor; legacy records cannot be validated", () => {
-  const repayment = expenseValidationCopy({ expenseType: "REPAYMENT", amount: 120, creditorSnapshot: { name: "Banque Test" } });
-  assert.match(repayment.message, /La dette envers Banque Test sera réduite de 120,00 \$/);
+  const repayment = expenseValidationCopy({ expenseType: "REPAYMENT", amount: 120000, creditorSnapshot: { name: "Banque Test" } });
+  assert.match(repayment.message, /La dette envers Banque Test sera réduite de 120\s000 FC/);
   for (const type of ["LEGACY_UNCLASSIFIED", "normal", undefined]) {
     assert.ok(expenseValidationCopy({ expenseType: type, amount: 1 }).blockedReason, String(type));
   }
@@ -82,14 +83,13 @@ test("other modules: soft-deleted entries, permanent products and users, rate sc
   assert.match(all(deleteUserCopy({ username: "awa" })), /irréversible/);
   assert.equal(toggleUserStatusCopy({ username: "awa", isActive: true }).title, "Désactiver ce compte ?");
   assert.equal(toggleUserStatusCopy({ username: "awa", isActive: false }).title, "Réactiver ce compte ?");
-  assert.match(all(exchangeRateCopy(2900, 2850)), /Les opérations déjà enregistrées gardent le taux/);
 });
 
 test("no confirmation relies on a generic question", () => {
   const copies = [
     expenseValidationCopy({ expenseType: "COMPANY_EXPENSE", category: "CLOTHES" }), expenseRejectionCopy({}), expenseDeletionCopy({}),
     voidSaleCopy({}), deleteSaleCopy({}), deleteEntryCopy({}),
-    deleteProductCopy({}), deleteUserCopy({}), toggleUserStatusCopy({}), exchangeRateCopy(1),
+    deleteProductCopy({}), deleteUserCopy({}), toggleUserStatusCopy({}),
   ];
   for (const copy of copies) {
     assert.doesNotMatch(all(copy), /êtes-vous sûr/i);

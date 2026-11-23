@@ -3,7 +3,7 @@ import { ArchiveX, ChevronDown, ChevronUp, RefreshCw, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiErrorFromResponse, toApiError } from "../../lib/apiError";
 import { formatDateTimeGMT2 } from "../../utils/dateUtils";
-import { formatFC, formatUSD, getSaleFcTotal, type StoredSaleItemPrice } from "../../utils/salePricing";
+import { formatFC, getItemUnitPrice, type StoredSaleItemPrice } from "../../utils/salePricing";
 import { serverUrl } from "../../utils/constants";
 
 interface VoidedSaleItem extends StoredSaleItemPrice {
@@ -17,8 +17,8 @@ interface VoidedSale {
   saleId: string;
   customer?: { name?: string; phone?: string };
   items: VoidedSaleItem[];
+  /** FC (the server presents pre-cutover sales in FC). */
   total: number;
-  exchangeRate?: number;
   paymentMethod: string;
   status: string;
   salesPerson?: string;
@@ -40,11 +40,10 @@ interface VoidedSalesResponse {
 }
 
 interface Props {
-  token: string;
   queryString: string;
 }
 
-export default function VoidedSalesDialog({ token, queryString }: Props) {
+export default function VoidedSalesDialog({ queryString }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [sales, setSales] = useState<VoidedSale[]>([]);
@@ -67,7 +66,7 @@ export default function VoidedSalesDialog({ token, queryString }: Props) {
         params.set("page", String(page));
         params.set("limit", "50");
         const response = await fetch(`${serverUrl}/sales?${params}`, {
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          headers: { "Content-Type": "application/json" },
           signal: controller.signal,
         });
         if (!response.ok) throw await apiErrorFromResponse(response);
@@ -86,7 +85,7 @@ export default function VoidedSalesDialog({ token, queryString }: Props) {
 
     void loadVoidedSales();
     return () => controller.abort();
-  }, [open, page, queryString, token, t]);
+  }, [open, page, queryString, t]);
 
   return (
     <>
@@ -140,7 +139,6 @@ export default function VoidedSalesDialog({ token, queryString }: Props) {
                     <tbody className="divide-y divide-gray-200 bg-white">
                       {sales.map((sale) => {
                         const expanded = expandedId === sale._id;
-                        const fcTotal = getSaleFcTotal(sale.total, sale.items, sale.exchangeRate);
                         const reason = sale.editHistory?.[sale.editHistory.length - 1]?.reason;
                         return (
                           <Fragment key={sale._id}>
@@ -152,8 +150,7 @@ export default function VoidedSalesDialog({ token, queryString }: Props) {
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-700">{sale.salesPerson || t("salesHistory.notSpecified")}</td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-medium text-gray-900">
-                                {fcTotal === undefined ? "—" : formatFC(fcTotal)}
-                                <div className="text-xs font-normal text-gray-500">≈ {formatUSD(sale.total)}</div>
+                                {formatFC(sale.total)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-600">{formatDateTimeGMT2(sale.voidedAt || sale.createdAt)}</td>
                               <td className="px-4 py-3 text-center">
@@ -169,7 +166,7 @@ export default function VoidedSalesDialog({ token, queryString }: Props) {
                                   <ul className="space-y-1">
                                     {sale.items.map((item, index) => (
                                       <li key={item._id || `${item.productId}-${index}`}>
-                                        {item.name}: {item.quantity} × {item.enteredPrice ?? item.price ?? 0} {item.enteredCurrency || "USD"}
+                                        {item.name}: {item.quantity} × {formatFC(getItemUnitPrice(item))}
                                       </li>
                                     ))}
                                   </ul>

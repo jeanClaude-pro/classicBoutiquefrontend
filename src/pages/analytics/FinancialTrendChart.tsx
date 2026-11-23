@@ -12,41 +12,40 @@ import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveConta
 import { TrendingUp } from "lucide-react";
 
 import { serverUrl } from "../../utils/constants";
-import { formatFC, formatUSD } from "../../utils/salePricing";
+import { formatFC } from "../../utils/salePricing";
 import { requestJson, toApiError } from "../../lib/apiError";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { ErrorState } from "../../components/ui";
 import type { AccountingCategory } from "./accountingPresentation";
 import {
-  FC_FIELD, MAX_BUCKETS, SERIES_METRICS,
+  MAX_BUCKETS, SERIES_METRICS,
   autoGranularity, axisLabel, bucketCount, bucketLabel, compactAmount, daysBetween,
   rangeLabel, timeSeriesQuery,
   type Granularity, type GranularityChoice, type SeriesBucket, type SeriesMetric, type TimeSeriesResponse,
 } from "./financialTimeSeries";
 import "./financialReports.css";
 
-// Same values as the design tokens (SVG presentation attributes cannot read CSS variables).
-const FOREST = "#166534";
-const CHARCOAL = "#27272a";
-const MUTED = "#71717a";
-const GRID = "#ecece6";
-const AXIS = "#d4d4cd";
+// Same values as the design tokens (SVG presentation attributes cannot read
+// CSS variables): Emerald Green (--brand-emerald) and Navy Blue (--brand-navy).
+const FOREST = "#1F7A63";
+const CHARCOAL = "#0B1C2D";
+const MUTED = "#5f6b74";
+const GRID = "#e9edf2";
+const AXIS = "#c4cbd1";
 
 type CategoryFilter = AccountingCategory | "ALL";
 
 interface ChartRow extends SeriesBucket { value: number }
 
-function ChartTooltip({ active, row, metricLabel, granularity, fcField }: {
-  active?: boolean; row?: ChartRow; metricLabel: string; granularity: Granularity; fcField: keyof SeriesBucket;
+function ChartTooltip({ active, row, metricLabel, granularity }: {
+  active?: boolean; row?: ChartRow; metricLabel: string; granularity: Granularity;
 }) {
   const { t } = useTranslation();
   if (!active || !row) return null;
-  const fc = row[fcField] as number;
   return (
     <div className="fin-tooltip" role="status">
       <p className="fin-tooltip-date">{bucketLabel(row, granularity)}</p>
-      <p className={`fin-tooltip-value${row.value < 0 ? " is-negative" : ""}`}>{formatUSD(row.value)}</p>
-      <p className="fin-tooltip-fc">≈ {formatFC(fc)}</p>
+      <p className={`fin-tooltip-value${row.value < 0 ? " is-negative" : ""}`}>{formatFC(row.value)}</p>
       <div className="fin-tooltip-meta">
         <span>{metricLabel}</span>
         <span>{t("financialReports.chart.salesCount", { count: row.sales })} · {t("financialReports.chart.units", { count: row.unitsSold })}</span>
@@ -134,7 +133,6 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
     const total = data.totals[metric];
     return {
       total,
-      totalFC: data.totals[FC_FIELD[metric]] as number,
       average: total / rows.length,
       peak,
       low,
@@ -150,8 +148,8 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
   const yDomain: [number | "auto", number | "auto"] = !stats || stats.allZero ? [0, 100] : [stats.min < 0 ? "auto" : 0, "auto"];
   const chartLabel = stats
     ? t("financialReports.chart.ariaSummary", {
-      metric: metricLabel, range: rangeLabel(range.from, range.to), total: formatUSD(stats.total),
-      peak: formatUSD(stats.peak.value), peakDate: bucketLabel(stats.peak, shownGranularity),
+      metric: metricLabel, range: rangeLabel(range.from, range.to), total: formatFC(stats.total),
+      peak: formatFC(stats.peak.value), peakDate: bucketLabel(stats.peak, shownGranularity),
     })
     : metricLabel;
   const scopeTitle = lockedCategory
@@ -205,35 +203,34 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
             <div className="fin-kpi">
               <dt>{t("financialReports.chart.kpi.total")}</dt>
               <dd className={stats && stats.total < 0 ? "is-negative" : undefined}>
-                {stats ? formatUSD(stats.total) : "—"}
-                {stats && <small>≈ {formatFC(stats.totalFC)}</small>}
+                {stats ? formatFC(stats.total) : "—"}
               </dd>
             </div>
             <div className="fin-kpi">
               <dt>{t("financialReports.chart.kpi.average", { per: granularityWord })}</dt>
               <dd className={stats && stats.average < 0 ? "is-negative" : undefined}>
-                {stats ? formatUSD(stats.average) : "—"}
+                {stats ? formatFC(stats.average) : "—"}
                 {data && <small>{t("financialReports.chart.salesCount", { count: data.totals.sales })}</small>}
               </dd>
             </div>
             <div className="fin-kpi">
               <dt>{t("financialReports.chart.kpi.peak")}</dt>
               <dd>
-                {stats && !stats.allZero ? formatUSD(stats.peak.value) : "—"}
+                {stats && !stats.allZero ? formatFC(stats.peak.value) : "—"}
                 {stats && !stats.allZero && <small>{bucketLabel(stats.peak, shownGranularity)}</small>}
               </dd>
             </div>
             <div className="fin-kpi">
               <dt>{t("financialReports.chart.kpi.low")}</dt>
               <dd className={stats && stats.low.value < 0 ? "is-negative" : undefined}>
-                {stats && !stats.allZero ? formatUSD(stats.low.value) : "—"}
+                {stats && !stats.allZero ? formatFC(stats.low.value) : "—"}
                 {stats && !stats.allZero && <small>{bucketLabel(stats.low, shownGranularity)}</small>}
               </dd>
             </div>
           </dl>
 
           <figure className="fin-plot" role="img" aria-label={chartLabel}>
-            <span className="fin-plot-unit" aria-hidden="true">USD</span>
+            <span className="fin-plot-unit" aria-hidden="true">FC</span>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={rows} margin={{ top: 18, right: isPhone ? 6 : 12, bottom: 0, left: 0 }} barCategoryGap="30%">
                 <CartesianGrid vertical={false} stroke={GRID} />
@@ -269,7 +266,6 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
                       row={props.payload?.[0]?.payload as ChartRow | undefined}
                       metricLabel={metricLabel}
                       granularity={shownGranularity}
-                      fcField={FC_FIELD[metric]}
                     />
                   )}
                 />
@@ -339,11 +335,11 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
                     {data.series.map((bucket) => (
                       <tr key={bucket.date}>
                         <th scope="row">{bucketLabel(bucket, shownGranularity)}</th>
-                        <td className="text-right">{formatUSD(bucket.revenue)}</td>
-                        <td className="text-right">{formatUSD(bucket.costOfGoodsSold)}</td>
-                        <td className={`text-right${bucket.grossProfit < 0 ? " is-negative" : ""}`}>{formatUSD(bucket.grossProfit)}</td>
-                        <td className="text-right">{formatUSD(bucket.companyExpenses)}</td>
-                        <td className={`text-right${bucket.netResult < 0 ? " is-negative" : ""}`}>{formatUSD(bucket.netResult)}</td>
+                        <td className="text-right">{formatFC(bucket.revenue)}</td>
+                        <td className="text-right">{formatFC(bucket.costOfGoodsSold)}</td>
+                        <td className={`text-right${bucket.grossProfit < 0 ? " is-negative" : ""}`}>{formatFC(bucket.grossProfit)}</td>
+                        <td className="text-right">{formatFC(bucket.companyExpenses)}</td>
+                        <td className={`text-right${bucket.netResult < 0 ? " is-negative" : ""}`}>{formatFC(bucket.netResult)}</td>
                         <td className="text-right">{bucket.sales}</td>
                       </tr>
                     ))}
@@ -351,11 +347,11 @@ export default function FinancialTrendChart({ canFilterCategory, lockedCategory,
                   <tfoot>
                     <tr>
                       <th scope="row">{t("financialReports.tables.total")}</th>
-                      <td className="text-right">{formatUSD(data.totals.revenue)}</td>
-                      <td className="text-right">{formatUSD(data.totals.costOfGoodsSold)}</td>
-                      <td className="text-right">{formatUSD(data.totals.grossProfit)}</td>
-                      <td className="text-right">{formatUSD(data.totals.companyExpenses)}</td>
-                      <td className="text-right">{formatUSD(data.totals.netResult)}</td>
+                      <td className="text-right">{formatFC(data.totals.revenue)}</td>
+                      <td className="text-right">{formatFC(data.totals.costOfGoodsSold)}</td>
+                      <td className="text-right">{formatFC(data.totals.grossProfit)}</td>
+                      <td className="text-right">{formatFC(data.totals.companyExpenses)}</td>
+                      <td className="text-right">{formatFC(data.totals.netResult)}</td>
                       <td className="text-right">{data.totals.sales}</td>
                     </tr>
                   </tfoot>

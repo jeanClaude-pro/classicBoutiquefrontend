@@ -2,7 +2,6 @@ import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { offlineDb, scopeForUser } from "../src/offline/db";
 import { cacheProducts, getCachedProducts } from "../src/offline/repositories/products";
-import { cacheExchangeRate, getCachedExchangeRate } from "../src/offline/repositories/exchangeRates";
 import { addLocalSale, getLocalSale, getPendingSales, pendingQuantityByProduct, updateSaleStatus } from "../src/offline/repositories/sales";
 import { purgeOfflineCredentials } from "../src/offline/offlineAuth";
 import { requeueSale, submitNewSale, synchronizeSales } from "../src/offline/syncManager";
@@ -12,7 +11,7 @@ import type { User } from "../src/types/auth";
 
 const user: User = { id: "user-1", username: "Cashier", email: "cashier@example.com", role: "staff", isActive: true };
 const product: Product = {
-  _id: "product-1", name: "Chemise", description: "", price: 10, category: "Chemises", brand: "",
+  _id: "product-1", name: "Chemise", description: "", price: 28000, category: "Chemises", brand: "",
   stock: 8, minStock: 1, unit: "pcs", weight: 0, status: "active", createdAt: "2026-01-01", updatedAt: "2026-01-01",
 };
 
@@ -22,8 +21,8 @@ function sale(id = "sale-1", quantity = 2, ownerUserId = user.id): LocalSale {
     clientSaleId: id, idempotencyKey: id, receiptNumber: `POS-${id}`,
     ownerUserId, ownerName: user.username, scopeKey: scopeForUser(user), occurredAt,
     queuedAt: occurredAt, updatedAt: occurredAt, syncStatus: "PENDING", retryCount: 0,
-    payload: { isWalkIn: true, items: [{ productId: product._id, quantity, price: 10 }], subtotal: 10 * quantity, total: 10 * quantity,
-      paymentMethod: "cash", salesPerson: user.username, exchangeRate: 2900, requestKey: id,
+    payload: { isWalkIn: true, items: [{ productId: product._id, quantity, price: 28000, enteredPrice: 28000, enteredCurrency: "FC" }], subtotal: 28000 * quantity, total: 28000 * quantity,
+      paymentMethod: "cash", salesPerson: user.username, currency: "FC", requestKey: id,
       clientSaleId: id, receiptNumber: `POS-${id}`, occurredAt, offline: true },
   };
 }
@@ -68,13 +67,13 @@ afterEach(() => {
 });
 
 describe("offline database", () => {
-  test("initializes, caches scoped products/rates and transitions the durable sale queue", async () => {
+  test("initializes, caches scoped products and transitions the durable sale queue", async () => {
     const scope = scopeForUser(user);
     await cacheProducts(scope, [product]);
-    await cacheExchangeRate(scope, { rate: 2900, effectiveFrom: "2026-01-01", lastUpdated: "2026-01-01" });
     expect(await getCachedProducts(scope)).toHaveLength(1);
     expect(await getCachedProducts(scopeForUser({ id: "user-2" }))).toHaveLength(0);
-    expect((await getCachedExchangeRate(scope))?.rate).toBe(2900);
+    // FC-only: the exchange-rate cache table no longer exists.
+    expect(offlineDb.tables.map((table) => table.name)).not.toContain("exchangeRates");
     await addLocalSale(sale());
     expect(await getPendingSales(user.id)).toHaveLength(1);
     expect(await getPendingSales("user-2")).toHaveLength(0);
@@ -187,11 +186,11 @@ describe("checkout", () => {
     expect((await submitNewSale(sale(), null)).kind).toBe("queued");
     offlineDb.close();
     await offlineDb.open();
-    expect(await getLocalSale("sale-1")).toMatchObject({ syncStatus: "PENDING", payload: { exchangeRate: 2900 } });
+    expect(await getLocalSale("sale-1")).toMatchObject({ syncStatus: "PENDING", payload: { currency: "FC", total: 56000 } });
   });
 
   test("a refusal at the till keeps nothing locally and returns the server error", async () => {
-    fakeServer({ respond: () => json({ error: "EXCHANGE_RATE_CHANGED", message: "rate changed", exchangeRate: 2950 }, 409) });
+    fakeServer({ respond: () => json({ error: "PRICE_TOO_LOW", message: "Prix trop bas. Veuillez augmenter le prix." }, 409) });
     const outcome = await submitNewSale(sale(), validToken());
     expect(outcome.kind).toBe("rejected");
     if (outcome.kind === "rejected") expect(outcome.error.status).toBe(409);
@@ -205,15 +204,15 @@ describe("checkout", () => {
     expect(server.attempts()).toBe(1);
   });
 
-  test("the rate snapshot taken at checkout is sent unchanged when synchronizing later", async () => {
+  test("the FC sale taken at checkout is sent unchanged when synchronizing later", async () => {
     await submitNewSale(sale(), null);
     fakeServer();
     await synchronizeSales(user.id, validToken(), true);
     const bodies = vi.mocked(fetch).mock.calls
       .filter(([input]) => String(input).endsWith("/sales"))
-      .map(([, init]) => (JSON.parse(String(init?.body)) as { exchangeRate: number; occurredAt: string }));
+      .map(([, init]) => (JSON.parse(String(init?.body)) as { currency: string; total: number; exchangeRate?: number; occurredAt: string }));
     expect(bodies).toHaveLength(1);
-    expect(bodies[0].exchangeRate).toBe(2900);
+    expect([bodies[0].currency, bodies[0].total, bodies[0].exchangeRate]).toEqual(["FC", 56000, undefined]);
     expect(bodies[0].occurredAt).toBe((await getLocalSale("sale-1"))?.occurredAt);
   });
 });

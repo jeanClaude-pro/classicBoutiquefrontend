@@ -14,9 +14,7 @@
       "customer": "Client",
       "items": "Articles",
       "source": "Source",
-      "email": "Email",
-      "currentRate": "Taux actuel",
-      "newRate": "Nouveau taux"
+      "email": "Email"
     },
     "pieces_one": "{{count}} pièce",
     "pieces_other": "{{count}} pièces",
@@ -138,17 +136,10 @@
       "deactivateSuccess": "Compte désactivé.",
       "reactivateSuccess": "Compte réactivé."
     },
-    "rate": {
-      "title": "Appliquer ce nouveau taux ?",
-      "message": "1 USD = {{rate}} FC sera utilisé pour les nouvelles ventes, réservations, entrées et décaissements.",
-      "history": "Les opérations déjà enregistrées gardent le taux en vigueur au moment de leur saisie.",
-      "confirm": "Appliquer le taux",
-      "success": "Taux de change mis à jour avec succès."
-    },
     "loan": {
       "title": "Enregistrer cet emprunt ?",
       "message": "La dette envers {{creditor}} augmentera de {{amount}}.",
-      "consequence": "Un emprunt enregistré ne peut pas être supprimé. Vérifiez le montant et la devise.",
+      "consequence": "Un emprunt enregistré ne peut pas être supprimé. Vérifiez le montant.",
       "confirm": "Enregistrer l'emprunt",
       "success": "Emprunt enregistré avec succès."
     },
@@ -242,7 +233,8 @@
     "actions": "Actions",
     "email": "Email",
     "actionsMenu": "Actions",
-    "actionsFor": "Actions pour {{name}}"
+    "actionsFor": "Actions pour {{name}}",
+    "currencyFC": "Tous les montants en FC"
   },
   "navigation": {
     "main": "Navigation principale",
@@ -298,11 +290,6 @@
     "historicsortie": {
       "label": "Historique des décaissements",
       "description": "Suivez, validez ou rejetez les décaissements et consultez leur statut."
-    },
-    "rate": {
-      "label": "Taux de change",
-      "short": "Taux",
-      "description": "Définissez le taux USD → FC appliqué aux nouvelles opérations. Les opérations passées gardent leur taux."
     },
     "remboursements": {
       "label": "Dettes & emprunts",
@@ -498,7 +485,6 @@
     "placeholder": "Selectionner La Categorie"
   },
   "debts": {
-    "invalidAmountOrRate": "Montant ou taux de change invalide.",
     "creditorAdded": "Créancier ajouté avec succès.",
     "thisCreditor": "ce créancier",
     "addCreditor": "Ajouter un créancier",
@@ -517,52 +503,14 @@
     "selectCreditor": "Sélectionnez un créancier",
     "selectCreditorHint": "Son historique et la saisie d’un nouvel emprunt apparaîtront ici.",
     "newLoan": "Nouvel emprunt",
-    "amount": "Montant *",
-    "rate": "Taux USD/FC",
     "recordLoan": "Enregistrer l'emprunt",
     "history": "Historique — {{name}}",
     "repaid": "Remboursé",
     "currentBalance": "Solde actuel",
     "loanLine": "Emprunt · {{amount}}",
-    "repaymentLine": "Remboursement · {{amount}}"
-  },
-  "rate": {
-    "noPermissionHistory": "Vous n'avez pas la permission de voir l'historique des taux",
-    "loadFailed": "Échec du chargement des taux de change",
-    "invalidRate": "Veuillez entrer un taux de change valide",
-    "loading": "Chargement des taux de change...",
-    "current": "Taux de Change Actuel",
-    "fcToUsd": "Taux FC → USD",
-    "usdToFc": "Taux USD → FC",
-    "effectiveSince": "Effectif depuis: {{date}}",
-    "setBy": "Défini par: {{name}}",
-    "notes": "Notes:",
-    "noActiveRate": "Aucun taux de change actif",
-    "pleaseSetRate": "Veuillez définir un taux de change",
-    "updateTitle": "Mettre à Jour le Taux de Change",
-    "newRate": "Nouveau Taux (1 USD = X FC) *",
-    "newRatePlaceholder": "Ex: 2500 pour 1 USD = 2500 FC",
-    "newRateHint": "Entrez combien de Francs Congolais valent 1 USD",
-    "effectiveDate": "Date d'Effet",
-    "effectiveDateHint": "Laisser vide pour utiliser la date actuelle",
-    "notesOptional": "Notes (Optionnel)",
-    "notesPlaceholder": "Raison du changement, source du taux, etc.",
-    "saving": "Enregistrement…",
-    "apply": "Appliquer le nouveau taux",
-    "history": "Historique des Taux",
-    "entries": "{{count}} entrées",
-    "by": "Par: {{name}}",
-    "noHistory": "Aucun historique disponible",
-    "noHistoryHint": "Les changements de taux apparaîtront ici",
-    "howTo": "💡 Comment utiliser les taux de change",
-    "forFcSales": "Pour les ventes en FC:",
-    "tipConverted": "Les prix saisis en FC seront convertis en USD",
-    "tipActive": "Le système utilise toujours le taux actif",
-    "tipCareful": "Bien faire attention avant de definir un nouveau taux",
-    "bestPractices": "Bonnes pratiques:",
-    "tipRegular": "Mettez à jour le taux régulièrement",
-    "tipSource": "Notez la source du taux (banque, marché, etc.)",
-    "tipOneActive": "Un seul taux peut être actif à la fois"
+    "repaymentLine": "Remboursement · {{amount}}",
+    "amountFC": "Montant (FC)",
+    "invalidAmount": "Saisissez un montant supérieur à zéro."
   },
   "customers": {
     "recalculated": "Statistiques du client recalculées avec succès.",
@@ -600,14 +548,11 @@
     "title": "Décaissements",
     "newExpense": "Nouveau décaissement",
     "newExpenseHint": "Choisissez le type d'opération, la catégorie et le montant.",
-    "invalidAmount": "Montant invalide ou taux de change indisponible. Vérifiez le montant saisi.",
+    "invalidAmount": "Montant invalide. Vérifiez le montant saisi.",
     "savedValidated": "Décaissement enregistré et validé.",
     "submitted": "Décaissement soumis avec succès.",
     "savedValidatedBanner": "✅ Décaissement enregistré et validé.",
     "submittedBanner": "✅ Décaissement soumis : il sera pris en compte après validation.",
-    "todayRate": "Taux du jour:",
-    "effectiveSince": "Effectif depuis {{date}}",
-    "rateUnavailable": "Taux non disponible",
     "operationType": "Type d'opération *",
     "types": {
       "companyExpenseHint": "Réduit le bénéfice de la catégorie",
@@ -631,7 +576,6 @@
     "fullName": "Nom complet",
     "beneficiaryPhone": "Téléphone du bénéficiaire",
     "phoneNumber": "Numéro de téléphone",
-    "amountLabel": "Montant *",
     "paymentMethod": "Méthode de paiement *",
     "payment": {
       "cash": "Espèces",
@@ -640,8 +584,6 @@
       "card": "Carte",
       "other": "Autre"
     },
-    "amountUsd": "Montant en USD",
-    "equivalentFc": "Équivalent en FC",
     "requestedAmount": "Montant demandé",
     "balanceAfter": "Solde après opération",
     "shortfall": "Capital à reconstituer : {{amount}}. De nouvelles ventes doivent d'abord couvrir ce montant.",
@@ -653,42 +595,27 @@
     "save": "Enregistrer le décaissement",
     "importantInfo": "Information importante",
     "infoText": "Un décaissement n'est jamais comptabilisé dans les ventes. Son reçu s'imprime depuis l'Historique des décaissements une fois validé.",
-    "rateUsed": "💱 Taux utilisé: 1 USD = {{rate}} FC"
+    "amountLabelFC": "Montant (FC)"
   },
   "login": {
     "sessionExpired": "Votre session a expiré. Veuillez vous reconnecter.",
     "success": "Connexion réussie !",
-    "usernameRequired": "Le nom d'utilisateur est requis",
-    "passwordTooShort": "Le mot de passe doit comporter au moins 10 caractères",
-    "passwordMismatch": "Les mots de passe ne correspondent pas",
     "accountCreated": "Compte créé avec succès !",
     "invalidCredentials": "Email ou mot de passe incorrect",
-    "signupFailed": "Impossible de créer le compte",
     "tagline": "Vêtements · Chaussures · Élégance",
     "signIn": "Connexion",
-    "createAccount": "Créer un compte",
     "signInHint": "Entrez vos identifiants pour accéder au système",
-    "signupHint": "Renseignez vos informations pour créer votre compte",
-    "username": "Nom d'utilisateur",
-    "usernamePlaceholder": "ex: Jean Claude",
     "email": "Adresse email",
     "emailPlaceholder": "ex: utilisateur@example.com",
     "password": "Mot de passe",
     "passwordPlaceholder": "Votre mot de passe",
     "showPassword": "Afficher le mot de passe",
     "hidePassword": "Masquer le mot de passe",
-    "minLength": "Au moins 10 caractères",
-    "confirmPassword": "Confirmer le mot de passe",
-    "confirmPasswordPlaceholder": "Confirmez votre mot de passe",
     "signingIn": "Connexion en cours...",
-    "creating": "Création en cours...",
     "submitSignIn": "Se connecter",
-    "submitSignup": "Créer mon compte",
-    "noAccount": "Pas encore de compte ?",
-    "haveAccount": "Vous avez déjà un compte ?",
-    "accountPendingActivation": "Compte créé. Un administrateur doit l'activer avant votre première connexion.",
     "sessionIdle": "Session fermée après une période d'inactivité. Veuillez vous reconnecter.",
-    "serverRequired": "Le serveur est injoignable. Pour votre sécurité, la connexion doit être vérifiée par le serveur : réessayez dès que la connexion Internet revient. Une caisse déjà connectée continue d'enregistrer les ventes."
+    "serverRequired": "Le serveur est injoignable. Pour votre sécurité, la connexion doit être vérifiée par le serveur : réessayez dès que la connexion Internet revient. Une caisse déjà connectée continue d'enregistrer les ventes.",
+    "accountsByAdmin": "Pas de compte ? Les comptes sont créés uniquement par l'administrateur de la boutique."
   },
   "products": {
     "saved": "Modification enregistrée avec succès.",
@@ -728,12 +655,9 @@
     "brands": "Marques",
     "status": "Statut",
     "pricingStock": "Prix & Stock",
-    "salePrice": "Prix de vente par pièce *",
-    "priceUsdPlaceholder": "Entrer le prix en USD",
     "priceFcPlaceholder": "Entrer le prix en FC",
     "priceHint": "Ce prix préremplit la vente; les utilisateurs autorisés peuvent le modifier.",
     "purchasedQuantity": "Quantité achetée (pièces) *",
-    "unitCost": "Coût d’acquisition par pièce *",
     "freePlaceholder": "0 si acquis gratuitement",
     "costHint": "Indiquez le coût d’achat/acquisition d’une seule pièce (0 si donation). Valeur totale du stock acquis :",
     "currentStock": "Stock actuel",
@@ -753,7 +677,9 @@
     "unitLabel": "Unité:",
     "physical": "Propriétés physiques",
     "weightLabel": "Poids:",
-    "editButton": "Modifier l'Article"
+    "editButton": "Modifier l'Article",
+    "salePriceFC": "Prix de vente (FC)",
+    "unitCostFC": "Coût d'achat par pièce (FC)"
   },
   "entryOptions": {
     "sources": {
@@ -801,7 +727,6 @@
     "title": "Reçu d'Entrée d'Argent",
     "confirmed": "💰 ENTRÉE D'ARGENT CONFIRMÉE 💰",
     "details": "DÉTAILS DE L'ENTRÉE",
-    "usdEquivalent": "ÉQUIVALENT USD",
     "success": "ENTRÉE ENREGISTRÉE AVEC SUCCÈS !",
     "keep": "Conserver ce reçu comme preuve",
     "thanks": "Merci pour votre confiance",
@@ -820,12 +745,7 @@
     "agent": "Agent",
     "recordedPrinting": "✅ Entrée d'argent enregistrée avec succès ! Impression du reçu et de la souche...",
     "recorded": "Entrée de caisse enregistrée avec succès.",
-    "todayRate": "Taux du jour:",
-    "effectiveSince": "Effectif depuis {{date}}",
-    "rateUnavailable": "Taux non disponible",
     "info": "Informations de l'Entrée",
-    "amount": "Montant *",
-    "amountUsdPlaceholder": "Entrer le montant en USD",
     "amountFcPlaceholder": "Entrer le montant en FC",
     "source": "Source *",
     "selectSource": "Sélectionner la source",
@@ -843,7 +763,8 @@
     "senderEmailPlaceholder": "Entrer l'email de l'expéditeur",
     "saving": "Enregistrement en cours...",
     "save": "Enregistrer l'Entrée d'Argent",
-    "requiredFields": "* Veuillez remplir tous les champs obligatoires (Montant, Source, Catégorie, Nom et Téléphone)"
+    "requiredFields": "* Veuillez remplir tous les champs obligatoires (Montant, Source, Catégorie, Nom et Téléphone)",
+    "amountFC": "Montant (FC)"
   },
   "admin": {
     "actions": {
@@ -959,13 +880,30 @@
       "jwt": "Les tokens JWT expirent et sont validés à chaque requête.",
       "deactivated": "Les comptes désactivés ne peuvent pas se connecter ni accéder aux endpoints.",
       "protected": "Un compte administrateur protégé est masqué et non modifiable par les autres admins.",
-      "signup": "L'inscription est publique via la page de connexion, mais chaque nouveau compte reçoit automatiquement le rôle « {{role}} » ; seuls les administrateurs peuvent ensuite changer les rôles et permissions."
+      "signup": "Il n'y a pas d'inscription publique : seuls les superadministrateurs créent les comptes (bouton « Créer un compte »), avec leur rôle et leurs modules."
     },
     "availableActions": "Permissions d'actions disponibles",
     "signedInAs": "Connecté en tant que",
     "unlockLogin": "Débloquer la connexion",
     "unlockLoginNamed": "Débloquer la connexion de {{name}}",
-    "loginUnlocked": "Connexion de {{name}} débloquée"
+    "loginUnlocked": "Connexion de {{name}} débloquée",
+    "create": {
+      "open": "Créer un compte",
+      "title": "Nouveau compte",
+      "hint": "Le compte est actif dès sa création. Communiquez le mot de passe à la personne en main propre.",
+      "username": "Nom d'utilisateur",
+      "email": "Adresse email",
+      "password": "Mot de passe",
+      "passwordHint": "Au moins 10 caractères.",
+      "confirmPassword": "Confirmer le mot de passe",
+      "role": "Rôle",
+      "modules": "Modules autorisés",
+      "submit": "Créer le compte",
+      "creating": "Création…",
+      "created": "Compte créé.",
+      "passwordTooShort": "Le mot de passe doit comporter au moins 10 caractères.",
+      "passwordMismatch": "Les mots de passe ne correspondent pas."
+    }
   },
   "reports": {
     "notEnoughData": "Pas assez de données",
@@ -1210,9 +1148,6 @@
     "agent": "Agent",
     "saleDonePrinting": "✅ Vente effectuée avec succès ! Impression du reçu et de la souche...",
     "saleRecorded": "Vente enregistrée avec succès.",
-    "todayRate": "Taux du jour:",
-    "effectiveSince": "Effectif depuis {{date}}",
-    "rateUnavailable": "Taux non disponible",
     "addItems": "Ajouter les articles",
     "items": "Articles",
     "searchPlaceholder": "Rechercher un article...",
@@ -1220,7 +1155,6 @@
     "noItemFound": "Aucun article trouvé",
     "quantity": "Nombre de pièces",
     "quantityPlaceholder": "Entrer le nombre de pièces",
-    "unitPrice": "Prix unitaire",
     "priceLocked": "Prix verrouillé — permission requise pour modifier les prix.",
     "discountLocked": "La remise sur le prix unitaire devient disponible lorsque ce panier atteint 5 pièces.",
     "discountQuantityRequired": "Une remise exige au moins 5 pièces dans le panier.",
@@ -1232,11 +1166,7 @@
     "unitPriceIn": "PU ({{currency}})",
     "normalPrice": "Prix normal : {{price}}",
     "invalidFcPrice": "Saisissez un montant entier en FC, supérieur à zéro.",
-    "invalidUsdPrice": "Saisissez un montant en USD supérieur à zéro (2 décimales au plus).",
-    "exchangeRateChanged": "Le taux de change a changé. Les prix du panier ont été recalculés au nouveau taux : vérifiez-les puis réessayez.",
     "editUnitPriceNamed": "Prix unitaire de {{name}}",
-    "priceExample": "ex: {{price}}",
-    "priceUsdPlaceholder": "Entrer le prix en USD",
     "priceFcPlaceholder": "Entrer le prix en FC",
     "addToCart": "Ajouter au panier",
     "cartItems": "Articles du panier",
@@ -1249,7 +1179,6 @@
     "remove": "Enlever",
     "removeNamed": "Enlever {{name}} du panier",
     "totalLabel": "Total:",
-    "totalReceived": "Total reçu ≈ {{amount}}",
     "customerInfo": "Informations du client",
     "walkInOption": "Client de passage (vente sans coordonnées client)",
     "customerName": "Nom du client",
@@ -1266,7 +1195,9 @@
     },
     "saving": "En cours d'enregistrement...",
     "save": "Enregistrer la vente",
-    "defaultFooter": "Merci pour Achat! À bientôt."
+    "defaultFooter": "Merci pour Achat! À bientôt.",
+    "unitPriceFC": "Prix unitaire (FC)",
+    "currencyNotSupported": "L'application fonctionne uniquement en francs congolais (FC). Actualisez la page puis saisissez le montant en FC."
   },
   "saleReceipt": {
     "title": "Reçu de vente",
@@ -1319,7 +1250,6 @@
     "reservationNo": "RESERVATION #",
     "pcs": "Pcs",
     "subtotal": "Sous-total",
-    "usdEquivalent": "Équiv. USD",
     "totalAmount": "MONTANT TOTAL",
     "completedTitle": "RÉSERVATION COMPLÉTÉE AVEC SUCCÈS",
     "pendingTitle": "RÉSERVATION EN ATTENTE DE RETRAIT",
@@ -1453,7 +1383,6 @@
       "name": "Nom",
       "items": "Articles ({{count}})",
       "pieces": "Nombre de pièces : {{count}}",
-      "received": "Reçu",
       "subtotal": "Sous-total",
       "total": "Total"
     },
@@ -1492,7 +1421,6 @@
     "connectionFailed": "Échec de la connexion au serveur",
     "thisWeek": "Cette semaine",
     "thisMonth": "Ce mois",
-    "equivalent": "Équiv. {{amount}}",
     "paymentMethod": "Méthode de paiement",
     "status": "Statut",
     "senderInfo": "Information sur l'expéditeur",
@@ -1500,7 +1428,6 @@
     "source": "Source",
     "category": "Catégorie",
     "amount": "Montant",
-    "amountUsd": "Montant (USD)",
     "description": "Description",
     "recordedBy": "Enregistré par",
     "notEditable": "Une entrée supprimée ne peut plus être modifiée.",
@@ -1554,7 +1481,8 @@
       "byPaymentMethod": "Détails par méthode de paiement",
       "totalValue": "Total : {{amount}}",
       "topSources": "Sources principales"
-    }
+    },
+    "amountFC": "Montant (FC)"
   },
   "expenseVoucher": {
     "title": "Reçu de décaissement",
@@ -1781,8 +1709,7 @@
     "pending_one": "{{count}} vente en attente",
     "pending_other": "{{count}} ventes en attente",
     "cachedProducts": "Les produits proviennent du dernier cache fiable.",
-    "cachedRate": "Utilisation du dernier taux de change fiable.",
-    "dataUnavailable": "Les ventes hors ligne nécessitent des produits et un taux de change en cache.",
+    "dataUnavailable": "Les ventes hors ligne nécessitent des produits en cache.",
     "saleQueued": "Vente enregistrée en sécurité et en attente de synchronisation. Impression lancée.",
     "queuedSales": "Ventes non synchronisées",
     "queuedSalesHint": "Les transactions locales restent ici jusqu’à leur confirmation par le serveur.",
@@ -1813,7 +1740,7 @@
     "refusedCount_one": "{{count}} vente refusée",
     "refusedCount_other": "{{count}} ventes refusées",
     "refusedTitle": "Ventes refusées par le serveur : elles ne sont PAS dans les comptes",
-    "refusedHelp": "Le serveur a refusé ces ventes (stock épuisé, taux changé, date invalide…). L’argent a peut-être été encaissé : vérifiez la raison, enregistrez la vente à nouveau si nécessaire, puis marquez-la comme traitée. Chaque refus est aussi gardé dans le journal d’audit.",
+    "refusedHelp": "Le serveur a refusé ces ventes (stock épuisé, date invalide…). L’argent a peut-être été encaissé : vérifiez la raison, enregistrez la vente à nouveau si nécessaire, puis marquez-la comme traitée. Chaque refus est aussi gardé dans le journal d’audit.",
     "othersWaitingTitle": "Ventes d’autres caissiers en attente sur cet appareil",
     "othersWaiting": "{{names}} doit se reconnecter en ligne sur cet appareil pour envoyer ces ventes ({{count}}).",
     "openQueue": "Voir les ventes",
@@ -1920,15 +1847,13 @@
     "tables": {
       "title": "Comptabilité par catégorie",
       "subtitle": "Période « {{period}} ». Chiffres calculés par le serveur à partir des ventes et dépenses enregistrées.",
-      "currency": "Devise d'affichage",
       "indicator": "Indicateur",
       "total": "Total",
       "periodTitle": "Performance de la période",
-      "periodHint": "Montants en USD (devise comptable). Ventes comptabilisées à leur finalisation, dépenses à leur validation.",
-      "periodHintFC": "Montants en FC aux taux historiques de chaque opération (informatif) ; les lignes sans équivalent FC restent en USD.",
-      "positionTitle": "Position actuelle (cumul, USD)",
+      "periodHint": "Montants en FC. Ventes comptabilisées à leur finalisation, dépenses à leur validation.",
+      "positionTitle": "Position actuelle (cumul, FC)",
       "positionHint": "Solde cumulé depuis le début, au {{date}} : il ne dépend pas de la période choisie.",
-      "stockTitle": "Valeur du stock (USD)",
+      "stockTitle": "Valeur du stock (FC)",
       "stockHint": "Articles actifs aujourd'hui, valorisés au coût d'achat unitaire et au prix de vente normal actuel.",
       "integrityWarning_one": "{{count}} ligne de vente a un bénéfice enregistré différent de (chiffre d'affaires − coût d'achat). Les montants affichés utilisent toujours chiffre d'affaires − coût d'achat.",
       "integrityWarning_other": "{{count}} lignes de vente ont un bénéfice enregistré différent de (chiffre d'affaires − coût d'achat). Les montants affichés utilisent toujours chiffre d'affaires − coût d'achat."
@@ -2057,7 +1982,7 @@
       "partialBucket": "Période incomplète (limitée à la plage choisie)",
       "empty": "Aucune vente comptabilisée sur cette période",
       "barsLegend": "Barres : montant par {{per}}",
-      "source": "Ventes finalisées et dépenses validées, en USD.",
+      "source": "Ventes finalisées et dépenses validées, en FC.",
       "showData": "Afficher les données",
       "hideData": "Masquer les données",
       "dataTitle": "Données du graphique",

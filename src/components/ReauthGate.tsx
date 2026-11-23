@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Shield } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { confirmPassword } from "../lib/reportsReauth";
+import { SecretInput } from "./SecretInput";
 
 /**
  * Password confirmation screen of the Reports module. The password is checked
@@ -20,13 +21,13 @@ export function ReauthGate({ onConfirmed }: { onConfirmed: () => void }) {
     setError("");
     setBusy(true);
     try {
-      const result = await confirmPassword(password);
+      const submitted = password;
+      setPassword("");
+      const result = await confirmPassword(submitted);
       if (result === "confirmed") {
-        setPassword("");
         onConfirmed();
         return;
       }
-      setPassword("");
       setError(t(result === "locked" ? "reports.reauth.locked" : result === "unavailable" ? "reports.reauth.unavailable" : "reports.wrongPasswordAccess"));
     } finally {
       setBusy(false);
@@ -43,15 +44,13 @@ export function ReauthGate({ onConfirmed }: { onConfirmed: () => void }) {
           <h2 className="text-xl font-bold text-gray-900">{t("reports.verificationRequired")}</h2>
           <p className="text-gray-500 text-sm mt-1">{t("reports.enterPassword")}</p>
         </div>
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={submit} className="space-y-4" autoComplete="off">
           <div>
             <label htmlFor="analytics-mot-de-passe" className="block text-sm font-medium text-gray-700 mb-1.5">
               {t("reports.adminPassword")}
             </label>
-            <input
+            <SecretInput
               id="analytics-mot-de-passe"
-              type="password"
-              autoComplete="current-password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"

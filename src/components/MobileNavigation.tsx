@@ -12,7 +12,7 @@ import { LanguageToggle } from "./LanguageToggle";
 export default function MobileNavigation() {
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const location = useLocation();
-  const { token, user, offline, clearAuth } = useAuth();
+  const { signedIn, user, offline, clearAuth } = useAuth();
   const { t } = useTranslation();
   const accessibleSections = useMemo(() => navigationSections
     .map((section) => ({ ...section, items: section.items.filter((item) => canAccessNavigationItem(item, user) && (!offline || ["pos", "sales"].includes(item.id))) }))
@@ -28,10 +28,10 @@ export default function MobileNavigation() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isMoreOpen]);
 
-  if ((!token && !offline) || !user) return null;
+  if (!signedIn || !user) return null;
   // Queued sales are sent first (at most a few seconds) so they do not wait
   // on this device for the cashier's next sign-in.
-  const logout = async () => { await flushBeforeSignOut(user?.id, token); await logoutSession(); clearAuth(); window.location.href = "/login"; };
+  const logout = async () => { await flushBeforeSignOut(user?.id, signedIn && !offline); await logoutSession(); clearAuth(); window.location.href = "/login"; };
 
   return <>
     {isMoreOpen && <div className="mobile-more-layer">

@@ -7,7 +7,18 @@ import { getDeviceSales } from "../../offline/repositories/sales";
 import { requeueSale, resolveRefusedSale, synchronizeSales } from "../../offline/syncManager";
 import type { LocalSale, SyncStatus } from "../../offline/types";
 import { Button } from "../../components/ui";
+import { formatFC } from "../../utils/salePricing";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
+
+// FC total of a queued sale. A sale queued before the FC-only cutover kept
+// its total in USD: its lines' FC snapshots are summed instead.
+function localSaleTotal(sale: LocalSale): number {
+  if (sale.payload.currency === "FC") return sale.payload.total;
+  return sale.payload.items.reduce((sum, item) => {
+    const unit = item.enteredCurrency === "FC" ? Number(item.enteredPrice) : Number(item.priceFC);
+    return sum + (Number.isFinite(unit) ? unit : 0) * item.quantity;
+  }, 0);
+}
 
 const STATUS_STYLE: Record<SyncStatus, string> = {
   PENDING: "bg-amber-100 text-amber-900",
@@ -22,14 +33,14 @@ const STATUS_STYLE: Record<SyncStatus, string> = {
 const CAN_RESOLVE = new Set(["superadmin", "manager"]);
 
 export default function OfflineSales() {
-  const { user, token, offline } = useAuth();
+  const { user, signedIn, offline } = useAuth();
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const confirmAction = useConfirmAction();
   // Every sale stored on this device, whoever rang it up: a sale must never
   // be invisible just because another cashier is signed in.
   const sales = useLiveQuery<LocalSale[], LocalSale[]>(() => getDeviceSales(), [], []);
-  const canSync = Boolean(user && token && !offline);
+  const canSync = Boolean(user && signedIn && !offline);
   const canResolve = Boolean(user && CAN_RESOLVE.has(user.role) && !offline);
   const refused = sales.filter((sale) => sale.syncStatus === "CONFLICT");
 
@@ -40,7 +51,7 @@ export default function OfflineSales() {
     setBusy(true);
     try {
       await task();
-      await synchronizeSales(user.id, token, true);
+      await synchronizeSales(user.id, canSync, true);
     } catch {
       // Failures are recorded on each sale and shown in the table.
     } finally {
@@ -56,7 +67,7 @@ export default function OfflineSales() {
       details: [
         { label: t("offline.receipt"), value: sale.receiptNumber },
         { label: t("offline.cashier"), value: sale.ownerName },
-        { label: t("offline.amount"), value: `${sale.payload.total.toFixed(2)} USD` },
+        { label: t("offline.amount"), value: formatFC(localSaleTotal(sale)) },
         { label: t("offline.error"), value: sale.lastError || "—" },
       ],
       confirmLabel: t("offline.markResolved"),
@@ -110,7 +121,7 @@ export default function OfflineSales() {
                   <td className="p-3 font-mono text-xs">{sale.receiptNumber}</td>
                   <td className="py-3">{sale.ownerName}</td>
                   <td className="py-3">{sale.payload.isWalkIn ? t("pos.walkIn") : sale.payload.customer?.name}</td>
-                  <td className="py-3">{sale.payload.total.toFixed(2)} USD</td>
+                  <td className="py-3">{formatFC(localSaleTotal(sale))}</td>
                   <td className="py-3">{new Date(sale.occurredAt).toLocaleString()}</td>
                   <td className="py-3">
                     <span className={`whitespace-nowrap rounded-full px-2 py-1 font-semibold ${STATUS_STYLE[sale.syncStatus]}`}>

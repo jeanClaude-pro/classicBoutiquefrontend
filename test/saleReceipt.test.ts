@@ -21,11 +21,13 @@ const shop = {
   shopRegistration: "LSH/RCCM/22-A-01266",
 };
 
-// Stored sale items exactly as the API returns them.
-const fcEntered = { name: "SAMBASO", quantity: 1, price: 10.7142857, enteredPrice: 30000, enteredCurrency: "FC" as const, priceUSD: 10.7142857, priceFC: 30000, exchangeRate: 2800, total: 10.7142857 };
-const usdEntered = { name: "CHEMISE", quantity: 2, price: 12.99, enteredPrice: 12.99, enteredCurrency: "USD" as const, priceUSD: 12.99, priceFC: 36372, exchangeRate: 2800, total: 25.98 };
+// Stored sale items exactly as the API returns them: always FC. A line sold
+// before the FC-only cutover (here $12.99 at 2,800) is presented by the
+// server through its own FC snapshot, 36,372 FC.
+const fcEntered = { name: "SAMBASO", quantity: 1, price: 30000, enteredPrice: 30000, enteredCurrency: "FC" as const, priceFC: 30000, total: 30000 };
+const preCutover = { name: "CHEMISE", quantity: 2, price: 36372, enteredPrice: 36372, enteredCurrency: "FC" as const, priceFC: 36372, unitSellingPrice: 36372, total: 72744 };
 
-const sale = (items: SaleReceiptInput["items"], exchangeRate?: number): SaleReceiptInput => ({
+const sale = (items: SaleReceiptInput["items"]): SaleReceiptInput => ({
   ...shop,
   receiptNumber: "V-0001",
   stubNumber: "V-0001",
@@ -33,7 +35,6 @@ const sale = (items: SaleReceiptInput["items"], exchangeRate?: number): SaleRece
   customerName: "Awa",
   customerPhone: "0990000000",
   items,
-  exchangeRate,
   paymentMethod: "cash",
   salesPerson: "caissier",
 });
@@ -47,61 +48,49 @@ test("receipt amounts are whole francs with a fixed separator", () => {
 });
 
 test("every generated sale receipt uses the canonical company telephone", () => {
-  const doc = buildSaleReceipt({ ...sale([fcEntered], 2800), shopNumber: "+243 000 000 000" }, "fr");
+  const doc = buildSaleReceipt({ ...sale([fcEntered]), shopNumber: "+243 000 000 000" }, "fr");
   assert.equal(doc.shopNumber, "+243 975 085 799");
   assert.match(renderSaleReceiptHtml(doc, "receipt", ""), /\+243 975 085 799/);
   assert.equal(escPosReceiptData(doc).shopNumber, "+243 975 085 799");
 });
 
-test("an FC-entered price prints its exact FC amount", () => {
-  const [line] = receiptLines([fcEntered], 2800);
+test("an FC price prints its exact FC amount", () => {
+  const [line] = receiptLines([fcEntered]);
   assert.deepEqual(line, { name: "SAMBASO", quantity: 1, unitFC: 30000, totalFC: 30000 });
 });
 
-test("a USD-entered price prints its FC snapshot, not the USD number", () => {
-  const [line] = receiptLines([usdEntered], 2800);
+test("a sale recorded before the cutover reprints with the francs the server presents", () => {
+  const [line] = receiptLines([preCutover]);
   assert.equal(line.unitFC, 36372);
   assert.equal(line.totalFC, 72744);
-  assert.notEqual(line.unitFC, 12.99);
-});
-
-test("an old sale reprints with its own francs, never today's rate", () => {
-  // Sold when $1 = 2,500 FC; the line has no FC snapshot (legacy record).
-  const legacy = { name: "CHAUSSURE", quantity: 3, price: 20, total: 60 };
-  const doc = buildSaleReceipt(sale([legacy], 2500), "fr");
-  assert.deepEqual(doc.lines[0], { name: "CHAUSSURE", quantity: 3, unitFC: 50000, totalFC: 150000 });
-  assert.equal(doc.totalFC, 150000);
-  // The line's own rate wins over the sale-level rate.
-  const ownRate = { ...legacy, exchangeRate: 2400 };
-  assert.equal(receiptLines([ownRate], 2800)[0].unitFC, 48000);
-  // A stored FC snapshot wins over any rate.
-  assert.equal(receiptLines([{ ...legacy, priceFC: 55000 }], 2800)[0].unitFC, 55000);
+  // The receipt never converts anything itself.
+  assert.equal(receiptLines([{ name: "X", quantity: 3, price: 50000, total: 150000 }])[0].unitFC, 50000);
 });
 
 test("a custom (discounted) unit price prints as that FC price times the quantity", () => {
-  const discounted = { ...fcEntered, quantity: 5, enteredPrice: 27000, priceFC: 27000, priceUSD: 27000 / 2800, price: 27000 / 2800, total: (27000 / 2800) * 5, discountApplied: true };
-  const doc = buildSaleReceipt(sale([discounted], 2800), "fr");
+  const discounted = { ...fcEntered, quantity: 5, enteredPrice: 27000, priceFC: 27000, price: 27000, total: 135000, discountApplied: true };
+  const doc = buildSaleReceipt(sale([discounted]), "fr");
   assert.deepEqual(doc.lines[0], { name: "SAMBASO", quantity: 5, unitFC: 27000, totalFC: 135000 });
   assert.equal(doc.subtotalFC, 135000);
   assert.equal(doc.totalFC, 135000);
 });
 
 test("subtotal and total are the sum of the FC lines", () => {
-  const doc = buildSaleReceipt(sale([fcEntered, usdEntered], 2800), "fr");
+  const doc = buildSaleReceipt(sale([fcEntered, preCutover]), "fr");
   assert.equal(doc.subtotalFC, 30000 + 72744);
   assert.equal(doc.totalFC, 30000 + 72744);
 });
 
-test("a sale without any rate or FC snapshot shows — instead of a guessed amount", () => {
-  const doc = buildSaleReceipt(sale([{ name: "X", quantity: 1, price: 10, total: 10 }]), "fr");
+test("a line without any FC amount shows — instead of a guessed amount", () => {
+  const doc = buildSaleReceipt(sale([{ name: "X", quantity: 1 }]), "fr");
   assert.equal(doc.lines[0].unitFC, undefined);
   assert.equal(doc.totalFC, undefined);
   const html = renderSaleReceiptHtml(doc, "receipt", "");
-  assert.doesNotMatch(html, /10\.00|\$/);
+  assert.doesNotMatch(html, /\$|NaN|undefined/);
 });
 
 test("receipt and stub HTML show ARTICLE / PU / QTE / TOTAL in FC only (no $ anywhere)", () => {
-  const doc = buildSaleReceipt(sale([fcEntered, usdEntered], 2800), "fr");
+  const doc = buildSaleReceipt(sale([fcEntered, preCutover]), "fr");
   for (const variant of ["receipt", "stub"] as const) {
     const html = renderSaleReceiptHtml(doc, variant, "");
     const header = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
@@ -113,7 +102,7 @@ test("receipt and stub HTML show ARTICLE / PU / QTE / TOTAL in FC only (no $ any
       ["CHEMISE", "36,372 FC", "2", "72,744 FC"],
     ]);
     assert.ok(!html.includes("$"), `${variant} contains a $ amount`);
-    assert.doesNotMatch(html, /12\.99|25\.98|USD/);
+    assert.doesNotMatch(html, /USD/);
     assert.match(html, /102,744 FC/);
   }
   const receipt = renderSaleReceiptHtml(doc, "receipt", "");
@@ -125,7 +114,7 @@ test("receipt and stub HTML show ARTICLE / PU / QTE / TOTAL in FC only (no $ any
 });
 
 test("the receipt follows the chosen language; names, numbers and FC do not", () => {
-  const doc = buildSaleReceipt(sale([fcEntered], 2800), "en");
+  const doc = buildSaleReceipt(sale([fcEntered]), "en");
   const html = renderSaleReceiptHtml(doc, "receipt", "");
   const header = html.match(/<thead>[\s\S]*?<\/thead>/)?.[0] ?? "";
   assert.deepEqual([...header.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map((match) => match[1]), ["ITEM", "UP", "QTY", "TOTAL"]);
@@ -144,17 +133,17 @@ test("the receipt follows the chosen language; names, numbers and FC do not", ()
 });
 
 test("product and customer names are printed as stored, escaped for HTML", () => {
-  const doc = buildSaleReceipt({ ...sale([{ ...fcEntered, name: "T-shirt <XL> & co" }], 2800), customerName: "Jean <b>" }, "en");
+  const doc = buildSaleReceipt({ ...sale([{ ...fcEntered, name: "T-shirt <XL> & co" }]), customerName: "Jean <b>" }, "en");
   const html = renderSaleReceiptHtml(doc, "receipt", "");
   assert.match(html, /T-shirt &lt;XL&gt; &amp; co/);
   assert.match(html, /JEAN &lt;B&gt;/);
 });
 
-test("the thermal printer payload carries the stored snapshots and the labels of the receipt", () => {
-  const doc = buildSaleReceipt(sale([fcEntered, usdEntered], 2800), "en");
+test("the thermal printer payload carries the FC lines and the labels of the receipt", () => {
+  const doc = buildSaleReceipt(sale([fcEntered, preCutover]), "en");
   const payload = escPosReceiptData(doc);
   assert.equal(payload.items, doc.items);
-  assert.equal(payload.exchangeRate, 2800);
+  assert.equal("exchangeRate" in payload, false, "no rate is ever sent");
   assert.equal(payload.paymentLabel, "CASH");
   assert.equal(payload.labels.item, "ITEM");
   assert.equal(payload.labels.unitPrice, "UP");

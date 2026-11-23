@@ -14,7 +14,9 @@ import { deleteUserCopy, roleChangeCopy, shareholderCategoryCopy, toggleUserStat
 import { ROLE_LABELS as SHARED_ROLE_LABELS, roleLabel } from "../../config/roles";
 import { useConfirmAction } from "../../hooks/useConfirmAction";
 import { MODULES, PERMISSION_MODULE_IDS } from "../../config/modules";
+import { CreateAccountForm } from "./CreateAccountForm";
 import {
+  UserPlus,
   Users,
   Shield,
   Trash2,
@@ -185,14 +187,14 @@ export default function AdminPanel() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [loadingSettings, setLoadingSettings] = useState(false);
 
-  const { token, user: currentUser } = useAuth();
+  const { user: currentUser } = useAuth();
+  const [creatingAccount, setCreatingAccount] = useState(false);
   const confirmAction = useConfirmAction();
   // The signed-in account cannot deactivate, demote or delete itself.
   const isSelf = (user: AppUser) => user._id === currentUser?.id;
 
   const authHeaders = () => ({
     "Content-Type": "application/json",
-    Authorization: `Bearer ${token || localStorage.getItem("token") || ""}`,
   });
 
   // ─── Data fetching ───────────────────────────────────────────────────────────
@@ -523,7 +525,27 @@ export default function AdminPanel() {
                 <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                 {t("common.refresh")}
               </button>
+              <button
+                type="button"
+                onClick={() => setCreatingAccount(true)}
+                aria-expanded={creatingAccount}
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+              >
+                <UserPlus className="w-4 h-4" aria-hidden="true" />
+                {t("admin.create.open")}
+              </button>
             </div>
+
+            {creatingAccount && (
+              <CreateAccountForm
+                onClose={() => setCreatingAccount(false)}
+                onCreated={() => {
+                  setCreatingAccount(false);
+                  toast.success(t("admin.create.created"));
+                  void fetchUsers();
+                }}
+              />
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full">

@@ -41,7 +41,6 @@ export const MODULES = {
   sortie: defineModule("sortie", "/sortie", true),
   entryhistory: defineModule("entryhistory", "/entryhistory", false),
   historicsortie: defineModule("historicsortie", "/sortiehistory", false),
-  rate: defineModule("rate", "/rate", true),
   remboursements: defineModule("remboursements", "/remboursements", true),
   reports: defineModule("reports", "/reports", true),
   productsSold: defineModule("productsSold", "/reports/products-sold", true),
@@ -55,7 +54,7 @@ export type ModuleId = keyof typeof MODULES;
 /** Modules whose access can be granted per user in the permission editor. */
 export const PERMISSION_MODULE_IDS: ModuleId[] = [
   "pos", "sales", "products", "entry", "sortie",
-  "entryhistory", "historicsortie", "rate", "reports", "customers",
+  "entryhistory", "historicsortie", "reports", "customers",
 ];
 
 /** The module of a path; a sub-page (/products/:id/stock-sheet) belongs to

@@ -20,7 +20,11 @@ export interface User {
 }
 
 export interface AuthState {
-  token: string | null;
+  /** A session exists (confirmed by the server, or `offline` = not yet). The
+   *  session itself is an httpOnly cookie that page code never sees. */
+  signedIn: boolean;
+  /** When the server said the session expires (ISO date). */
+  expiresAt: string | null;
   user: User | null;
   offline: boolean;
   loading: boolean;
@@ -31,19 +35,7 @@ export interface LoginPayload {
   password: string;
 }
 
-export interface RegisterPayload {
-  username: string;
-  email: string;
-  password: string;
-}
-
 export interface LoginResponse {
   user: User;
-  token: string;
-}
-
-/** Public sign-up never opens a session: the account awaits activation. */
-export interface RegisterResponse {
-  pendingActivation: true;
-  message: string;
+  expiresAt: string;
 }

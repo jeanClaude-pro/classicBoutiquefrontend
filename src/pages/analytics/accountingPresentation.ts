@@ -34,14 +34,6 @@ export interface CategoryAccountingDTO {
   distributableProfit: number;
   shareholder1: number;
   shareholder2: number;
-  revenueFC?: number;
-  costOfGoodsSoldFC?: number;
-  grossProfitFC?: number;
-  companyExpensesFC?: number;
-  netProfitFC?: number;
-  distributableProfitFC?: number;
-  shareholder1FC?: number;
-  shareholder2FC?: number;
   availablePurchaseFunds?: number | null;
   fundingShortfall?: number | null;
   balance?: CategoryBalanceDTO;
@@ -52,8 +44,8 @@ export type MetricTone = "neutral" | "positive" | "negative" | "funds" | "shareh
 export interface AccountingMetric {
   id: string;
   label: string;
+  /** FC, like every amount of the shop. */
   value: number;
-  valueFC?: number;
   tone: MetricTone;
   hint?: string;
 }
@@ -83,23 +75,23 @@ export const FUNDS_RULE: Record<AccountingCategory, string> = localized(CATEGORI
 export function categoryPresentation(category: AccountingCategory, row: CategoryAccountingDTO): CategoryPresentation {
   const isLoss = row.netProfit < 0;
   const period: AccountingMetric[] = [
-    { id: "revenue", label: t("accounting.metrics.revenue"), value: row.revenue, valueFC: row.revenueFC, tone: "neutral" },
-    { id: "costOfGoodsSold", label: t("accounting.metrics.costOfGoodsSold"), value: row.costOfGoodsSold, valueFC: row.costOfGoodsSoldFC, tone: "neutral" },
-    { id: "grossProfit", label: t("accounting.metrics.grossProfit"), value: row.grossProfit, valueFC: row.grossProfitFC, tone: row.grossProfit < 0 ? "negative" : "positive" },
-    { id: "companyExpenses", label: t("accounting.metrics.companyExpenses"), value: row.companyExpenses, valueFC: row.companyExpensesFC, tone: "negative" },
-    { id: "netProfit", label: isLoss ? t("accounting.metrics.netLoss") : t("accounting.metrics.netProfit"), value: row.netProfit, valueFC: row.netProfitFC, tone: isLoss ? "negative" : "positive" },
+    { id: "revenue", label: t("accounting.metrics.revenue"), value: row.revenue, tone: "neutral" },
+    { id: "costOfGoodsSold", label: t("accounting.metrics.costOfGoodsSold"), value: row.costOfGoodsSold, tone: "neutral" },
+    { id: "grossProfit", label: t("accounting.metrics.grossProfit"), value: row.grossProfit, tone: row.grossProfit < 0 ? "negative" : "positive" },
+    { id: "companyExpenses", label: t("accounting.metrics.companyExpenses"), value: row.companyExpenses, tone: "negative" },
+    { id: "netProfit", label: isLoss ? t("accounting.metrics.netLoss") : t("accounting.metrics.netProfit"), value: row.netProfit, tone: isLoss ? "negative" : "positive" },
     { id: "goodsPurchases", label: t("accounting.metrics.goodsPurchases"), value: row.goodsPurchases, tone: "neutral" },
   ];
   if (category === "CLOTHES" && row.profitUsedForPurchases > 0) {
     period.push({ id: "profitUsedForPurchases", label: t("accounting.metrics.profitUsedForPurchases"), value: row.profitUsedForPurchases, tone: "neutral" });
   }
   if (category === "CLOTHES") {
-    period.push({ id: "distributableProfit", label: t("accounting.metrics.distributableProfit"), value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined });
+    period.push({ id: "distributableProfit", label: t("accounting.metrics.distributableProfit"), value: row.distributableProfit, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined });
   } else {
     period.push(
-      { id: "distributableProfit", label: t("accounting.metrics.totalDistributableProfit"), value: row.distributableProfit, valueFC: row.distributableProfitFC, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined },
-      { id: "shareholder1", label: t("accounting.metrics.shareholder1"), value: row.shareholder1, valueFC: row.shareholder1FC, tone: "shareholder" },
-      { id: "shareholder2", label: t("accounting.metrics.shareholder2"), value: row.shareholder2, valueFC: row.shareholder2FC, tone: "shareholder" },
+      { id: "distributableProfit", label: t("accounting.metrics.totalDistributableProfit"), value: row.distributableProfit, tone: "shareholder", hint: isLoss ? t("accounting.hints.noDistribution") : undefined },
+      { id: "shareholder1", label: t("accounting.metrics.shareholder1"), value: row.shareholder1, tone: "shareholder" },
+      { id: "shareholder2", label: t("accounting.metrics.shareholder2"), value: row.shareholder2, tone: "shareholder" },
     );
   }
 

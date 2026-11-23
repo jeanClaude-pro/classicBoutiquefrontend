@@ -13,7 +13,7 @@ import { MODULES } from "../config/modules";
 import { roleLabel } from "../config/roles";
 import { entryStatusLabel, paymentMethodLabel } from "../lib/labels";
 import { ENTRY_CATEGORIES, ENTRY_SOURCES, entryCategoryLabel, entrySourceLabel } from "../lib/entryOptions";
-import { formatFC, formatUSD } from "../utils/salePricing";
+import { formatFC } from "../utils/salePricing";
 import { escapeHtmlDeep, printAndClose } from "../lib/saleReceipt";
 import {
   Search,
@@ -55,12 +55,8 @@ interface EditHistoryEntry {
 interface Entry {
   _id: string;
   entryId: string;
+  /** FC (the server presents pre-cutover entries in FC). */
   amount: number;
-  enteredAmount?: number;
-  enteredCurrency?: "USD" | "FC";
-  amountUSD?: number;
-  amountFC?: number;
-  exchangeRate?: number;
   source: string;
   category: string;
   paymentMethod: string;
@@ -233,7 +229,7 @@ export default function EntryHistory() {
     fetchCurrentUser();
     fetchEntries();
     fetch(`${serverUrl}/settings/receipt`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem("token") || ""}` },
+      headers: {},
     })
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -280,7 +276,6 @@ export default function EntryHistory() {
         const res = await fetch(`${serverUrl}/auth/me`, {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
         });
 
@@ -333,7 +328,6 @@ export default function EntryHistory() {
       const res = await fetch(url, {
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
         },
       });
 
@@ -445,10 +439,7 @@ export default function EntryHistory() {
 
   const formatDate = (dateString: string) => formatDateTimeGMT2(dateString);
 
-  const formatOriginalAmount = (entry: Entry) =>
-    entry.enteredCurrency === "FC"
-      ? `${formatFC(entry.enteredAmount ?? entry.amountFC ?? 0)} (${t("entryHistory.equivalent", { amount: formatUSD(entry.amountUSD ?? entry.amount) })})`
-      : formatUSD(entry.enteredAmount ?? entry.amount);
+  const formatOriginalAmount = (entry: Entry) => formatFC(entry.amount);
 
   // Function to view edited entry details
   const viewEditedEntryDetails = (entry: Entry) => {
@@ -776,7 +767,6 @@ export default function EntryHistory() {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
           body: JSON.stringify(updateData),
         }
@@ -846,7 +836,7 @@ export default function EntryHistory() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.totalAmount")}</p>
-                <p className="text-2xl font-bold text-green-600">{formatUSD(summary.totalAmount)}</p>
+                <p className="text-2xl font-bold text-green-600">{formatFC(summary.totalAmount)}</p>
               </div>
               <DollarSign className="w-8 h-8 text-green-500" />
             </div>
@@ -857,7 +847,7 @@ export default function EntryHistory() {
               <div>
                 <p className="text-sm text-gray-600">{t("entryHistory.summary.active")}</p>
                 <p className="text-2xl font-bold text-green-600">{summary.active?.count || 0}</p>
-                <p className="text-sm text-gray-500">{formatUSD(summary.active?.amount || 0)}</p>
+                <p className="text-sm text-gray-500">{formatFC(summary.active?.amount || 0)}</p>
               </div>
               <FileText className="w-8 h-8 text-green-500" />
             </div>
@@ -888,7 +878,7 @@ export default function EntryHistory() {
                     <span className="font-semibold text-green-600">{data.count}</span>
                   </div>
                   <div className="text-sm text-gray-600 mt-1">
-                    {t("entryHistory.summary.totalValue", { amount: formatUSD(data.amount) })}
+                    {t("entryHistory.summary.totalValue", { amount: formatFC(data.amount) })}
                   </div>
                 </div>
               ))}
@@ -909,7 +899,7 @@ export default function EntryHistory() {
                     <span className="text-gray-700">{entrySourceLabel(source)}</span>
                     <div className="text-right">
                       <div className="font-semibold text-gray-900">{t("entryHistory.entryCount", { count: data.count })}</div>
-                      <div className="text-sm text-green-600">{formatUSD(data.amount)}</div>
+                      <div className="text-sm text-green-600">{formatFC(data.amount)}</div>
                     </div>
                   </div>
                 ))}
@@ -1394,7 +1384,7 @@ export default function EntryHistory() {
                   <div className="flex justify-between">
                     <span className="font-medium text-gray-700">{t("entryHistory.amount")}:</span>
                     <span className="text-gray-900 font-semibold">
-                      {formatUSD(selectedEntry.amount)}
+                      {formatFC(selectedEntry.amount)}
                     </span>
                   </div>
                   {selectedEntry.description && (
@@ -1489,7 +1479,7 @@ export default function EntryHistory() {
                       {t("entryHistory.edits.currentAmount")}
                     </span>
                     <p className="text-sm font-medium text-gray-900">
-                      {formatUSD(selectedEditedEntry.amount)}
+                      {formatFC(selectedEditedEntry.amount)}
                     </p>
                   </div>
                   <div>
@@ -1629,12 +1619,13 @@ export default function EntryHistory() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label htmlFor="entry-edit-montant" className="block text-sm font-medium text-gray-700 mb-1">
-                      {t("entryHistory.amountUsd")} *
+                      {t("entryHistory.amountFC")} *
                     </label>
                     <input
                       id="entry-edit-montant"
                       type="number"
-                      step="0.01"
+                      inputMode="numeric"
+                      step="1"
                       value={editForm.amount}
                       onChange={(e) =>
                         setEditForm((prev) => ({

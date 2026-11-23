@@ -139,7 +139,7 @@ export function renderOperationalReportPdf(model: PdfTableModel): jsPDF {
   if (model.notes.length) y += 1.5;
   y = drawTableHeader(doc, model, y);
 
-  // A cell may hold several lines (FC amount, then its USD equivalent).
+  // A cell may hold several lines.
   const rowLines = (row: string[]) => row.map((value, index) => String(value || "").split(LINE_BREAK)
     .flatMap((part) => doc.splitTextToSize(pdfText(part), widths[index] - 4) as string[]));
   const drawRow = (row: string[], index: number, bold = false) => {

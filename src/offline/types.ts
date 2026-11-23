@@ -6,19 +6,7 @@ export type ConnectivityState = "online" | "offline" | "checking";
 // It never reached the server; the refusal itself is in the audit log.
 export type SyncStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED" | "CONFLICT" | "RESOLVED";
 
-export interface ExchangeRateSnapshot {
-  rate: number;
-  effectiveFrom: string;
-  lastUpdated: string;
-}
-
 export interface CachedProduct extends Product {
-  scopeKey: string;
-  cachedAt: string;
-}
-
-export interface CachedExchangeRate extends ExchangeRateSnapshot {
-  rateKey: string;
   scopeKey: string;
   cachedAt: string;
 }
@@ -31,7 +19,10 @@ export interface OfflineSalePayload {
   total: number;
   paymentMethod: "cash" | "card" | "transfer" | "other";
   salesPerson: string;
-  exchangeRate: number;
+  /** Every amount is FC. */
+  currency?: "FC";
+  /** Sales queued before the FC-only cutover only; the server ignores it. */
+  exchangeRate?: number;
   requestKey: string;
   clientSaleId: string;
   receiptNumber: string;

@@ -1,3 +1,21 @@
+# The API lives on the site's own address: /api/* is forwarded to the server.
+# Same origin is what lets the session be an httpOnly, SameSite=Strict cookie
+# that page scripts never see (and that iPhones/Safari accept).
+#
+# `signed`: Netlify signs every forwarded request (header x-nf-sign) with the
+# secret stored in the Netlify environment variable API_PROXY_SIGNATURE
+# (scope: Runtime). The server (PROXY_SIGNING_SECRET, same value) refuses any
+# request without that signature, so it cannot be called directly.
+#
+# Replace the address below with your server's address (Render), keep /api/:splat.
+# The build refuses to run on Netlify while the placeholder is still here.
+[[redirects]]
+from = "/api/*"
+to = "https://YOUR-API-HOST.onrender.com/api/:splat"
+status = 200
+force = true
+signed = "API_PROXY_SIGNATURE"
+
 # A request for a hashed build asset that no longer exists (an outdated tab
 # after a deployment) must fail as a real 404. Without this rule the SPA
 # fallback below answers with index.html, which the browser then tries to run
@@ -19,12 +37,12 @@ status = 200
 #   driven from the opener, see src/lib/saleReceipt.ts printAndClose).
 # - style-src 'unsafe-inline': React style attributes and the receipt
 #   templates' <style> blocks need it.
-# - connect-src https:: the API lives on another origin (VITE_API_URL). Narrow
-#   it to that exact origin once the production API URL is final.
+# - connect-src 'self': the API is on this same origin (/api, proxied above);
+#   the page cannot send data to any other address.
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
     X-Content-Type-Options = "nosniff"
     X-Frame-Options = "DENY"
     Referrer-Policy = "strict-origin-when-cross-origin"

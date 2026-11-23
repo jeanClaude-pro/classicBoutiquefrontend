@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, ChevronUp, Download, Lock, RefreshCw, Search } from "lucide-react";
 import { serverUrl } from "../../utils/constants";
+import { formatFC } from "../../utils/salePricing";
 import { requestJson, toApiError } from "../../lib/apiError";
 import { notifyError } from "../../lib/notify";
 import { MODULES } from "../../config/modules";
@@ -50,8 +51,14 @@ function summary(entry: AuditEntry): string {
   const parts: string[] = [];
   const id = after.saleId ?? after.expenseId ?? after.entryId ?? details.saleId ?? details.expenseId ?? details.receiptNumber ?? attempt.receiptNumber;
   if (id) parts.push(String(id));
-  const amount = after.total ?? after.amountUSD ?? details.total ?? details.amountUSD ?? attempt.total;
-  if (amount !== undefined && amount !== null && amount !== "") parts.push(`${Number(amount).toFixed(2)} USD`);
+  const amount = after.total ?? after.amount ?? after.amountUSD ?? details.total ?? details.amount ?? details.amountUSD ?? attempt.total;
+  if (amount !== undefined && amount !== null && amount !== "") {
+    // The audit trail is a record of what happened: events logged since the
+    // FC-only cutover carry currency "FC"; older events were logged in USD
+    // and are shown exactly as recorded.
+    const currency = after.currency ?? details.currency ?? attempt.currency;
+    parts.push(currency === "FC" ? formatFC(Number(amount)) : `${Number(amount).toFixed(2)} USD`);
+  }
   const reason = details.reason ?? details.code ?? details.updateReason;
   if (reason) parts.push(String(reason));
   return parts.join(" · ");

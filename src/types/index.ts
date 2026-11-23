@@ -2,11 +2,12 @@ export interface Product {
   _id: string;
   name: string;
   description: string;
+  /** Every amount of a product is FC (normal selling price). */
+  currency?: "FC";
   price: number;
   priceEnteredAmount?: number;
-  priceEnteredCurrency?: "USD" | "FC";
+  priceEnteredCurrency?: "FC";
   priceFC?: number;
-  priceExchangeRate?: number;
   category: string;
   mainCategory?: "CLOTHES" | "SHOES";
   subcategory?: string;
@@ -15,9 +16,8 @@ export interface Product {
   totalAcquisitionCostFC?: number;
   unitCost?: number;
   unitCostEnteredAmount?: number;
-  unitCostEnteredCurrency?: "USD" | "FC";
+  unitCostEnteredCurrency?: "FC";
   unitCostFC?: number;
-  unitCostExchangeRate?: number;
   brand: string;
   stock: number;
   minStock: number;

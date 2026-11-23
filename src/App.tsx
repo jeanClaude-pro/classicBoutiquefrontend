@@ -31,7 +31,6 @@ const Customers = lazy(() => import("./pages/customers/Customers"));
 const NewSale = lazy(() => import("./pages/NewSale"));
 const Sortie = lazy(() => import("./pages/Sortie"));
 const SortieHistory = lazy(() => import("./pages/SortieHistory"));
-const Rate = lazy(() => import("./pages/Rate"));
 const Entry = lazy(() => import("./pages/Entry"));
 const EntryHistory = lazy(() => import("./pages/EntryHistory"));
 const AdminPanel = lazy(() => import("./pages/admin/AdminPanel"));
@@ -67,9 +66,9 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function LoginRoute() {
-  const { token, user, offline, loading } = useAuth();
+  const { signedIn, user, offline, loading } = useAuth();
   if (loading) return <RouteLoading />;
-  if (!token && !offline) return <LoginPage />;
+  if (!signedIn && !offline) return <LoginPage />;
   const destination = user?.role === "admin"
     ? (user.permissions?.find((path) => ["/sales", "/reports", "/products"].includes(path)) || "/sales")
     : "/";
@@ -123,14 +122,6 @@ export default function App() {
                   element={
                     <RequireAuth>
                       <EntryHistory />
-                    </RequireAuth>
-                  }
-                />
-                <Route
-                  path="/rate"
-                  element={
-                    <RequireAuth>
-                      <Rate />
                     </RequireAuth>
                   }
                 />

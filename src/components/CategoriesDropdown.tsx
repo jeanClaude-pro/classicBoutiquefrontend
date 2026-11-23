@@ -24,7 +24,6 @@ const CategoriesDropdown = ({
       try {
         const response = await fetch(`${serverUrl}/categories`, {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
           },
         });
         if (!response.ok) {

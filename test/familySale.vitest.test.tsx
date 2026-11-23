@@ -21,9 +21,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const RATE = 2850;
 const now = new Date().toISOString();
-const robe = { _id: "p-robe", name: "Robe soirée", category: "Robes", mainCategory: "CLOTHES", price: 20000 / RATE, priceFC: 20000, priceEnteredCurrency: "FC", priceExchangeRate: RATE, stock: 20, minStock: 1, status: "active" };
+// Every amount is FC.
+const robe = { _id: "p-robe", name: "Robe soirée", category: "Robes", mainCategory: "CLOTHES", currency: "FC", price: 20000, priceFC: 20000, priceEnteredCurrency: "FC", stock: 20, minStock: 1, status: "active" };
 const marie = { _id: "c-marie", name: "Marie Famille", phone: "0990000001", isFamilyMember: true };
 const flat = (text: string | null | undefined) => (text || "").replace(/[\s\u202f\u00a0]/g, "");
 
@@ -32,7 +32,6 @@ function posApi({ sale = { status: 201, body: { _id: "s1", saleId: "SALE-1" } } 
   return mockApi([
     { match: /^\/health/, reply: healthy ? { body: { ok: true } } : () => ({ networkError: true }) },
     { match: /^\/products/, reply: { body: [robe] } },
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: RATE, effectiveFrom: now } } },
     { match: /^\/settings\/receipt/, reply: { body: {} } },
     { match: /^\/customers\?/, reply: { body: { customers: [marie], totalPages: 1 } } },
     { method: "POST", match: /^\/print\//, reply: { body: { success: true } } },
@@ -83,7 +82,7 @@ test("Vente famille: only the operational superadmin is offered the family sale"
 
 test("Vente famille: a registered member receives a one-piece discount sent with the family identity", async () => {
   signIn({ role: "superadmin", username: "patron" });
-  const api = posApi({ sale: ({ body }) => ({ status: 201, body: { _id: "s1", saleId: "SALE-1", exchangeRate: RATE, items: (body as { items: unknown[] }).items } }) });
+  const api = posApi({ sale: ({ body }) => ({ status: 201, body: { _id: "s1", saleId: "SALE-1", currency: "FC", items: (body as { items: unknown[] }).items } }) });
   const user = userEvent.setup();
   renderPage(<NewSale />, "/");
   await addOneRobe(user);

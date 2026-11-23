@@ -18,20 +18,25 @@ function files(dir: string, extensions: string[], out: string[] = []): string[] 
 }
 
 const OFFICIAL_TOKENS: Record<string, string> = {
-  "--color-background": "#fafaf7",
+  "--color-background": "#f5f7fa",
   "--color-surface": "#ffffff",
-  "--color-sidebar": "#f5f5f0",
-  "--color-foreground": "#27272a",
-  "--color-muted-foreground": "#71717a",
-  "--color-border": "#e4e4de",
-  "--color-primary": "#166534",
-  "--color-primary-hover": "#14532d",
-  "--color-primary-soft": "#f0fdf4",
-  "--color-accent": "#166534",
-  "--color-success": "#15803d",
+  "--color-sidebar": "#0b1c2d",
+  "--color-foreground": "#0b1c2d",
+  "--color-muted-foreground": "#5f6b74",
+  "--color-border": "#dde2e7",
+  "--color-primary": "#1f7a63",
+  "--color-primary-hover": "#17614f",
+  "--color-primary-soft": "#e8f4f0",
+  "--color-accent": "#1f7a63",
+  "--color-success": "#1f7a63",
   "--color-warning": "#b45309",
   "--color-danger": "#dc2626",
   "--color-info": "#0369a1",
+  // The four brand colours of November 2026, exactly as given.
+  "--color-navy": "#0b1c2d",
+  "--color-emerald": "#1f7a63",
+  "--color-soft-white": "#f5f7fa",
+  "--color-cool-gray": "#9aa3a8",
 };
 
 test("the official palette is defined once, as Tailwind theme tokens", () => {
@@ -42,11 +47,11 @@ test("the official palette is defined once, as Tailwind theme tokens", () => {
     assert.ok(match, `${token} is defined`);
     assert.equal(match[1].toLowerCase(), value, token);
   }
-  // Every legacy neutral resolves to the charcoal / muted / border system.
+  // Every legacy neutral resolves to the navy / muted / border system.
   for (const family of ["gray", "slate", "stone", "neutral"]) {
-    assert.match(css, new RegExp(`--color-${family}-900: #27272a`), family);
-    assert.match(css, new RegExp(`--color-${family}-500: #71717a`), family);
-    assert.match(css, new RegExp(`--color-${family}-200: #e4e4de`), family);
+    assert.match(css, new RegExp(`--color-${family}-900: #0b1c2d`), family);
+    assert.match(css, new RegExp(`--color-${family}-500: #5f6b74`), family);
+    assert.match(css, new RegExp(`--color-${family}-200: #dde2e7`), family);
   }
 });
 
@@ -62,11 +67,17 @@ function contrast(foreground: string, background: string): number {
 }
 
 test("core text and action combinations meet WCAG AA contrast", () => {
-  assert.ok(contrast("#27272a", "#fafaf7") >= 4.5, "charcoal on ivory");
-  assert.ok(contrast("#52525b", "#ffffff") >= 4.5, "secondary text on cards");
-  assert.ok(contrast("#71717a", "#ffffff") >= 4.5, "muted text on cards");
-  assert.ok(contrast("#ffffff", "#166534") >= 4.5, "inverse text on primary");
-  assert.ok(contrast("#ffffff", "#14532d") >= 4.5, "inverse text on primary hover");
+  assert.ok(contrast("#0b1c2d", "#f5f7fa") >= 4.5, "navy on soft white");
+  assert.ok(contrast("#3d4d5c", "#ffffff") >= 4.5, "secondary text on cards");
+  assert.ok(contrast("#5f6b74", "#ffffff") >= 4.5, "muted text on cards");
+  assert.ok(contrast("#5f6b74", "#f5f7fa") >= 4.5, "muted text on the canvas");
+  assert.ok(contrast("#ffffff", "#1f7a63") >= 4.5, "inverse text on emerald");
+  assert.ok(contrast("#ffffff", "#17614f") >= 4.5, "inverse text on emerald hover");
+  assert.ok(contrast("#1f7a63", "#e8f4f0") >= 4.5, "emerald text on its soft surface");
+  // Navy navigation rail (design-system.css re-scopes the tokens).
+  assert.ok(contrast("#c9d1d9", "#0b1c2d") >= 4.5, "rail text on navy");
+  assert.ok(contrast("#9aa3a8", "#0b1c2d") >= 4.5, "cool gray labels on navy");
+  assert.ok(contrast("#5ccfac", "#103531") >= 4.5, "active rail item");
   assert.ok(contrast("#b45309", "#fffbeb") >= 4.5, "warning text on warning surface");
   assert.ok(contrast("#dc2626", "#ffffff") >= 4.5, "danger action on white");
   assert.ok(contrast("#0369a1", "#f0f9ff") >= 4.5, "information text on information surface");
@@ -97,9 +108,13 @@ test("application stylesheets are flat: no box-shadow, gradient or backdrop blur
 test("the previous burgundy theme and serif headings are gone", () => {
   const sources = [...files("src", [".tsx", ".ts", ".css"])].map((file) => [file, read(file)] as const);
   for (const [file, text] of sources) {
-    assert.doesNotMatch(text, /#5a173f|#6b214d|#351026|#54183c|#f8edf4/i, file);
+    assert.doesNotMatch(text, /#5a173f|#6b214d|#351026|#54183c|#f8edf4|#3b102b/i, file);
+    // Nor the ivory / forest-green / charcoal theme it replaced.
+    assert.doesNotMatch(text, /#fafaf7|#f5f5f0|#166534|#14532d|#27272a|#e4e4de|#ecece6/i, file);
   }
   for (const file of ["src/index.css", "src/design-system.css"]) assert.doesNotMatch(read(file), /Georgia|ui-serif/, file);
+  for (const file of ["index.html", "vite.config.ts"]) assert.doesNotMatch(read(file), /#3b102b|#fbf7f2/i, file);
+  assert.match(read("index.html"), /name="theme-color" content="#0b1c2d"/);
 });
 
 test("receipt printing keeps its own styles (not touched by the screen theme)", () => {

@@ -3,13 +3,13 @@
 // and PDF, and the payload of the thermal ESC/POS printer (server/routes/print.js,
 // laid out by server/utils/receiptLayout.js).
 //
-// Money is printed in Congolese francs ONLY. Each line's FC amount is the
-// sale's own stored snapshot (getItemFcUnitPrice): the entered FC price, the
-// FC price snapshot, or the USD price at the sale's historical rate — never
-// today's rate. The USD values stay untouched in the sale for accounting.
+// Money is printed in Congolese francs, the shop's only currency. The server
+// returns every sale in FC (a sale recorded before the FC-only cutover through
+// its own historical FC snapshot), so a reprint shows the francs it was sold
+// for.
 import i18n, { currentLanguage, type AppLanguage } from "../i18n/index.ts";
 import { COMPANY_PHONE } from "../config/company.ts";
-import { getItemFcUnitPrice, type StoredSaleItemPrice } from "../utils/salePricing.ts";
+import { findItemUnitPrice, type StoredSaleItemPrice } from "../utils/salePricing.ts";
 
 export type ReceiptItem = StoredSaleItemPrice & { name: string };
 
@@ -67,9 +67,8 @@ export interface SaleReceiptInput extends SaleReceiptShop {
   customerName: string;
   customerPhone?: string;
   customerEmail?: string;
+  /** Lines in FC, as the server returns them. */
   items: ReceiptItem[];
-  /** The sale's own rate snapshot, used only for lines without an FC snapshot. */
-  exchangeRate?: number;
   /** Stored/raw payment value (cash, mpesa, transfer…). */
   paymentMethod: string;
   salesPerson: string;
@@ -131,11 +130,12 @@ export function receiptPaymentLabel(method: string, language: AppLanguage = curr
   return i18n.getFixedT(language)(`saleReceipt.payments.${value}`, { defaultValue: value.toUpperCase() });
 }
 
-/** One ARTICLE / PU / QTE / TOTAL line per item, in FC from the sale's snapshots. */
-export function receiptLines(items: ReceiptItem[], saleRate?: number): ReceiptLine[] {
+/** One ARTICLE / PU / QTE / TOTAL line per item, in FC. */
+export function receiptLines(items: ReceiptItem[]): ReceiptLine[] {
   return items.map((item) => {
     const quantity = Number(item.quantity) || 0;
-    const unitFC = getItemFcUnitPrice(item, saleRate);
+    // A line without any FC amount prints "—" rather than a guessed amount.
+    const unitFC = findItemUnitPrice(item);
     return { name: String(item.name ?? ""), quantity, unitFC, totalFC: unitFC === undefined ? undefined : unitFC * quantity };
   });
 }
@@ -157,7 +157,7 @@ export function formatReceiptFC(value: number | undefined | null): string {
 }
 
 export function buildSaleReceipt(input: SaleReceiptInput, language: AppLanguage = currentLanguage()): SaleReceiptDocument {
-  const lines = receiptLines(input.items, input.exchangeRate);
+  const lines = receiptLines(input.items);
   const totalFC = receiptTotalFC(lines);
   return {
     ...input,
@@ -186,7 +186,6 @@ export function escPosReceiptData(doc: SaleReceiptDocument) {
     customerPhone: doc.customerPhone ?? "",
     customerEmail: doc.customerEmail,
     items: doc.items,
-    exchangeRate: doc.exchangeRate,
     paymentMethod: doc.paymentMethod,
     paymentLabel: doc.paymentLabel,
     salesPerson: doc.salesPerson,

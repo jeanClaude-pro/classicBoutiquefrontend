@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { ApiError, MESSAGES, apiErrorFromPayload, apiErrorFromResponse, toApiError, translateServerMessage } from "../src/lib/apiError.ts";
 
 test("insufficient purchase funds become a titled French message with both amounts", () => {
-  const error = apiErrorFromPayload(409, { error: "INSUFFICIENT_PURCHASE_FUNDS", message: "Fonds de réapprovisionnement insuffisants", requested: 700, available: 500, category: "SHOES" });
+  const error = apiErrorFromPayload(409, { error: "INSUFFICIENT_PURCHASE_FUNDS", message: "Fonds de réapprovisionnement insuffisants", requested: 700000, available: 500000, category: "SHOES" });
   assert.equal(error.title, "Fonds insuffisants");
-  assert.match(error.message, /Montant demandé : 700,00 \$/);
-  assert.match(error.message, /Fonds disponibles : 500,00 \$/);
+  assert.match(error.message, /Montant demandé : 700\s000 FC/);
+  assert.match(error.message, /Fonds disponibles : 500\s000 FC/);
+  assert.doesNotMatch(error.message, /\$|USD/);
   assert.equal(error.isConflict, false, "a refusal for funds is not a data conflict");
   assert.doesNotMatch(error.message, /INSUFFICIENT/);
 });

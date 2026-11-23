@@ -9,7 +9,6 @@ import Analytics from "../src/pages/analytics/Analytics";
 import Customers from "../src/pages/customers/Customers";
 import SortieHistory from "../src/pages/SortieHistory";
 import SalesHistory from "../src/pages/history/SalesHistory";
-import Rate from "../src/pages/Rate";
 import Sortie from "../src/pages/Sortie";
 import AdminPanel from "../src/pages/admin/AdminPanel";
 import Products from "../src/pages/products/products";
@@ -89,7 +88,7 @@ test("Historique des décaissements: insufficient funds keeps the page usable wi
   const api = mockApi([
     { match: /^\/expenses\/permissions\/me/, reply: { body: { canValidate: true, isAdmin: true, canEditAll: true, canDeleteAll: true, userId: "u-self", userName: "tester" } } },
     { match: /^\/expenses\?/, reply: { body: expenseList([pendingPurchase]) } },
-    { method: "PATCH", match: /^\/expenses\/e1\/validate/, reply: { status: 409, body: { error: "INSUFFICIENT_PURCHASE_FUNDS", message: "Fonds de réapprovisionnement insuffisants", category: "SHOES", requested: 700, available: 500 } } },
+    { method: "PATCH", match: /^\/expenses\/e1\/validate/, reply: { status: 409, body: { error: "INSUFFICIENT_PURCHASE_FUNDS", message: "Fonds de réapprovisionnement insuffisants", category: "SHOES", requested: 700000, available: 500000 } } },
   ]);
   const user = userEvent.setup();
   renderPage(<SortieHistory />, "/sortiehistory");
@@ -99,8 +98,8 @@ test("Historique des décaissements: insufficient funds keeps the page usable wi
   await user.click(within(dialog).getByRole("button", { name: "Valider l'achat" }));
   const alert = await within(dialog).findByRole("alert");
   expect(alert).toHaveTextContent("Fonds insuffisants");
-  expect(alert).toHaveTextContent("Montant demandé : 700,00 $");
-  expect(alert).toHaveTextContent("Fonds disponibles : 500,00 $");
+  expect(alert).toHaveTextContent(/Montant demandé : 700\s000 FC/);
+  expect(alert).toHaveTextContent(/Fonds disponibles : 500\s000 FC/);
   expect(dialog).not.toHaveTextContent("INSUFFICIENT_PURCHASE_FUNDS");
   expect(screen.getByRole("heading", { name: "Historique des décaissements" })).toBeInTheDocument();
   // The list was refreshed so the user decides on current data.
@@ -148,31 +147,10 @@ test("Historique des ventes: a failed void leaves the list usable", async () => 
   expect(screen.getByText("SALE-1")).toBeInTheDocument();
 });
 
-test("Taux de change: the current rate displays correctly and an update is confirmed", async () => {
-  signIn({ role: "superadmin" });
-  const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850, effectiveFrom: now, notes: "" } } },
-    { match: /^\/exchange-rates\/history/, reply: { body: { history: [] } } },
-    { method: "POST", match: /^\/exchange-rates$/, reply: { status: 201, body: { message: "ok", rate: { rate: 2900 } } } },
-  ]);
-  const user = userEvent.setup();
-  renderPage(<Rate />, "/rate");
-  expect(await screen.findByText(/1 USD = 2\s?850,00 FC/)).toBeInTheDocument();
-  expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
-  await user.type(screen.getByPlaceholderText(/Ex: 2500/), "2900");
-  await user.click(screen.getByRole("button", { name: /Appliquer le nouveau taux/ }));
-  const dialog = screen.getByRole("alertdialog", { name: "Appliquer ce nouveau taux ?" });
-  expect(dialog).toHaveTextContent("gardent le taux en vigueur");
-  await user.click(within(dialog).getByRole("button", { name: "Appliquer le taux" }));
-  await waitFor(() => expect(api.calls.some((call) => call.method === "POST")).toBe(true));
-  await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-});
-
 test("Décaissements: a retry after a network failure reuses the same request key", async () => {
   signIn({ role: "superadmin", username: "tester" });
   let attempts = 0;
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: () => (++attempts === 1 ? { networkError: true } : { status: 201, body: { _id: "x", status: "validated" } }) },
@@ -198,7 +176,6 @@ test("Décaissements: a retry after a network failure reuses the same request ke
 test("Décaissements: one submit click creates one expense, resets, and never opens a confirmation", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 201, body: { _id: "expense-one", status: "validated" } } },
@@ -222,7 +199,6 @@ test("Décaissements: one submit click creates one expense, resets, and never op
 test("Décaissements: two synchronous submit events still send only one POST", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 201, body: { status: "validated" } } },
@@ -246,7 +222,6 @@ test("Décaissements: two synchronous submit events still send only one POST", a
 test("Décaissements: three consecutive one-click submissions use three request keys", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 201, body: { status: "validated" } } },
@@ -276,7 +251,6 @@ test("Décaissements: three consecutive one-click submissions use three request 
 test("Décaissements: a 400 releases the button and shows the API error", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 400, body: { error: "category must be CLOTHES or SHOES" } } },
@@ -298,7 +272,6 @@ test("Décaissements: a 400 releases the button and shows the API error", async 
 test("Décaissements: an idempotency conflict stays readable and never unmounts the page", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [] } },
     { match: /^\/expenses\/funds\/CLOTHES/, reply: { body: { category: "CLOTHES", availablePurchaseFunds: 900, fundingShortfall: 0 } } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 409, body: { error: "IDEMPOTENCY_CONFLICT", message: "Cette clé de requête a déjà été utilisée avec des données différentes." } } },
@@ -374,7 +347,6 @@ test("Articles & stock: deleting asks for confirmation and a failure keeps the a
 test("Décaissements: a debt repayment can be submitted for a creditor without a phone number", async () => {
   signIn({ role: "superadmin", username: "tester" });
   const api = mockApi([
-    { match: /^\/exchange-rates\/current/, reply: { body: { rate: 2850 } } },
     { match: /^\/creditors\/selector/, reply: { body: [{ _id: "cr1", name: "Banque Test", type: "bank" }] } },
     { method: "POST", match: /^\/expenses$/, reply: { status: 201, body: { _id: "x", status: "validated" } } },
   ]);
